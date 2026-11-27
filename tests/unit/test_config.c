@@ -1704,6 +1704,22 @@ static void test_save_config_bind_mount_restores_after_write_failure(void) {
     check_bind_mount_fallback(true);
 }
 
+static void assert_files_equal_binary(FILE *expected, FILE *actual) {
+    unsigned char expected_buf[256];
+    unsigned char actual_buf[256];
+    while (true) {
+        size_t expected_n = fread(expected_buf, 1, sizeof(expected_buf), expected);
+        size_t actual_n = fread(actual_buf, 1, sizeof(actual_buf), actual);
+        TEST_ASSERT_EQUAL_UINT64((uint64_t)expected_n, (uint64_t)actual_n);
+        if (expected_n == 0) {
+            break;
+        }
+        TEST_ASSERT_EQUAL_INT(0, memcmp(expected_buf, actual_buf, expected_n));
+    }
+    TEST_ASSERT_FALSE(ferror(expected));
+    TEST_ASSERT_FALSE(ferror(actual));
+}
+
 static void test_save_config_bind_mount_retries_short_write(void) {
     char directory[] = "/tmp/lightnvr_config_short_write_XXXXXX";
     TEST_ASSERT_NOT_NULL(mkdtemp(directory));
@@ -1743,19 +1759,7 @@ static void test_save_config_bind_mount_retries_short_write(void) {
     FILE *baseline = fopen(baseline_path, "rb");
     TEST_ASSERT_NOT_NULL(baseline);
 
-    unsigned char saved_buf[256];
-    unsigned char baseline_buf[256];
-    while (true) {
-        size_t saved_n = fread(saved_buf, 1, sizeof(saved_buf), saved);
-        size_t baseline_n = fread(baseline_buf, 1, sizeof(baseline_buf), baseline);
-        TEST_ASSERT_EQUAL_UINT64((uint64_t)baseline_n, (uint64_t)saved_n);
-        if (saved_n == 0) {
-            break;
-        }
-        TEST_ASSERT_EQUAL_INT(0, memcmp(saved_buf, baseline_buf, saved_n));
-    }
-    TEST_ASSERT_FALSE(ferror(saved));
-    TEST_ASSERT_FALSE(ferror(baseline));
+    assert_files_equal_binary(baseline, saved);
 
     fclose(saved);
     fclose(baseline);
