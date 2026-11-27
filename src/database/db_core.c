@@ -413,7 +413,16 @@ static int cleanup_stale_backup_artifacts(const char *backup_dir) {
     int parent = dirfd(dir);
     if (parent < 0) { closedir(dir); return -1; }
     struct dirent *entry;
-    while ((entry = readdir(dir)) != NULL) {
+    for (;;) {
+        errno = 0;
+        entry = readdir(dir);
+        if (entry == NULL) {
+            if (errno != 0) {
+                log_warn("Failed to enumerate backup directory %s (%s)", backup_dir, strerror(errno));
+                result = -1;
+            }
+            break;
+        }
         if (is_temporary_backup_artifact(entry->d_name) &&
             cleanup_stale_backup_entry(parent, backup_dir, entry->d_name) != 0) {
             log_warn("Incomplete stale backup cleanup: %s/%s", backup_dir, entry->d_name);
@@ -423,7 +432,7 @@ static int cleanup_stale_backup_artifacts(const char *backup_dir) {
             break;
         }
     }
-    closedir(dir);
+    if (closedir(dir) != 0) result = -1;
     return result;
 }
 
