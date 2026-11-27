@@ -1844,15 +1844,7 @@ static void check_bind_mount_fallback(bool fail_copy) {
         FILE *baseline_file = fopen(baseline_path, "rb");
         TEST_ASSERT_NOT_NULL(baseline_file);
         saved_baseline_file = baseline_file;
-        unsigned char actual[256], expected[256];
-        while (true) {
-            size_t actual_count = fread(actual, 1, sizeof(actual), saved);
-            size_t expected_count = fread(expected, 1, sizeof(expected), baseline_file);
-            TEST_ASSERT_EQUAL_UINT(expected_count, actual_count);
-            if (actual_count == 0) break;
-            TEST_ASSERT_EQUAL_MEMORY(expected, actual, actual_count);
-        }
-        TEST_ASSERT_FALSE(ferror(baseline_file));
+        assert_files_equal_binary(saved, baseline_file);
         fclose(baseline_file);
         saved_baseline_file = NULL;
     }
