@@ -72,6 +72,7 @@ static bool observed_config_stream;
 static bool observed_config_stream_with_private_mode;
 static char *saved_web_port_env;
 static char *saved_audio_disabled_env;
+static char *saved_go2rtc_listen_port_env;
 static const char *const timeout_env_names[] = {
     "LIGHTNVR_WEBRTC_CONNECTION_TIMEOUT_MS",
     "LIGHTNVR_WEBRTC_ICE_RECOVERY_TIMEOUT_MS"
@@ -157,12 +158,16 @@ void setUp(void) {
     observed_config_stream_with_private_mode = true;
     const char *web_port = getenv("LIGHTNVR_WEB_PORT");
     const char *audio_disabled = getenv("LIGHTNVR_AUDIO_DISABLED");
+    const char *go2rtc_listen_port = getenv("LIGHTNVR_GO2RTC_WEBRTC_LISTEN_PORT");
     saved_web_port_env = web_port ? strdup(web_port) : NULL;
     saved_audio_disabled_env = audio_disabled ? strdup(audio_disabled) : NULL;
+    saved_go2rtc_listen_port_env = go2rtc_listen_port ? strdup(go2rtc_listen_port) : NULL;
     if (web_port) TEST_ASSERT_NOT_NULL(saved_web_port_env);
     if (audio_disabled) TEST_ASSERT_NOT_NULL(saved_audio_disabled_env);
+    if (go2rtc_listen_port) TEST_ASSERT_NOT_NULL(saved_go2rtc_listen_port_env);
     unsetenv("LIGHTNVR_WEB_PORT");
     unsetenv("LIGHTNVR_AUDIO_DISABLED");
+    unsetenv("LIGHTNVR_GO2RTC_WEBRTC_LISTEN_PORT");
     for (size_t i = 0; i < 2; i++) {
         const char *value = getenv(timeout_env_names[i]);
         saved_timeout_env[i] = value ? strdup(value) : NULL;
@@ -223,9 +228,13 @@ void tearDown(void) {
     else unsetenv("LIGHTNVR_WEB_PORT");
     if (saved_audio_disabled_env) setenv("LIGHTNVR_AUDIO_DISABLED", saved_audio_disabled_env, 1);
     else unsetenv("LIGHTNVR_AUDIO_DISABLED");
+    if (saved_go2rtc_listen_port_env) setenv("LIGHTNVR_GO2RTC_WEBRTC_LISTEN_PORT", saved_go2rtc_listen_port_env, 1);
+    else unsetenv("LIGHTNVR_GO2RTC_WEBRTC_LISTEN_PORT");
     free(saved_web_port_env);
     free(saved_audio_disabled_env);
+    free(saved_go2rtc_listen_port_env);
     saved_web_port_env = saved_audio_disabled_env = NULL;
+    saved_go2rtc_listen_port_env = NULL;
     for (size_t i = 0; i < 2; i++) {
         if (saved_timeout_env[i]) setenv(timeout_env_names[i], saved_timeout_env[i], 1);
         else unsetenv(timeout_env_names[i]);
@@ -1602,6 +1611,13 @@ void test_env_integer_whitespace_handling(void) {
     TEST_ASSERT_EQUAL_INT(0, setenv(timeout_env_names[1], "0", 1));
     TEST_ASSERT_EQUAL_INT(0, load_config(&cfg));
     TEST_ASSERT_EQUAL_INT(0, cfg.webrtc_ice_recovery_timeout_ms);
+
+    TEST_ASSERT_EQUAL_INT(0, setenv("LIGHTNVR_GO2RTC_WEBRTC_LISTEN_PORT", "65536", 1));
+    TEST_ASSERT_EQUAL_INT(0, load_config(&cfg));
+    TEST_ASSERT_EQUAL_INT(8555, cfg.go2rtc_webrtc_listen_port);
+    TEST_ASSERT_EQUAL_INT(0, setenv("LIGHTNVR_GO2RTC_WEBRTC_LISTEN_PORT", "0", 1));
+    TEST_ASSERT_EQUAL_INT(0, load_config(&cfg));
+    TEST_ASSERT_EQUAL_INT(0, cfg.go2rtc_webrtc_listen_port);
 
     unlink(config_path);
     unlink(db_path);
