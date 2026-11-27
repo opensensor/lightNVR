@@ -2383,8 +2383,9 @@ static int save_config_snapshot(const config_t *config, const char *path) {
     fprintf(file, "syslog_enabled = %s\n", config->syslog_enabled ? "true" : "false");
     fprintf(file, "syslog_ident = %s\n", config->syslog_ident);
 
-    // Convert facility number to name for readability
-    const char *facility_name = "LOG_USER";
+    // Convert facility number to name for readability.
+    // Preserve values not explicitly mapped here by writing them numerically.
+    const char *facility_name = NULL;
     switch (config->syslog_facility) {
         case LOG_USER: facility_name = "LOG_USER"; break;
         case LOG_DAEMON: facility_name = "LOG_DAEMON"; break;
@@ -2396,9 +2397,14 @@ static int save_config_snapshot(const config_t *config, const char *path) {
         case LOG_LOCAL5: facility_name = "LOG_LOCAL5"; break;
         case LOG_LOCAL6: facility_name = "LOG_LOCAL6"; break;
         case LOG_LOCAL7: facility_name = "LOG_LOCAL7"; break;
-        default: /* facility_name already set to "LOG_USER" above */ break;
+        default: break;
     }
-    fprintf(file, "syslog_facility = %s  ; Syslog facility for system logging\n\n", facility_name);
+    if (facility_name) {
+        fprintf(file, "syslog_facility = %s  ; Syslog facility for system logging\n\n", facility_name);
+    } else {
+        fprintf(file, "syslog_facility = %d  ; Syslog facility for system logging\n\n",
+                config->syslog_facility);
+    }
 
     // Structured condition overrides intentionally are not written here; they
     // are one canonical, bounded system_settings value.
