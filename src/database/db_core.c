@@ -1526,16 +1526,77 @@ int init_database_ex(const char *db_path, unsigned flags) {
         // Continue anyway
     }
 
-    // Enable auto_vacuum to keep the database file size manageable
-    log_info("Enabling auto_vacuum");
+    // Enable auto_vacuum to keep the database file size manageable.
+    // NOTE: transitioning from NONE to INCREMENTAL on an existing DB requires VACUUM.
+    log_info("Configuring auto_vacuum=INCREMENTAL");
+    int auto_vacuum_before = -1;
+    int auto_vacuum_after = -1;
+    sqlite3_stmt *av_stmt = NULL;
+
+    rc = sqlite3_prepare_v2(db, "PRAGMA auto_vacuum;", -1, &av_stmt, NULL);
+    if (rc == SQLITE_OK) {
+        if (sqlite3_step(av_stmt) == SQLITE_ROW) {
+            auto_vacuum_before = sqlite3_column_int(av_stmt, 0);
+        }
+    } else {
+        log_warn("Failed to read current auto_vacuum mode: %s", sqlite3_errmsg(db));
+    }
+    if (av_stmt) {
+        sqlite3_finalize(av_stmt);
+        av_stmt = NULL;
+    }
+
     rc = sqlite3_exec(db, "PRAGMA auto_vacuum=INCREMENTAL;", NULL, NULL, &err_msg);
     if (rc != SQLITE_OK) {
-        log_warn("Failed to enable auto_vacuum: %s", err_msg);
+        log_warn("Failed to request auto_vacuum=INCREMENTAL: %s", err_msg);
         if (err_msg) {
             sqlite3_free(err_msg);
             err_msg = NULL;
         }
         // Continue anyway
+    }
+
+    rc = sqlite3_prepare_v2(db, "PRAGMA auto_vacuum;", -1, &av_stmt, NULL);
+    if (rc == SQLITE_OK) {
+        if (sqlite3_step(av_stmt) == SQLITE_ROW) {
+            auto_vacuum_after = sqlite3_column_int(av_stmt, 0);
+        }
+    } else {
+        log_warn("Failed to verify auto_vacuum mode after PRAGMA: %s", sqlite3_errmsg(db));
+    }
+    if (av_stmt) {
+        sqlite3_finalize(av_stmt);
+        av_stmt = NULL;
+    }
+
+    if (auto_vacuum_before == 0 && auto_vacuum_after != 2) {
+        log_info("auto_vacuum transition from NONE requires VACUUM; rebuilding database file");
+        rc = sqlite3_exec(db, "VACUUM;", NULL, NULL, &err_msg);
+        if (rc != SQLITE_OK) {
+            log_warn("VACUUM failed while enabling incremental auto_vacuum: %s", err_msg);
+            if (err_msg) {
+                sqlite3_free(err_msg);
+                err_msg = NULL;
+            }
+            // Continue anyway
+        } else {
+            rc = sqlite3_prepare_v2(db, "PRAGMA auto_vacuum;", -1, &av_stmt, NULL);
+            if (rc == SQLITE_OK) {
+                if (sqlite3_step(av_stmt) == SQLITE_ROW) {
+                    auto_vacuum_after = sqlite3_column_int(av_stmt, 0);
+                }
+            }
+            if (av_stmt) {
+                sqlite3_finalize(av_stmt);
+                av_stmt = NULL;
+            }
+        }
+    }
+
+    if (auto_vacuum_after == 2) {
+        log_info("auto_vacuum is enabled in INCREMENTAL mode");
+    } else {
+        log_warn("auto_vacuum is not INCREMENTAL after configuration attempt (mode=%d)", auto_vacuum_after);
     }
 
     // Check if we can write to the database
