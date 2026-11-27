@@ -117,9 +117,9 @@ static void maybe_compress_response(const http_request_t *request,
         return;
     }
 
-    if (!response_has_header(response, "Vary")) {
-        http_response_add_header(response, "Vary", "Accept-Encoding");
-    }
+    // A separate Vary field is valid even when another field already names
+    // Origin or another request header; caches combine the field values.
+    http_response_add_header(response, "Vary", "Accept-Encoding");
 
     if (!request_accepts_gzip(request)) {
         return;
@@ -153,7 +153,6 @@ static void maybe_compress_response(const http_request_t *request,
     response->body_length = compressed_length;
     response->body_allocated = true;
     http_response_add_header(response, "Content-Encoding", "gzip");
-    http_response_add_header(response, "Vary", "Accept-Encoding");
 }
 
 /**
@@ -228,6 +227,7 @@ void libuv_connection_reset(libuv_connection_t *conn) {
     // The body is assembled separately from the receive buffer because
     // chunk framing may separate successive on_body callbacks.
     safe_free(conn->request.body);
+    conn->body_capacity = 0;
     // Reset request/response
     http_request_init(&conn->request);
     http_response_init(&conn->response);
@@ -619,25 +619,27 @@ static int on_body(llhttp_t *parser, const char *at, size_t length) {
     if (length > LIBUV_RECV_BUFFER_MAX - old_len) return HPE_USER;
 
     size_t required = old_len + length + 1; /* +1 for NUL terminator */
-    if (required > conn->request.body_capacity) {
-        size_t new_capacity = conn->request.body_capacity ? conn->request.body_capacity : 1024;
+    if (required > conn->body_capacity) {
+        const size_t max_capacity = LIBUV_RECV_BUFFER_MAX + 1;
+        size_t new_capacity = conn->body_capacity ? conn->body_capacity : 1024;
         while (new_capacity < required) {
-            if (new_capacity > LIBUV_RECV_BUFFER_MAX / 2) {
-                new_capacity = LIBUV_RECV_BUFFER_MAX;
+            if (new_capacity > max_capacity / 2) {
+                new_capacity = max_capacity;
                 break;
             }
             new_capacity *= 2;
         }
-        if (new_capacity < required || new_capacity > LIBUV_RECV_BUFFER_MAX) return HPE_USER;
+        if (new_capacity < required) return HPE_USER;
 
         char *new_body = safe_realloc(conn->request.body, new_capacity);
         if (!new_body) return HPE_USER;
         conn->request.body = new_body;
-        conn->request.body_capacity = new_capacity;
+        conn->body_capacity = new_capacity;
     }
 
-    memcpy(conn->request.body + old_len, at, length);
-    conn->request.body[old_len + length] = '\0';
+    char *body = conn->request.body;
+    memcpy(body + old_len, at, length);
+    body[old_len + length] = '\0';
     conn->request.body_len = old_len + length;
 
     return 0;
