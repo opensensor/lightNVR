@@ -295,35 +295,16 @@ int libuv_server_start(http_server_handle_t handle) {
     if (need_reinit) {
         log_info("libuv_server_start: Handles are closed, reinitializing");
 
-        // Wait for all closes to complete
-        int wait_count = 0;
-        while ((uv_is_closing((uv_handle_t *)&server->listener) ||
-                uv_is_closing((uv_handle_t *)&server->stop_async)) &&
-               wait_count < 100) {
-            uv_run(server->loop, UV_RUN_NOWAIT);
-            usleep(10000); // 10ms
-            wait_count++;
-        }
+        // NOTE:
+        // uv_is_closing() stays true after uv_close() has been requested and does not
+        // transition back to false when close is completed. So waiting for it to become
+        // false causes deterministic timeout on normal restart paths.
+        //
+        // Reinitialize handles directly when restart detects the prior handles were
+        // in closing/closed state. Close completion must be tracked via close callbacks
+        // rather than uv_is_closing() polling.
 
-        if (uv_is_closing((uv_handle_t *)&server->listener) ||
-            uv_is_closing((uv_handle_t *)&server->stop_async)) {
-            // Handles stuck closing - the event loop is dirty.
-            // Create a fresh event loop as fallback.
-            log_warn("libuv_server_start: Handles still closing after timeout, "
-                     "creating fresh event loop");
-
-            if (server->owns_loop) {
-                if (libuv_server_reset_loop(server) != 0) {
-                    log_error("libuv_server_start: Failed to create fresh event loop");
-                    return -1;
-                }
-            } else {
-                log_error("libuv_server_start: Cannot reset shared event loop");
-                return -1;
-            }
-        }
-
-        // Reinitialize the TCP listener on the (possibly fresh) loop
+        // Reinitialize the TCP listener on the current loop
         if (uv_tcp_init(server->loop, &server->listener) != 0) {
             log_error("libuv_server_start: Failed to reinitialize TCP handle");
             return -1;
