@@ -489,13 +489,11 @@ void libuv_server_stop(http_server_handle_t handle) {
     if (server->thread_joinable) {
         log_info("libuv_server_stop: Signaling event loop thread to stop");
 
-        // Send async signal to wake up the event loop thread
+        // Send async signal to wake up the event loop thread.
+        // stop_async_cb() runs on the loop thread and performs uv_stop() safely there.
         // This is critical because uv_run(UV_RUN_ONCE) can block indefinitely
         // waiting for I/O, and we need to wake it up so it can check server->running
         if (server->thread_running) uv_async_send(&server->stop_async);
-
-        // Also stop the loop to ensure uv_run returns
-        uv_stop(server->loop);
 
         // Wait for thread with timeout - keep sending signals periodically
         log_info("libuv_server_stop: Waiting for server thread to exit");
@@ -504,9 +502,8 @@ void libuv_server_stop(http_server_handle_t handle) {
         int elapsed_ms = 0;
 
         while (elapsed_ms < max_wait_ms && server->thread_running) {
-            // Keep sending async signals and stop requests
+            // Keep sending async signals; stop_async_cb() will stop the loop.
             uv_async_send(&server->stop_async);
-            uv_stop(server->loop);
 
             usleep(check_interval_ms * 1000);
             elapsed_ms += check_interval_ms;
