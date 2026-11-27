@@ -39,6 +39,8 @@ static config_t reloaded_cfg;
 static FILE *saved_config_file;
 static char *saved_config_text;
 static stream_config_t *owned_snapshot_streams;
+static int owned_pid_fd;
+static char owned_pid_path[MAX_PATH_LENGTH];
 static bool deny_config_chmod;
 static bool deny_config_rename;
 static bool busy_config_rename;
@@ -242,8 +244,9 @@ void test_daemon_status_preserves_owned_pid_lock(void) {
     char path[MAX_PATH_LENGTH];
     snprintf(path, sizeof(path), "%s/lightnvr.pid", directory);
 
-    int fd = write_pid_file(path);
-    TEST_ASSERT_TRUE(fd >= 0);
+    owned_pid_fd = write_pid_file(path);
+    TEST_ASSERT_TRUE(owned_pid_fd >= 0);
+    snprintf(owned_pid_path, sizeof(owned_pid_path), "%s", path);
     TEST_ASSERT_EQUAL_INT(-1, write_pid_file(path));
     TEST_ASSERT_EQUAL_INT(1, daemon_status(path));
     char alias[MAX_PATH_LENGTH];
@@ -256,7 +259,7 @@ void test_daemon_status_preserves_owned_pid_lock(void) {
     pid_t child = fork();
     TEST_ASSERT_TRUE(child >= 0);
     if (child == 0) {
-        close(fd);
+        close(owned_pid_fd);
         if (daemon_status(path) != 1) _exit(2);
         int probe = open(path, O_RDWR);
         if (probe < 0) _exit(3);
