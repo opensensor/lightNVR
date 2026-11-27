@@ -2297,10 +2297,10 @@ static int save_config_snapshot(const config_t *config, const char *path) {
     }
 
     int original_fd = openat(dir_fd, validated_filename,
-                             O_RDWR | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK);
+                             O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK);
     bool target_exists = original_fd >= 0;
     if (!target_exists && errno != ENOENT) {
-        log_error("Could not open config file for writing: %s", strerror(errno));
+        log_error("Could not open config file for inspection: %s", strerror(errno));
         close(dir_fd);
         return -1;
     }
@@ -2313,16 +2313,28 @@ static int save_config_snapshot(const config_t *config, const char *path) {
             close(dir_fd);
             return -1;
         }
-        if (fchmod(original_fd, 0600) != 0) {
-            if (errno != EPERM) {
-                log_error("Could not restrict config file: %s", strerror(errno));
+        close_original_config_fd(original_fd);
+        original_fd = openat(dir_fd, validated_filename,
+                             O_RDWR | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK);
+        if (original_fd >= 0) {
+            if (fchmod(original_fd, 0600) != 0) {
+                if (errno != EPERM) {
+                    log_error("Could not restrict config file: %s", strerror(errno));
+                    close_original_config_fd(original_fd);
+                    close(dir_fd);
+                    return -1;
+                }
+                /* A legacy root-owned file can only be replaced, not rewritten. */
                 close_original_config_fd(original_fd);
-                close(dir_fd);
-                return -1;
+                original_fd = -1;
             }
-            /* A legacy root-owned file can only be replaced, not rewritten. */
-            close_original_config_fd(original_fd);
+        } else if (errno == EACCES || errno == EPERM) {
+            /* Exists but not writable: allow replacement path when directory permits it. */
             original_fd = -1;
+        } else {
+            log_error("Could not open config file for writing: %s", strerror(errno));
+            close(dir_fd);
+            return -1;
         }
     }
 
