@@ -444,6 +444,30 @@ void test_daemon_status_preserves_owned_pid_lock(void) {
     TEST_ASSERT_EQUAL_INT(0, rmdir(directory));
 }
 
+void test_daemon_status_validates_opened_pid_file(void) {
+    char directory[] = "/tmp/lightnvr_pid_file_validation_XXXXXX";
+    TEST_ASSERT_NOT_NULL(mkdtemp(directory));
+    char path[MAX_PATH_LENGTH], alias[MAX_PATH_LENGTH];
+    snprintf(path, sizeof(path), "%s/lightnvr.pid", directory);
+    snprintf(alias, sizeof(alias), "%s/alias.pid", directory);
+
+    int fd = open(path, O_WRONLY | O_CREAT | O_EXCL, 0600);
+    TEST_ASSERT_TRUE(fd >= 0);
+    TEST_ASSERT_EQUAL_INT(0, close(fd));
+    TEST_ASSERT_EQUAL_INT(0, daemon_status(path));
+
+    TEST_ASSERT_EQUAL_INT(0, link(path, alias));
+    TEST_ASSERT_EQUAL_INT(-1, daemon_status(path));
+    TEST_ASSERT_EQUAL_INT(-1, daemon_status(alias));
+    TEST_ASSERT_EQUAL_INT(0, unlink(alias));
+
+    TEST_ASSERT_EQUAL_INT(0, symlink(path, alias));
+    TEST_ASSERT_EQUAL_INT(-1, daemon_status(alias));
+    TEST_ASSERT_EQUAL_INT(0, unlink(alias));
+    TEST_ASSERT_EQUAL_INT(0, unlink(path));
+    TEST_ASSERT_EQUAL_INT(0, rmdir(directory));
+}
+
 void test_default_config_mp4_faststart_on(void) {
     load_default_config(&cfg);
     TEST_ASSERT_TRUE(config_get_mp4_faststart(&cfg));
@@ -2006,6 +2030,7 @@ int main(void) {
 
     UNITY_BEGIN();
     RUN_TEST(test_daemon_status_preserves_owned_pid_lock);
+    RUN_TEST(test_daemon_status_validates_opened_pid_file);
     RUN_TEST(test_save_config_tightens_existing_permissions_before_writing_secrets);
     RUN_TEST(test_save_config_rejects_hardlinks_without_truncation_or_mode_change);
     RUN_TEST(test_save_config_replaces_group_writable_legacy_file_privately);
