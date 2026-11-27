@@ -498,9 +498,11 @@ static int check_and_kill_existing_instance(const char *pid_file) {
             return -1;
         }
         int term_rc = -1;
+        int term_error = 0;
         if (used_pidfd) {
             term_rc = send_signal_via_pidfd(pidfd, SIGTERM);
-            if (term_rc != 0 && errno == ENOSYS) {
+            if (term_rc != 0) term_error = errno;
+            if (term_rc != 0 && term_error == ENOSYS) {
                 close(pidfd);
                 pidfd = -1;
                 used_pidfd = false;
@@ -510,7 +512,7 @@ static int check_and_kill_existing_instance(const char *pid_file) {
             log_error("Cannot safely terminate previous instance without pidfd support; stop it through the service manager before starting LightNVR again");
             return -1;
         }
-        bool process_already_exited = (term_rc != 0 && errno == ESRCH);
+        bool process_already_exited = (term_rc != 0 && term_error == ESRCH);
         if (process_already_exited) {
             log_info("Previous instance exited before SIGTERM could be delivered; waiting for PID file lock release");
         }
@@ -1837,17 +1839,17 @@ cleanup:
         // Stop all streams to ensure clean shutdown.
         // Enumerate currently registered runtime streams (not startup config),
         // so streams added/renamed at runtime are also stopped.
-        stream_handle_t *registered_streams = NULL;
-        int registered_stream_count = get_all_streams(&registered_streams);
-        for (int i = 0; i < registered_stream_count; i++) {
-            stream_handle_t stream = registered_streams[i];
+        int stream_capacity = get_stream_capacity();
+        for (int i = 0; i < stream_capacity; i++) {
+            stream_handle_t stream = get_stream_by_index(i);
             if (stream) {
-                const char *stream_name = get_stream_name(stream);
-                log_info("Stopping stream: %s", stream_name ? stream_name : "(unknown)");
+                stream_config_t runtime_config = {0};
+                if (get_stream_config(stream, &runtime_config) == 0) {
+                    log_info("Stopping stream: %s", runtime_config.name);
+                }
                 stop_stream(stream);
             }
         }
-        free(registered_streams);
 
         // Wait longer for streams to stop
         usleep(1500000);  // 1500ms
