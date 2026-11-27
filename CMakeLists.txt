@@ -815,13 +815,12 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     # Audio workers receive RLIMIT_AS. ASan reserves a large virtual shadow
     # mapping before main(), so instrumenting this supervisor defeats that
     # limit in Debug builds. Keep gcov instrumentation from CMAKE_C_FLAGS.
-    if(CMAKE_BUILD_TYPE STREQUAL "Debug" AND
-       CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" AND
+    if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" AND
        CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         target_compile_options(lightnvr-ffmpeg-guard PRIVATE
-            -fno-sanitize=address,undefined)
+            $<$<CONFIG:Debug>:-fno-sanitize=address,undefined>)
         target_link_options(lightnvr-ffmpeg-guard PRIVATE
-            -fno-sanitize=address,undefined)
+            $<$<CONFIG:Debug>:-fno-sanitize=address,undefined>)
     endif()
 endif()
 
