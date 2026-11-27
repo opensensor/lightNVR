@@ -34,6 +34,9 @@
 // Global configuration variable
 config_t g_config;
 
+// Serialize full load operations (including loaded-path snapshot/rollback).
+static pthread_mutex_t config_load_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 static bool contains_unsupported_ini_credential_chars(const char *value,
                                                        size_t capacity) {
     if (!value || capacity == 0) return true;
@@ -2164,6 +2167,8 @@ static int load_config_into(config_t *config) {
 int load_config(config_t *config) {
     if (!config) return -1;
 
+    pthread_mutex_lock(&config_load_mutex);
+
     config_t original;
     stream_config_t *original_streams = NULL;
     pthread_mutex_lock(&mp4_faststart_mutex);
@@ -2172,12 +2177,14 @@ int load_config(config_t *config) {
         if (config->max_streams <= 0 || config->max_streams > MAX_STREAMS ||
             (size_t)config->max_streams > SIZE_MAX / sizeof(*original_streams)) {
             pthread_mutex_unlock(&mp4_faststart_mutex);
+            pthread_mutex_unlock(&config_load_mutex);
             return -1;
         }
         size_t bytes = (size_t)config->max_streams * sizeof(*original_streams);
         original_streams = malloc(bytes);
         if (!original_streams) {
             pthread_mutex_unlock(&mp4_faststart_mutex);
+            pthread_mutex_unlock(&config_load_mutex);
             return -1;
         }
         memcpy(original_streams, config->streams, bytes);
@@ -2211,6 +2218,7 @@ int load_config(config_t *config) {
     }
     free(next_config.streams);
     free(original_streams);
+    pthread_mutex_unlock(&config_load_mutex);
     return result;
 }
 
