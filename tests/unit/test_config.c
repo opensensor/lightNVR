@@ -683,6 +683,9 @@ void test_config_reset_stream_slots_clears_stale_rows(void) {
 }
 
 void test_save_stream_configs_preserves_identities_after_batch_reload(void) {
+    if (DEFAULT_MAX_STREAMS < 2) {
+        TEST_IGNORE_MESSAGE("Requires at least two default stream slots");
+    }
     char db_path[] = "/tmp/lightnvr_stream_save_XXXXXX";
     int fd = mkstemp(db_path);
     TEST_ASSERT_TRUE(fd >= 0);
@@ -695,9 +698,6 @@ void test_save_stream_configs_preserves_identities_after_batch_reload(void) {
     TEST_ASSERT_EQUAL_INT(-1, access(backup_path, F_OK));
 
     load_default_config(&cfg);
-    if (MAX_STREAMS < 2) {
-        TEST_IGNORE_MESSAGE("Requires at least two stream slots");
-    }
     snprintf(cfg.streams[0].name, sizeof(cfg.streams[0].name), "camera-one");
     snprintf(cfg.streams[0].url, sizeof(cfg.streams[0].url), "rtsp://example.invalid/one");
     TEST_ASSERT_EQUAL_INT(1, save_stream_configs(&cfg));
