@@ -1867,35 +1867,37 @@ static void test_save_config_updates_file_in_read_only_directory(void) {
     snprintf(baseline_path, sizeof(baseline_path), "%s/settings.ini", baseline_directory);
     TEST_ASSERT_EQUAL_INT(0, save_config(&cfg, baseline_path));
 
-    FILE *saved = fopen(path, "rb");
-    TEST_ASSERT_NOT_NULL(saved);
-    FILE *baseline = fopen(baseline_path, "rb");
-    TEST_ASSERT_NOT_NULL(baseline);
+    saved_config_file = fopen(path, "rb");
+    TEST_ASSERT_NOT_NULL(saved_config_file);
+    saved_baseline_file = fopen(baseline_path, "rb");
+    TEST_ASSERT_NOT_NULL(saved_baseline_file);
 
-    TEST_ASSERT_EQUAL_INT(0, fseek(saved, 0, SEEK_END));
-    long saved_size = ftell(saved);
+    TEST_ASSERT_EQUAL_INT(0, fseek(saved_config_file, 0, SEEK_END));
+    long saved_size = ftell(saved_config_file);
     TEST_ASSERT_TRUE(saved_size >= 0);
-    TEST_ASSERT_EQUAL_INT(0, fseek(saved, 0, SEEK_SET));
+    TEST_ASSERT_EQUAL_INT(0, fseek(saved_config_file, 0, SEEK_SET));
 
-    TEST_ASSERT_EQUAL_INT(0, fseek(baseline, 0, SEEK_END));
-    long baseline_size = ftell(baseline);
+    TEST_ASSERT_EQUAL_INT(0, fseek(saved_baseline_file, 0, SEEK_END));
+    long baseline_size = ftell(saved_baseline_file);
     TEST_ASSERT_TRUE(baseline_size >= 0);
-    TEST_ASSERT_EQUAL_INT(0, fseek(baseline, 0, SEEK_SET));
+    TEST_ASSERT_EQUAL_INT(0, fseek(saved_baseline_file, 0, SEEK_SET));
 
     TEST_ASSERT_EQUAL_INT64((long long)baseline_size, (long long)saved_size);
 
     unsigned char saved_content[256], baseline_content[256];
     while (true) {
-        size_t saved_read = fread(saved_content, 1, sizeof(saved_content), saved);
-        size_t baseline_read = fread(baseline_content, 1, sizeof(baseline_content), baseline);
+        size_t saved_read = fread(saved_content, 1, sizeof(saved_content), saved_config_file);
+        size_t baseline_read = fread(baseline_content, 1, sizeof(baseline_content), saved_baseline_file);
         TEST_ASSERT_EQUAL_UINT(baseline_read, saved_read);
         if (saved_read == 0) break;
         TEST_ASSERT_EQUAL_MEMORY(baseline_content, saved_content, saved_read);
     }
-    TEST_ASSERT_FALSE(ferror(saved));
-    TEST_ASSERT_FALSE(ferror(baseline));
-    fclose(saved);
-    fclose(baseline);
+    TEST_ASSERT_FALSE(ferror(saved_config_file));
+    TEST_ASSERT_FALSE(ferror(saved_baseline_file));
+    fclose(saved_config_file);
+    saved_config_file = NULL;
+    fclose(saved_baseline_file);
+    saved_baseline_file = NULL;
 
     unlink(path);
     rmdir(directory);
