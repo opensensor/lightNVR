@@ -934,7 +934,7 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             safe_strcpy(config->syslog_ident, value, sizeof(config->syslog_ident), 0);
         } else if (strcmp(name, "syslog_facility") == 0) {
             // Parse syslog facility - support both numeric and string values
-            if (isdigit(value[0])) {
+            if (isdigit((unsigned char)value[0])) {
                 config->syslog_facility = safe_atoi(value, 0);
             } else {
                 // Map facility names to values (LOG_USER is also the default)
