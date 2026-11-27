@@ -2675,7 +2675,6 @@ static bool config_copy_settings_only(config_t *dst, const config_t *src) {
 
     // Saving settings does not serialize stream rows; avoid deep-copying them.
     dst->streams = NULL;
-    dst->stream_count = 0;
     return true;
 }
 
