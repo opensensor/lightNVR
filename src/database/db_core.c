@@ -521,7 +521,7 @@ static int parse_backup_name_components(const char *name,
     size_t ext_len = sizeof(ext) - 1;
     size_t len;
     const char *dot;
-    const char *dash;
+    const char *suffix_start;
     char *endptr = NULL;
     unsigned long parsed_suffix = 0;
 
@@ -530,7 +530,7 @@ static int parse_backup_name_components(const char *name,
     }
 
     len = strlen(name);
-    if (len <= ext_len) {
+    if (len < 16 + ext_len) {
         return -1;
     }
 
@@ -539,20 +539,29 @@ static int parse_backup_name_components(const char *name,
         return -1;
     }
 
-    dash = strrchr(name, '-');
-    if (dash && dash < dot) {
-        parsed_suffix = strtoul(dash + 1, &endptr, 10);
-        if (endptr == dot && endptr != dash + 1) {
-            *ts_start = name;
-            *ts_len = (size_t)(dash - name);
-            *suffix = parsed_suffix;
-            return 0;
+    /* Only generated YYYYMMDDTHHMMSSZ[-N].sqlite3 names receive numeric
+     * suffix ordering. Other .sqlite3 names retain their lexical order. */
+    for (size_t i = 0; i < 16; i++) {
+        if (i == 8 || i == 15) {
+            if (name[i] != (i == 8 ? 'T' : 'Z')) return -1;
+        } else if (name[i] < '0' || name[i] > '9') {
+            return -1;
         }
+    }
+    suffix_start = name + 16;
+    if (suffix_start != dot) {
+        if (*suffix_start != '-' || suffix_start + 1 == dot) return -1;
+        for (const char *p = suffix_start + 1; p < dot; p++) {
+            if (*p < '0' || *p > '9') return -1;
+        }
+        errno = 0;
+        parsed_suffix = strtoul(suffix_start + 1, &endptr, 10);
+        if (errno != 0 || endptr != dot) return -1;
     }
 
     *ts_start = name;
-    *ts_len = (size_t)(dot - name);
-    *suffix = 0;
+    *ts_len = 16;
+    *suffix = parsed_suffix;
     return 0;
 }
 
@@ -585,7 +594,7 @@ static int compare_selected_backups(const void *lhs, const void *rhs) {
         return 1;
     }
 
-    return 0;
+    return strcmp(left->name, right->name);
 }
 
 static int prune_timestamped_backups(const char *backup_dir, int retention_count) {
@@ -926,8 +935,8 @@ bool db_scheduled_backup_wait_idle(int timeout_ms) {
  * between-batches or verification check.  A settings-driven database
  * restart (api_handlers_settings.c) cannot use that never-reset flag because
  * the process keeps running, so the in-flight backup is cancelled on its own
- * instead.  Either way the wait is bounded; on expiry the handle is closed
- * regardless, with the process-level shutdown watchdogs as the backstop.
+ * instead. The wait is bounded; if the worker remains active, leave the
+ * database open so its private backup connection cannot outlive SQLite.
  */
 static bool quiesce_scheduled_backup_worker(void) {
     pthread_mutex_lock(&scheduled_backup_lock);
@@ -1614,7 +1623,10 @@ void shutdown_database(void) {
     // nothing below -- the final-backup decision, the handle close, or
     // sqlite3_shutdown() -- may run while a scheduled copy is still in
     // flight, and an aborted cycle must not read as a fresh backup.
-    quiesce_scheduled_backup_worker();
+    if (!quiesce_scheduled_backup_worker()) {
+        log_error("Database shutdown deferred while scheduled backup is active");
+        return;
+    }
 
     // Create a final backup before shutting down.
     //
