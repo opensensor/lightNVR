@@ -513,17 +513,16 @@ void test_config_reset_stream_slots_clears_stale_rows(void) {
 }
 
 void test_mp4_faststart_concurrent_reads_copies_and_saves(void) {
+    char temp_dir[] = "/tmp/lightnvr_faststart_concurrent_XXXXXX";
+    char *dir = mkdtemp(temp_dir);
+    TEST_ASSERT_NOT_NULL_MESSAGE(dir, "mkdtemp failed for concurrency timeout harness");
+    char path[MAX_PATH_LENGTH];
+    snprintf(path, sizeof(path), "%s/settings.ini", dir);
+
     pid_t child = fork();
     TEST_ASSERT_TRUE_MESSAGE(child >= 0, "fork failed for concurrency timeout harness");
 
     if (child == 0) {
-        char temp_dir[] = "/tmp/lightnvr_faststart_concurrent_XXXXXX";
-        char *dir = mkdtemp(temp_dir);
-        if (dir == NULL) {
-            _exit(EXIT_FAILURE);
-        }
-        char path[MAX_PATH_LENGTH];
-        snprintf(path, sizeof(path), "%s/settings.ini", dir);
         load_default_config(&cfg);
 
         atomic_store(&faststart_writer_stop, false);
@@ -700,6 +699,8 @@ void test_mp4_faststart_concurrent_reads_copies_and_saves(void) {
         struct timespec poll_delay = {.tv_sec = 0, .tv_nsec = 1000000L}; /* 1 ms */
         nanosleep(&poll_delay, NULL);
     }
+    unlink(path);
+    rmdir(dir);
 }
 
 void test_default_config_buffer_size(void) {
