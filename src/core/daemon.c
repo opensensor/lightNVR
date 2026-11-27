@@ -38,6 +38,26 @@ static char pid_file_path[MAX_PATH_LENGTH] = "/run/lightnvr.pid";
 static pthread_mutex_t owned_pid_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int owned_pid_fd = -1;
 static pid_t owned_pid_process = 0;
+static pthread_once_t owned_pid_atfork_once = PTHREAD_ONCE_INIT;
+
+static void owned_pid_atfork_prepare(void) {
+    pthread_mutex_lock(&owned_pid_mutex);
+}
+
+static void owned_pid_atfork_parent(void) {
+    pthread_mutex_unlock(&owned_pid_mutex);
+}
+
+static void owned_pid_atfork_child(void) {
+    pthread_mutex_destroy(&owned_pid_mutex);
+    pthread_mutex_init(&owned_pid_mutex, NULL);
+    owned_pid_fd = -1;
+    owned_pid_process = 0;
+}
+
+static void register_owned_pid_atfork(void) {
+    (void)pthread_atfork(owned_pid_atfork_prepare, owned_pid_atfork_parent, owned_pid_atfork_child);
+}
 
 // Forward declarations
 static void daemon_signal_handler(int sig);
@@ -112,6 +132,9 @@ int init_daemon(const char *pid_file) {
         log_error("Failed to create startup status pipe: %s", strerror(errno));
         return -1;
     }
+
+    // Ensure mutex state is coordinated across fork in multithreaded contexts.
+    (void)pthread_once(&owned_pid_atfork_once, register_owned_pid_atfork);
 
     // Fork the process
     pid_t pid = fork();
