@@ -378,7 +378,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
       const presetRoot = presetDoc.contents;
       if (!isMap(presetRoot)) throw new Error('Preset root is not a mapping');
       if (currentDoc.contents == null) {
-        currentDoc = parseDocument(`${cur}${cur.endsWith('\n') ? '' : '\n'}{}`);
+        currentDoc.contents = currentDoc.createNode({});
       }
       const currentRoot = currentDoc.contents;
       if (!isMap(currentRoot)) throw new Error('Current override root is not a mapping');
