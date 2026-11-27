@@ -2297,10 +2297,10 @@ static int save_config_snapshot(const config_t *config, const char *path) {
     }
 
     int original_fd = openat(dir_fd, validated_filename,
-                             O_RDWR | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK);
+                             O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK);
     bool target_exists = original_fd >= 0;
     if (!target_exists && errno != ENOENT) {
-        log_error("Could not open config file for writing: %s", strerror(errno));
+        log_error("Could not open config file for inspection: %s", strerror(errno));
         close(dir_fd);
         return -1;
     }
@@ -2313,16 +2313,38 @@ static int save_config_snapshot(const config_t *config, const char *path) {
             close(dir_fd);
             return -1;
         }
-        if (fchmod(original_fd, 0600) != 0) {
-            if (errno != EPERM) {
-                log_error("Could not restrict config file: %s", strerror(errno));
+        close_original_config_fd(original_fd);
+        original_fd = openat(dir_fd, validated_filename,
+                             O_RDWR | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK);
+        if (original_fd >= 0) {
+            struct stat reopened_stat;
+            if (fstat(original_fd, &reopened_stat) != 0 ||
+                !S_ISREG(reopened_stat.st_mode) || reopened_stat.st_nlink != 1 ||
+                reopened_stat.st_dev != config_stat.st_dev ||
+                reopened_stat.st_ino != config_stat.st_ino) {
+                log_error("Config save target changed before reopening: %s", canonical_save_path);
                 close_original_config_fd(original_fd);
                 close(dir_fd);
                 return -1;
             }
-            /* A legacy root-owned file can only be replaced, not rewritten. */
-            close_original_config_fd(original_fd);
+            if (fchmod(original_fd, 0600) != 0) {
+                if (errno != EPERM) {
+                    log_error("Could not restrict config file: %s", strerror(errno));
+                    close_original_config_fd(original_fd);
+                    close(dir_fd);
+                    return -1;
+                }
+                /* A legacy root-owned file can only be replaced, not rewritten. */
+                close_original_config_fd(original_fd);
+                original_fd = -1;
+            }
+        } else if (errno == EACCES || errno == EPERM) {
+            /* Exists but not writable: allow replacement path when directory permits it. */
             original_fd = -1;
+        } else {
+            log_error("Could not open config file for writing: %s", strerror(errno));
+            close(dir_fd);
+            return -1;
         }
     }
 
@@ -2383,8 +2405,9 @@ static int save_config_snapshot(const config_t *config, const char *path) {
     fprintf(file, "syslog_enabled = %s\n", config->syslog_enabled ? "true" : "false");
     fprintf(file, "syslog_ident = %s\n", config->syslog_ident);
 
-    // Convert facility number to name for readability
-    const char *facility_name = "LOG_USER";
+    // Convert facility number to name for readability.
+    // Preserve values not explicitly mapped here by writing them numerically.
+    const char *facility_name = NULL;
     switch (config->syslog_facility) {
         case LOG_USER: facility_name = "LOG_USER"; break;
         case LOG_DAEMON: facility_name = "LOG_DAEMON"; break;
@@ -2396,9 +2419,14 @@ static int save_config_snapshot(const config_t *config, const char *path) {
         case LOG_LOCAL5: facility_name = "LOG_LOCAL5"; break;
         case LOG_LOCAL6: facility_name = "LOG_LOCAL6"; break;
         case LOG_LOCAL7: facility_name = "LOG_LOCAL7"; break;
-        default: /* facility_name already set to "LOG_USER" above */ break;
+        default: break;
     }
-    fprintf(file, "syslog_facility = %s  ; Syslog facility for system logging\n\n", facility_name);
+    if (facility_name) {
+        fprintf(file, "syslog_facility = %s  ; Syslog facility for system logging\n\n", facility_name);
+    } else {
+        fprintf(file, "syslog_facility = %d  ; Syslog facility for system logging\n\n",
+                config->syslog_facility);
+    }
 
     // Structured condition overrides intentionally are not written here; they
     // are one canonical, bounded system_settings value.
