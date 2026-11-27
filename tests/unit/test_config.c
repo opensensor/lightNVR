@@ -1601,7 +1601,11 @@ void test_load_config_parses_api_detection_format(void) {
             "format = deepstack\n",
             dir, dir, dir, dir, dir, dir, web_root);
     fclose(config_file);
+    stream_config_t *stream_storage = cfg.streams;
+    snprintf(cfg.streams[0].name, sizeof(cfg.streams[0].name), "stale-stream");
     TEST_ASSERT_EQUAL_INT(0, load_config(&cfg));
+    TEST_ASSERT_EQUAL_PTR(stream_storage, cfg.streams);
+    TEST_ASSERT_EQUAL_STRING("", cfg.streams[0].name);
     TEST_ASSERT_EQUAL_STRING("light-object-detect", cfg.api_detection_format);
     TEST_ASSERT_EQUAL_STRING("default", cfg.api_detection_detector_name);
 
