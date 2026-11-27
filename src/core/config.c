@@ -2250,8 +2250,9 @@ int load_config(config_t *config) {
                              (size_t)original.max_streams * sizeof(*original_streams)) != 0;
         }
         if (!changed) {
-            free(config->streams);
+            stream_config_t *preserved_streams = config->streams;
             *config = next_config;
+            config->streams = preserved_streams;
             next_config.streams = NULL;
         } else {
             result = -1;
