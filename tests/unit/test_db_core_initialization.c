@@ -20,6 +20,7 @@ static char test_fixture_dir[] = "/tmp/lightnvr_db_core_initialization.XXXXXX";
 static char test_db_path[512];
 static char test_backup_dir[512];
 static char overlong_parent_dir[512];
+static char overlong_deepest_dir[8192];
 static int test_paths_initialized = 0;
 static unsigned char *wal_before_bytes;
 static unsigned char *wal_after_bytes;
@@ -159,6 +160,14 @@ void tearDown(void) {
     remove_backup_fixture("20260905T120100Z.sqlite3.tmp-journal");
     remove_backup_fixture("operator-notes.tmp");
     rmdir(TEST_BACKUP_DIR);
+    while (overlong_deepest_dir[0] != '\0' &&
+           strcmp(overlong_deepest_dir, overlong_parent_dir) != 0) {
+        rmdir(overlong_deepest_dir);
+        char *slash = strrchr(overlong_deepest_dir, '/');
+        if (!slash) break;
+        *slash = '\0';
+    }
+    overlong_deepest_dir[0] = '\0';
     if (overlong_parent_dir[0] != '\0') {
         rmdir(overlong_parent_dir);
         overlong_parent_dir[0] = '\0';
@@ -206,30 +215,32 @@ static void test_overlong_database_path_is_rejected_before_initialization(void) 
     }
 
     size_t used = strlen(rejected_path);
-    while (used + 1 < PATH_MAX) {
+    while (used + 1 + 50 < PATH_MAX) {
         const size_t component_len = 50; /* Keep each component below NAME_MAX. */
         TEST_ASSERT_TRUE(used + component_len + 2 < sizeof(rejected_path));
         rejected_path[used++] = '/';
         memset(rejected_path + used, 'a', component_len);
         used += component_len;
         rejected_path[used] = '\0';
-        if (mkdir(rejected_path, 0700) != 0) {
-            TEST_ASSERT_EQUAL_INT(EEXIST, errno);
-        }
+        TEST_ASSERT_EQUAL_INT(0, mkdir(rejected_path, 0700));
+        snprintf(overlong_deepest_dir, sizeof(overlong_deepest_dir),
+                 "%s", rejected_path);
     }
 
     {
-        const char *leaf = "/db.sqlite3";
-        size_t leaf_len = strlen(leaf);
-        TEST_ASSERT_TRUE(used + leaf_len + 1 < sizeof(rejected_path));
-        memcpy(rejected_path + used, leaf, leaf_len + 1);
+        size_t leaf_len = (size_t)PATH_MAX - used + 1;
+        TEST_ASSERT_TRUE(leaf_len <= NAME_MAX);
+        TEST_ASSERT_TRUE(used + leaf_len + 2 < sizeof(rejected_path));
+        rejected_path[used++] = '/';
+        memset(rejected_path + used, 'b', leaf_len);
+        rejected_path[used + leaf_len] = '\0';
     }
 
     TEST_ASSERT_TRUE(strlen(rejected_path) > PATH_MAX);
 
     TEST_ASSERT_EQUAL_INT(-1, init_database_ex(rejected_path, DB_INIT_NO_BACKUP));
     TEST_ASSERT_NULL(get_db_handle());
-    DIR *parent_dir = opendir(overlong_parent_dir);
+    DIR *parent_dir = opendir(overlong_deepest_dir);
     TEST_ASSERT_NOT_NULL(parent_dir);
     struct dirent *entry;
     bool unexpected_entry = false;
