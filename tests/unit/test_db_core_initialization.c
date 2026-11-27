@@ -230,52 +230,55 @@ static void test_overlong_database_path_is_rejected_before_initialization(void) 
 }
 
 static void create_readable_wal_database(void) {
-    sqlite3 *db = NULL;
-    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_open(TEST_DB_PATH, &db));
-    TEST_ASSERT_NOT_NULL(db);
+    TEST_ASSERT_NULL(tracked_fixture_db);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_open(TEST_DB_PATH, &tracked_fixture_db));
+    TEST_ASSERT_NOT_NULL(tracked_fixture_db);
     TEST_ASSERT_EQUAL_INT(
         SQLITE_OK,
-        sqlite3_exec(db, "PRAGMA journal_mode=WAL;", NULL, NULL, NULL));
+        sqlite3_exec(tracked_fixture_db, "PRAGMA journal_mode=WAL;", NULL, NULL, NULL));
     TEST_ASSERT_EQUAL_INT(
         SQLITE_OK,
-        sqlite3_exec(db,
+        sqlite3_exec(tracked_fixture_db,
                      "CREATE TABLE IF NOT EXISTS sample("
                      "id INTEGER PRIMARY KEY, value TEXT NOT NULL);",
                      NULL, NULL, NULL));
     TEST_ASSERT_EQUAL_INT(
         SQLITE_OK,
-        sqlite3_exec(db,
+        sqlite3_exec(tracked_fixture_db,
                      "DELETE FROM sample; "
                      "INSERT INTO sample(id, value) VALUES(1, 'unchanged');",
                      NULL, NULL, NULL));
     TEST_ASSERT_EQUAL_INT(
         SQLITE_OK,
-        sqlite3_exec(db, "PRAGMA wal_checkpoint(TRUNCATE);", NULL, NULL, NULL));
-    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_close(db));
+        sqlite3_exec(tracked_fixture_db, "PRAGMA wal_checkpoint(TRUNCATE);", NULL, NULL, NULL));
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_close(tracked_fixture_db));
+    tracked_fixture_db = NULL;
 
     /* Re-open in WAL mode and write once so sidecars are present in fixture. */
-    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_open(TEST_DB_PATH, &db));
-    TEST_ASSERT_NOT_NULL(db);
+    TEST_ASSERT_NULL(tracked_fixture_db);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_open(TEST_DB_PATH, &tracked_fixture_db));
+    TEST_ASSERT_NOT_NULL(tracked_fixture_db);
     TEST_ASSERT_EQUAL_INT(
         SQLITE_OK,
-        sqlite3_exec(db, "PRAGMA journal_mode=WAL;", NULL, NULL, NULL));
+        sqlite3_exec(tracked_fixture_db, "PRAGMA journal_mode=WAL;", NULL, NULL, NULL));
     TEST_ASSERT_EQUAL_INT(
         SQLITE_OK,
-        sqlite3_exec(db, "PRAGMA wal_autocheckpoint=0;", NULL, NULL, NULL));
+        sqlite3_exec(tracked_fixture_db, "PRAGMA wal_autocheckpoint=0;", NULL, NULL, NULL));
     int no_ckpt_on_close = 1;
     TEST_ASSERT_EQUAL_INT(SQLITE_OK,
-                          sqlite3_db_config(db, SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE,
+                          sqlite3_db_config(tracked_fixture_db, SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE,
                                             no_ckpt_on_close, NULL));
     TEST_ASSERT_EQUAL_INT(
         SQLITE_OK,
-        sqlite3_exec(db,
+        sqlite3_exec(tracked_fixture_db,
                      "INSERT OR REPLACE INTO sample(id, value) "
                      "VALUES(1, 'wal_only');",
                      NULL, NULL, NULL));
     int persist_wal = 1;
     TEST_ASSERT_EQUAL_INT(SQLITE_OK,
-                          sqlite3_file_control(db, "main", SQLITE_FCNTL_PERSIST_WAL, &persist_wal));
-    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_close(db));
+                          sqlite3_file_control(tracked_fixture_db, "main", SQLITE_FCNTL_PERSIST_WAL, &persist_wal));
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_close(tracked_fixture_db));
+    tracked_fixture_db = NULL;
 
     TEST_ASSERT_EQUAL_INT(0, access(path_with_suffix(TEST_DB_PATH, "-wal"), F_OK));
     TEST_ASSERT_EQUAL_INT(0, access(path_with_suffix(TEST_DB_PATH, "-shm"), F_OK));
