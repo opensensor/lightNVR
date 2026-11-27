@@ -1299,13 +1299,14 @@ void test_validate_config_buffer_size_zero(void) {
     TEST_ASSERT_NOT_EQUAL(0, validate_config(&cfg));
 }
 
-void test_validate_config_clamps_absolute_timeout_to_idle_timeout(void) {
+void test_validate_config_clamps_idle_timeout_to_absolute_timeout(void) {
     load_default_config(&cfg);
     cfg.auth_timeout_hours = 48;
     cfg.auth_absolute_timeout_hours = 12;
 
     TEST_ASSERT_EQUAL_INT(0, validate_config(&cfg));
-    TEST_ASSERT_EQUAL_INT(48, cfg.auth_absolute_timeout_hours);
+    TEST_ASSERT_EQUAL_INT(12, cfg.auth_timeout_hours);
+    TEST_ASSERT_EQUAL_INT(12, cfg.auth_absolute_timeout_hours);
 }
 
 void test_validate_config_clamps_negative_db_backup_values(void) {
@@ -2453,7 +2454,7 @@ int main(void) {
     RUN_TEST(test_validate_config_port_max_valid);
     RUN_TEST(test_validate_config_port_min_valid);
     RUN_TEST(test_validate_config_buffer_size_zero);
-    RUN_TEST(test_validate_config_clamps_absolute_timeout_to_idle_timeout);
+    RUN_TEST(test_validate_config_clamps_idle_timeout_to_absolute_timeout);
     RUN_TEST(test_validate_config_clamps_negative_db_backup_values);
     RUN_TEST(test_default_config_db_startup_check_is_off);
     RUN_TEST(test_validate_config_clamps_out_of_range_startup_check);

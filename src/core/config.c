@@ -2318,12 +2318,19 @@ int load_config(config_t *config) {
                              (size_t)original.max_streams * sizeof(*original_streams)) != 0;
         }
         if (!changed) {
-            stream_config_t *preserved_streams = config->streams;
-            int preserved_max_streams = config->max_streams;
-            *config = next_config;
-            config->streams = preserved_streams;
-            config->max_streams = preserved_max_streams;
-            next_config.streams = NULL;
+            if (config->streams && next_config.streams &&
+                config->max_streams == next_config.max_streams) {
+                stream_config_t *preserved_streams = config->streams;
+                memcpy(preserved_streams, next_config.streams,
+                       (size_t)next_config.max_streams * sizeof(*preserved_streams));
+                *config = next_config;
+                config->streams = preserved_streams;
+            } else {
+                stream_config_t *old_streams = config->streams;
+                *config = next_config;
+                next_config.streams = NULL;
+                free(old_streams);
+            }
         } else {
             result = -1;
         }
