@@ -132,7 +132,12 @@ struct dirent *__wrap_readdir(DIR *d) {
     struct dirent *entry = __real_readdir(d);
     if (active && repeat_name) {
         if (entry && !strcmp(entry->d_name, "20240102T000000Z.sqlite3")) {
-            repeat_entry = *entry; repeat_ready = true;
+            repeat_entry.d_ino = entry->d_ino;
+#ifdef _DIRENT_HAVE_D_TYPE
+            repeat_entry.d_type = entry->d_type;
+#endif
+            snprintf(repeat_entry.d_name, sizeof(repeat_entry.d_name), "%s", entry->d_name);
+            repeat_ready = true;
         } else if (!entry && repeat_ready && !repeated_name) {
             repeated_name = true; return &repeat_entry;
         }
