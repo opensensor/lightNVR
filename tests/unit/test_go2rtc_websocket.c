@@ -288,7 +288,20 @@ void test_four_websockets_relay_media_on_the_web_port_and_close_cleanly(void) {
         TEST_ASSERT_EQUAL_INT(0, pthread_create(&tracked_threads[i], NULL, upstream_peer, &tracked_peers[i]));
         tracked_thread_started[i] = true;
         tracked_clients[i] = client_open();
-        send_upgrade(tracked_clients[i], i, origin, i == 0);
+        {
+            char req[1024];
+            int n = snprintf(req, sizeof(req),
+                             "GET /stream/%d HTTP/1.1\r\n"
+                             "Host: localhost:%d\r\n"
+                             "%s"
+                             "Origin: %s\r\n"
+                             "Cookie: dummy_cookie=1\r\n"
+                             "Authorization: Basic ZHVtbXk6ZHVtbXk=\r\n"
+                             "\r\n",
+                             i, web_port, upgrade_headers, origin);
+            TEST_ASSERT_TRUE(n > 0 && (size_t)n < sizeof(req));
+            TEST_ASSERT_TRUE(send_all(tracked_clients[i], req, (size_t)n));
+        }
         char headers[1024];
         TEST_ASSERT_TRUE(read_headers(tracked_clients[i], headers, sizeof(headers)));
         TEST_ASSERT_EQUAL_STRING(upgrade_response, headers);
