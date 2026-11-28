@@ -160,17 +160,21 @@ test('HEAD reports the selected API representation without sending a body', asyn
   try {
     const headers = {'Accept-Encoding': 'gzip'};
     const get = await server.request('/api/openapi.json', {headers});
-    const rawHead = await rawExchange(server.port,
-      'HEAD /api/openapi.json HTTP/1.1\r\nHost: localhost\r\n' +
-      `Authorization: ${basic(server.credentials.admin)}\r\n` +
-      'Accept-Encoding: gzip\r\nConnection: close\r\n\r\n');
-    const separator = rawHead.indexOf('\r\n\r\n');
-    expect(get.status).toBe(200);
-    expect(rawHead).toMatch(/^HTTP\/1\.1 200 /);
-    expect(rawHead).toContain('Content-Encoding: gzip');
-    expect(rawHead).toContain(`Content-Length: ${get.headers.get('content-length')}`);
-    expect(separator).toBeGreaterThan(0);
-    expect(rawHead.slice(separator + 4)).toBe('');
+    try {
+      const rawHead = await rawExchange(server.port,
+        'HEAD /api/openapi.json HTTP/1.1\r\nHost: localhost\r\n' +
+        `Authorization: ${basic(server.credentials.admin)}\r\n` +
+        'Accept-Encoding: gzip\r\nConnection: close\r\n\r\n');
+      const separator = rawHead.indexOf('\r\n\r\n');
+      expect(get.status).toBe(200);
+      expect(rawHead).toMatch(/^HTTP\/1\.1 200 /);
+      expect(rawHead).toContain('Content-Encoding: gzip');
+      expect(rawHead).toContain(`Content-Length: ${get.headers.get('content-length')}`);
+      expect(separator).toBeGreaterThan(0);
+      expect(rawHead.slice(separator + 4)).toBe('');
+    } finally {
+      await get.arrayBuffer();
+    }
   } finally {
     await server.stop();
   }
