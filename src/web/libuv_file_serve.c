@@ -150,6 +150,7 @@ int libuv_serve_file(libuv_connection_t *conn, const char *path,
 
     ctx->conn = conn;
     ctx->fd = -1;
+    ctx->manage_connection_on_close = true;
     
     // Set content type
     if (content_type) {
@@ -166,7 +167,7 @@ int libuv_serve_file(libuv_connection_t *conn, const char *path,
     
     // Check for Range header (HTTP: only GET supports Range processing)
     const char *range_header = http_request_get_header(&conn->request, "Range");
-    if (range_header && conn->request.method == HTTP_GET) {
+    if (range_header && conn->request.method == HTTP_METHOD_GET) {
         ctx->has_range = true;
         // Range will be parsed after we know the file size
     }
@@ -300,6 +301,7 @@ static void on_file_stat(uv_fs_t *req) {
         libuv_send_response_ex(conn, &conn->response, action);
 
         // Clear async flag before closing file
+        ctx->manage_connection_on_close = false;
         conn->async_response_pending = false;
 
         // Close the file descriptor
@@ -328,6 +330,7 @@ static void on_file_stat(uv_fs_t *req) {
             libuv_send_response_ex(conn, &conn->response, action);
 
             // Clear async flag before closing file
+            ctx->manage_connection_on_close = false;
             conn->async_response_pending = false;
 
             // Close the file descriptor
@@ -385,6 +388,7 @@ static void on_file_stat(uv_fs_t *req) {
             (conn->keep_alive && llhttp_should_keep_alive(&conn->parser))
                 ? WRITE_ACTION_KEEP_ALIVE : WRITE_ACTION_CLOSE;
         ctx->head_response_managed = true;
+        ctx->manage_connection_on_close = false;
         conn->async_response_pending = false;
         (void)libuv_connection_send_ex(conn, header_buf, len, true, action);
         uv_fs_close(conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
@@ -394,6 +398,7 @@ static void on_file_stat(uv_fs_t *req) {
     if (libuv_connection_send(ctx->conn, header_buf, len, true) != 0) {
         // Send failed; libuv_connection_send already closed the connection.
         // Clear the pending flag so on_file_close won't try to manage it again.
+        ctx->manage_connection_on_close = false;
         conn->async_response_pending = false;
         uv_fs_close(conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
         return;
@@ -558,7 +563,7 @@ static void on_file_close(uv_fs_t *req) {
 
     // Determine ownership from request-local context, not connection-global state.
     // This callback may run after the connection has started a subsequent request.
-    bool should_manage_connection = ctx->head_response_managed;
+    bool should_manage_connection = ctx->manage_connection_on_close;
 
     // Read write_error before file_serve_cleanup frees ctx
     bool write_error = ctx->write_error;
