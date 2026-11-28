@@ -515,14 +515,28 @@ void test_upgrade_with_wrong_accept_is_rejected(void) {
     tracked_thread_started[0] = true;
     int client = client_open();
     tracked_clients[0] = client;
-    char origin[64], response[2048];
+    char origin[64], response[2048], request[1024];
+    unsigned char payload[1200];
     int status = 0;
     static const unsigned char masked_frame[] = {
         0x81, 0x82, 0x01, 0x02, 0x03, 0x04, (unsigned char)('h' ^ 0x01), (unsigned char)('i' ^ 0x02)
     };
     snprintf(origin, sizeof(origin), "http://localhost:%d", web_port);
-    send_upgrade(client, 0, origin, true);
-    (void)send_all(client, masked_frame, sizeof(masked_frame));
+    int req_len = snprintf(
+        request, sizeof(request),
+        "GET /api/go2rtc/ws?src=camera HTTP/1.1\r\n"
+        "Host: localhost:%d\r\n"
+        "Origin: %s\r\n"
+        "%s"
+        "X-LightNVR-Media-Policy-Ack: 1\r\n"
+        "\r\n",
+        web_port, origin, upgrade_headers
+    );
+    TEST_ASSERT_TRUE(req_len > 0);
+    TEST_ASSERT_TRUE((size_t)req_len + sizeof(masked_frame) <= sizeof(payload));
+    memcpy(payload, request, (size_t)req_len);
+    memcpy(payload + req_len, masked_frame, sizeof(masked_frame));
+    TEST_ASSERT_TRUE(send_all(client, payload, (size_t)req_len + sizeof(masked_frame)));
     TEST_ASSERT_TRUE(read_headers(client, response, sizeof(response)));
     TEST_ASSERT_EQUAL_INT(1, sscanf(response, "HTTP/%*d.%*d %d", &status));
     TEST_ASSERT_EQUAL_INT(502, status);
