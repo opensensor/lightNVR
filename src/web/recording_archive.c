@@ -35,7 +35,7 @@ typedef struct {
     int result;
     char error[256], headers[1024];
     size_t header_length;
-    unsigned char buffer[ARCHIVE_CHUNK];
+    unsigned char *buffer;
 } archive_stream_t;
 
 static archive_stream_t *streams[ARCHIVE_STREAMS];
