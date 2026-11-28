@@ -242,11 +242,25 @@ test('playback preparation and thumbnails retain their own JSON/media and permis
   expect(preparing.status).toBe(202);
   expect(preparing.headers.get('retry-after')).toBe('2');
   expect(validateRecordingPlaybackPreparing(await preparing.json())).toBe(true);
-  await expect.poll(async()=>{
+  const readyBody=await expect.poll(async()=>{
     const response=await media(server,ids.sibling,viewer,{},prepareRoute);
     const body=await response.json();
-    return response.status===200 && validateRecordingPlaybackReady(body);
-  },{timeout:15000}).toBe(true);
+    return response.status===200 && validateRecordingPlaybackReady(body) ? body : null;
+  },{timeout:15000});
+  expect(readyBody).not.toBeNull();
+  expect(validateRecordingPlaybackReady(readyBody)).toBe(true);
+  const playbackPath=(readyBody as {url?:string;path?:string}).url ?? (readyBody as {url?:string;path?:string}).path;
+  expect(typeof playbackPath).toBe('string');
+  const preparedMedia=await server.request(playbackPath as string,{principal:'viewer'});
+  expect(preparedMedia.status).toBe(200);
+  const preparedBytes=Buffer.from(await preparedMedia.arrayBuffer());
+  expect(preparedBytes.length).toBeGreaterThan(0);
+  const preparedFile=path.join(fixture.directory,`${ids.sibling}.prepared.mp4`);
+  writeFileSync(preparedFile,preparedBytes);
+  const codec=execFileSync('ffprobe',['-v','error','-select_streams','v:0','-show_entries','stream=codec_name','-of','default=noprint_wrappers=1:nokey=1',preparedFile],{timeout:20000}).toString().trim();
+  expect(codec).toBe('h264');
+  execFileSync('ffmpeg',['-nostdin','-hide_banner','-loglevel','error','-i',preparedFile,'-f','null','-'],{timeout:20000});
+  unlinkSync(preparedFile);
   expect(validateRecordingPlaybackReady({status:'preparing'})).toBe(false);expect(validateRecordingPlaybackPreparing({status:'ready'})).toBe(false);
 });
 
