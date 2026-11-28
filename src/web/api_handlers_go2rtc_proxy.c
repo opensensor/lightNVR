@@ -866,7 +866,10 @@ void handle_go2rtc_proxy(const http_request_t *req, http_response_t *res) {
         if (ctx.buffer) free(ctx.buffer);
         if (media_lease[0])
             go2rtc_media_policy_release_lease(media_lease);
-        http_response_set_json_error(res, 502, "Proxy error: go2rtc is not responding");
+        if (cres != CURLE_OK)
+            http_response_set_json_error(res, 502, "Proxy error: go2rtc is not responding");
+        else
+            http_response_set_json_error(res, 502, "Proxy error: unable to complete upstream response");
         return;
     }
     if (media_lease[0] && ctx.http_code >= 200 &&
@@ -891,6 +894,11 @@ void handle_go2rtc_proxy(const http_request_t *req, http_response_t *res) {
     if (ctx.content_type[0] != '\0') {
         safe_strcpy(res->content_type, ctx.content_type, sizeof(res->content_type), 0);
     }
+
+    // Prevent authenticated media from being cached/replayed after authorization changes
+    http_response_add_header(res, "Cache-Control", "private, no-store");
+    http_response_add_header(res, "Pragma", "no-cache");
+    http_response_add_header(res, "Expires", "0");
 
     // Add CORS headers
     http_response_add_header(res, "Access-Control-Allow-Origin", "*");
