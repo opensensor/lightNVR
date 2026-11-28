@@ -413,7 +413,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libcurl4t64 libmbedtls21 libmbedcrypto16 procps curl ca-certificates \
     libmosquitto1 \
-    libyaml-0-2 tzdata && \
+    libyaml-0-2 tzdata sqlite3 && \
     rm -rf /var/lib/apt/lists/*
 
 # Create directory structure
@@ -436,7 +436,6 @@ RUN dpkg -i /tmp/brotli-security.deb && ldconfig \
 COPY --from=builder /bin/lightnvr /bin/lightnvr
 COPY --from=builder /bin/lightnvr-ffmpeg-guard /bin/lightnvr-ffmpeg-guard
 COPY --from=builder /bin/go2rtc /bin/go2rtc
-COPY --from=builder /usr/bin/sqlite3 /usr/bin/sqlite3
 COPY --from=builder /usr/lib/libuv.so* /usr/lib/
 COPY --from=builder /usr/lib/libllhttp.so* /usr/lib/
 
