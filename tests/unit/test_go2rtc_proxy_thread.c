@@ -34,8 +34,6 @@ static bool acknowledge_media_policy;
 static bool informational_media_ack;
 static int upstream_requests;
 static char upstream_request[2048];
-static libuv_connection_t fixture_connection;
-static bool fixture_connection_in_use;
 static pthread_mutex_t upstream_mutex = PTHREAD_MUTEX_INITIALIZER;
 static libuv_connection_t *overflow_test_connections;
 static int overflow_test_connections_initialized;
@@ -581,8 +579,8 @@ static void *release_delayed_worker(void *unused) {
 }
 
 void test_shutdown_waits_for_a_worker_beyond_the_old_ten_second_timeout(void) {
-    fixture_connection_in_use = true;
     init_connection(&fixture_connection);
+    fixture_connection_initialized = true;
     // Shutdown ownership is independent of media policy; use the snapshot worker.
     strcpy(fixture_connection.request.path, "/go2rtc/api/frame.jpeg");
     hold_upstream = true;
@@ -608,10 +606,8 @@ void test_shutdown_waits_for_a_worker_beyond_the_old_ten_second_timeout(void) {
     TEST_ASSERT_EQUAL_INT(-1, go2rtc_proxy_thread_submit(&fixture_connection, WRITE_ACTION_CLOSE));
     uv_run(&loop, UV_RUN_DEFAULT);
     TEST_ASSERT_EQUAL_INT(0, go2rtc_proxy_thread_init(&loop));
-    if (fixture_connection_in_use) {
-        http_response_free(&fixture_connection.response);
-        fixture_connection_in_use = false;
-    }
+    http_response_free(&fixture_connection.response);
+    fixture_connection_initialized = false;
 }
 
 int main(void) {
