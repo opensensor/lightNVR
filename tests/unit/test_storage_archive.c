@@ -220,6 +220,8 @@ void setUp(void) {
     const char *storage_read_only = getenv("LIGHTNVR_STORAGE_READ_ONLY");
     saved_storage_read_only = storage_read_only ? strdup(storage_read_only) : NULL;
     if (storage_read_only) TEST_ASSERT_NOT_NULL(saved_storage_read_only);
+    TEST_ASSERT_EQUAL_INT(0, setenv("LIGHTNVR_ARCHIVE_CACHE_MB", "64", 1));
+    TEST_ASSERT_EQUAL_INT(0, unsetenv("LIGHTNVR_STORAGE_READ_ONLY"));
     reader_progress = NULL;
     reader_progress_context = NULL;
     deny_recording_reads = false;
