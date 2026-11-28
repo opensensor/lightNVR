@@ -873,7 +873,7 @@ void handle_go2rtc_proxy(const http_request_t *req, http_response_t *res) {
 
     // Add CORS headers
     http_response_add_header(res, "Access-Control-Allow-Origin", "*");
-    http_response_add_header(res, "Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    http_response_add_header(res, "Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     http_response_add_header(res, "Access-Control-Allow-Headers", "Content-Type, Authorization");
 
     // Set body (transfer ownership)
