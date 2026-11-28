@@ -307,11 +307,45 @@ test('related mutation boundaries reject historical and mixed unauthorized recor
   const actor=await createUser(server,'historical_writer');const actions=await role(server,'Capture-bound fixture writes',['evidence.protect','recording.delete','recordings.export']);await policy(server,actor,[{role_uuid:actions,scope:cameraScope(server.cameras.A.camera_uuid)}]);
   const db=new DatabaseSync(path.join(server.directory,'lightnvr.db'));
   const state=()=>db.prepare('SELECT id,camera_uuid,protected,file_path FROM recordings WHERE id=?').get(historical.hidden);
+  const rowById=(id:number)=>db.prepare('SELECT id,camera_uuid,protected,file_path FROM recordings WHERE id=?').get(id) as {id:number;camera_uuid:string;protected:number;file_path:string}|undefined;
   try {
     const before=state();
     if(!before || typeof before.file_path!=='string')throw new Error('Historical recording has no file path');
     const targetPath=path.isAbsolute(before.file_path)?before.file_path:path.join(fixture.directory,before.file_path);
     const hash=createHash('sha256').update(readFileSync(targetPath)).digest('hex');
+
+    const authorizedId=ids.playable;
+    const authorizedBefore=rowById(authorizedId);
+    if(!authorizedBefore || typeof authorizedBefore.file_path!=='string')throw new Error('Authorized recording has no file path');
+    const protectOk=await wire(server,`/api/recordings/${authorizedId}/protect`,actor,'PUT',{protected:authorizedBefore.protected?false:true});
+    expect(protectOk.response.status).toBe(200);
+    const protectRestore=await wire(server,`/api/recordings/${authorizedId}/protect`,actor,'PUT',{protected:!!authorizedBefore.protected});
+    expect(protectRestore.response.status).toBe(200);
+    const downloadOk=await wire(server,`/api/recordings/download/${authorizedId}`,actor,'GET');
+    expect(downloadOk.response.status).toBe(200);
+
+    const disposableDeleteId=9101;
+    const disposableDeleteFile=path.join(fixture.directory,`${disposableDeleteId}.mp4`);
+    writeFileSync(disposableDeleteFile,readFileSync(path.join(fixture.directory,`${ids.playable}.mp4`)));
+    database(server,'INSERT INTO recordings (id,camera_uuid,start,end,file_path,protected) VALUES (?,?,?,?,?,?)',[disposableDeleteId,server.cameras.A.camera_uuid,Date.now()/1000|0,(Date.now()/1000|0)+10,`${disposableDeleteId}.mp4`,0]);
+    const deleteOk=await wire(server,`/api/recordings/${disposableDeleteId}`,actor,'DELETE');
+    expect(deleteOk.response.status).toBe(200);
+    expect(rowById(disposableDeleteId)).toBeUndefined();
+    expect(existsSync(disposableDeleteFile)).toBe(false);
+
+    const disposableBatchIds=[9102,9103];
+    for(const id of disposableBatchIds){
+      const p=path.join(fixture.directory,`${id}.mp4`);
+      writeFileSync(p,readFileSync(path.join(fixture.directory,`${ids.playable}.mp4`)));
+      database(server,'INSERT INTO recordings (id,camera_uuid,start,end,file_path,protected) VALUES (?,?,?,?,?,?)',[id,server.cameras.A.camera_uuid,Date.now()/1000|0,(Date.now()/1000|0)+10,`${id}.mp4`,0]);
+    }
+    const batchOk=await wire(server,'/api/recordings/batch-delete',actor,'POST',{ids:disposableBatchIds});
+    expect(batchOk.response.status).toBe(200);
+    for(const id of disposableBatchIds){
+      expect(rowById(id)).toBeUndefined();
+      expect(existsSync(path.join(fixture.directory,`${id}.mp4`))).toBe(false);
+    }
+
     for(const [route,method,body] of [[`/api/recordings/${historical.hidden}/protect`,'PUT',{protected:true}],[`/api/recordings/${historical.hidden}`,'DELETE',undefined],[`/api/recordings/download/${historical.hidden}`,'GET',undefined]] as const) {
       const denied=await wire(server,route,actor,method,body);expect(denied.response.status).toBe(403);safeDenied(denied.body,server,fixture);expect(state()).toEqual(before);expect(existsSync(targetPath)).toBe(true);expect(createHash('sha256').update(readFileSync(targetPath)).digest('hex')).toBe(hash);
     }
