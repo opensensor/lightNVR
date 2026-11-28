@@ -517,6 +517,16 @@ void test_upgrade_without_media_policy_ack_is_rejected(void) {
     TEST_ASSERT_TRUE(read_all(client, response, (size_t)body_length));
     response[body_length] = '\0';
     TEST_ASSERT_NOT_NULL(strstr(response, "compatible OpenSensor go2rtc fork"));
+    {
+        struct pollfd pfd = {.fd = client, .events = POLLIN | POLLHUP};
+        int pr = poll(&pfd, 1, 200);
+        TEST_ASSERT_TRUE(pr >= 0);
+        if (pr > 0 && (pfd.revents & (POLLIN | POLLHUP))) {
+            unsigned char extra[64];
+            ssize_t n = recv(client, extra, sizeof(extra), MSG_DONTWAIT);
+            TEST_ASSERT_LESS_OR_EQUAL_INT(0, (int)n);
+        }
+    }
     close(client);
     tracked_clients[0] = -1;
     pthread_join(tracked_threads[0], NULL);
