@@ -343,7 +343,14 @@ static void upstream_read(uv_stream_t *stream, ssize_t count, const uv_buf_t *bu
             free(buf->base);
             return;
         }
-        if (strncmp(proxy->headers, "HTTP/1.1 101 ", 13) != 0) {
+        if (strncmp(proxy->headers, "HTTP/1.1 101 ", 13) != 0 ||
+            !strcasestr(proxy->headers, "\r\nUpgrade: websocket\r\n") ||
+            !strcasestr(proxy->headers, "\r\nConnection: Upgrade\r\n")) {
+            fail_proxy(proxy);
+            free(buf->base);
+            return;
+        }
+        if (!strcasestr(proxy->headers, "\r\nSec-WebSocket-Accept: ")) {
             fail_proxy(proxy);
             free(buf->base);
             return;
