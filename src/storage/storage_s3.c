@@ -586,11 +586,13 @@ static int multipart_upload(const storage_target_t *target, const char *key, FIL
         if (!parts) { free(body); cJSON_Delete(checkpoint); return -1; }
         s3_io_t io = {.body = body, .limit = S3_REPLY_LIMIT-1, .control = control};
         result = request(target, key, "uploads", "POST", NULL, 0, NULL, &io, NULL, error);
-        ezxml_t root = result == 0 ? response_xml(body, "InitiateMultipartUploadResult") : NULL;
-        const char *value = root ? ezxml_txt(ezxml_child(root, "UploadId")) : NULL;
-        if (!value || !*value || strlen(value) >= sizeof(id)) result = -1;
-        else safe_strcpy(id, value, sizeof(id), 0);
-        if (root) ezxml_free(root);
+        if (!result) {
+            ezxml_t root = response_xml(body, "InitiateMultipartUploadResult");
+            const char *value = root ? ezxml_txt(ezxml_child(root, "UploadId")) : NULL;
+            if (!value || !*value || strlen(value) >= sizeof(id)) result = -1;
+            else safe_strcpy(id, value, sizeof(id), 0);
+            if (root) ezxml_free(root);
+        }
         if (!result && upload_checkpoint(control->job_uuid, id, &checkpoint, true)) {
             // A journal failure cannot leave an upload running without ownership.
             storage_s3_abort_upload(target, key, id, error);
