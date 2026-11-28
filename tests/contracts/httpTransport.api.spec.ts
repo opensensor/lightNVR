@@ -226,10 +226,6 @@ test('closing a client during file delivery leaves file callbacks safe', async (
           done(new Error(`Unexpected response while testing interrupted delivery: ${headerText.split('\r\n', 1)[0] ?? headerText}`));
           return;
         }
-        if (buffer.length > separator + 4) {
-          interruptionObserved = true;
-          done();
-        }
       });
       socket.once('error', done);
       socket.once('close', () => {
