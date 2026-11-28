@@ -531,8 +531,15 @@ void test_shutdown_waits_for_a_worker_beyond_the_old_ten_second_timeout(void) {
     hold_upstream = true;
     TEST_ASSERT_EQUAL_INT(0, go2rtc_proxy_thread_submit(&connection, WRITE_ACTION_CLOSE));
     pthread_mutex_lock(&upstream_mutex);
-    while (!worker_in_curl) pthread_cond_wait(&upstream_ready, &upstream_mutex);
+    struct timespec deadline;
+    TEST_ASSERT_EQUAL_INT(0, clock_gettime(CLOCK_REALTIME, &deadline));
+    deadline.tv_sec += 5;
+    int wait_rc = 0;
+    while (!worker_in_curl && wait_rc == 0) {
+        wait_rc = pthread_cond_timedwait(&upstream_ready, &upstream_mutex, &deadline);
+    }
     pthread_mutex_unlock(&upstream_mutex);
+    TEST_ASSERT_TRUE_MESSAGE(worker_in_curl, "Timed out waiting for worker to enter curl");
     pthread_t releaser;
     TEST_ASSERT_EQUAL_INT(0, pthread_create(&releaser, NULL, release_delayed_worker, NULL));
     long started = monotonic_ms();
