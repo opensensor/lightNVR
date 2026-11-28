@@ -142,9 +142,13 @@ test('gzip quality values follow the HTTP grammar', async () => {
       const response = await server.request('/api/openapi.json', {
         headers: {'Accept-Encoding': header},
       });
-      expect(response.status).toBe(200);
-      expect(response.headers.get('content-encoding'), header)
-        .toBe(acceptsGzip ? 'gzip' : null);
+      try {
+        expect(response.status).toBe(200);
+        expect(response.headers.get('content-encoding'), header)
+          .toBe(acceptsGzip ? 'gzip' : null);
+      } finally {
+        await response.arrayBuffer();
+      }
     }
   } finally {
     await server.stop();
