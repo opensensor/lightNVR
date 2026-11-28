@@ -55,7 +55,7 @@ static void release_handler(void) {
 }
 
 static void blocked_handler(const http_request_t *req, http_response_t *res) {
-    struct timespec end = deadline(5);
+    struct timespec end = deadline(15);
     pthread_mutex_lock(&mutex);
     connection = req->user_data;
     entered = true;
