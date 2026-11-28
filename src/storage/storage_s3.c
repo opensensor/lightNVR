@@ -209,9 +209,12 @@ static int credentials_read(const storage_target_t *target, s3_credentials_t *cr
 static size_t response_header(char *buffer, size_t size, size_t count, void *context) {
     s3_io_t *io = context;
     size_t length = size * count;
-    if (length > 12 && !memcmp(buffer, "HTTP/", 5)) {
+    if (length >= 5 && !memcmp(buffer, "HTTP/", 5)) {
         const char *space = memchr(buffer, ' ', length);
-        if (space && space + 4 <= buffer + length)
+        if (space && space + 4 <= buffer + length &&
+            isdigit((unsigned char)space[1]) &&
+            isdigit((unsigned char)space[2]) &&
+            isdigit((unsigned char)space[3]))
             io->status = (space[1] - '0') * 100 + (space[2] - '0') * 10 + space[3] - '0';
     }
     if (length > 5 && !strncasecmp(buffer, "ETag:", 5)) {
@@ -277,8 +280,11 @@ static int request(const storage_target_t *target, const char *key, const char *
                    const char *method, FILE *upload, uint64_t upload_size,
                    const char *checksum, s3_io_t *io, uint64_t *object_size,
                    char error[STORAGE_TARGET_ERROR_MAX]) {
-    if (!storage_s3_validate(target, error, STORAGE_TARGET_ERROR_MAX) ||
-        (key && !safe_key(key, false))) return STORAGE_S3_ERROR;
+    if (!storage_s3_validate(target, error, STORAGE_TARGET_ERROR_MAX)) return STORAGE_S3_ERROR;
+    if (key && !safe_key(key, false)) {
+        error_set(error, "Invalid object key: key contains unsafe or unsupported path characters");
+        return STORAGE_S3_ERROR;
+    }
     s3_credentials_t credentials = {0};
     if (!io->anonymous && credentials_read(target, &credentials)) {
         error_set(error, "Archive credential file is missing, invalid or has unsafe permissions");
