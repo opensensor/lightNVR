@@ -363,23 +363,23 @@ void libuv_connection_destroy(libuv_connection_t *conn) {
     }
     
     safe_free(conn);
-        log_debug("libuv_close_cb: Connection closed after %d requests",
+}
 
 /**
  * @brief Handle close callback
-         * its after-work callback. Closing TCP does not end that ownership.
-         * File-serving async operations also keep references to conn. */
-        if (!conn->handler_on_worker && !conn->async_response_pending) {
-            libuv_connection_destroy(conn);
-        }
+ */
+void libuv_close_cb(uv_handle_t *handle) {
     libuv_connection_t *conn = (libuv_connection_t *)handle->data;
     if (conn) {
-        log_debug("libuv_close_cb: Connection closed after %d requests", 
+        log_debug("libuv_close_cb: Connection closed after %d requests",
                   conn->requests_handled);
         conn->close_completed = true;
-        /* A queued handler owns the request, response and receive buffer until
-         * its after-work callback. Closing TCP does not end that ownership. */
-        if (!conn->handler_on_worker) libuv_connection_destroy(conn);
+        /* A queued handler or asynchronous response may still reference the
+         * connection after its TCP handle closes. Its completion callback
+         * releases the connection once those references have drained. */
+        if (!conn->handler_on_worker && !conn->async_response_pending &&
+            conn->file_serve_refs == 0)
+            libuv_connection_destroy(conn);
     }
 }
 
@@ -824,7 +824,8 @@ static void handler_after_work_cb(uv_work_t *req, int status) {
     conn->handler_on_worker = false;
 
     if (conn->close_completed) {
-        libuv_connection_destroy(conn);
+        if (conn->file_serve_refs == 0 && !conn->async_response_pending)
+            libuv_connection_destroy(conn);
         return;
     }
     if (conn->server->shutting_down || uv_is_closing((uv_handle_t *)&conn->handle)) {

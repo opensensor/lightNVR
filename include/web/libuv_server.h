@@ -105,6 +105,7 @@ typedef struct libuv_connection {
 
     // Async response handling
     bool async_response_pending;        // Async file serving or streaming in progress
+    unsigned file_serve_refs;            // File callbacks retaining connection after TCP close
 
     // Thread pool offloading (uv_queue_work)
     bool handler_on_worker;             // Handler is running on a thread pool worker

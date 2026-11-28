@@ -196,6 +196,8 @@ int libuv_serve_file(libuv_connection_t *conn, const char *path,
         return -1;
     }
 
+    conn->file_serve_refs++;
+
     return 0;
 }
 
@@ -225,6 +227,20 @@ static void on_file_open(uv_fs_t *req) {
     file_serve_ctx_t *ctx = (file_serve_ctx_t *)req->data;
     libuv_connection_t *conn = ctx->conn;
 
+    if (conn->close_completed) {
+        if (req->result >= 0) {
+            ctx->fd = (uv_file)req->result;
+            uv_fs_req_cleanup(req);
+            uv_fs_close(conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
+        } else {
+            file_serve_cleanup(ctx);
+            conn->async_response_pending = false;
+            if (--conn->file_serve_refs == 0 && !conn->handler_on_worker)
+                libuv_connection_destroy(conn);
+        }
+        return;
+    }
+
     if (req->result < 0) {
         log_error("on_file_open: Failed to open file: %s", uv_strerror((int)req->result));
 
@@ -242,6 +258,7 @@ static void on_file_open(uv_fs_t *req) {
 
         // Clear async response flag
         conn->async_response_pending = false;
+        conn->file_serve_refs--;
         return;
     }
 
@@ -263,6 +280,11 @@ static void on_file_open(uv_fs_t *req) {
 static void on_file_stat(uv_fs_t *req) {
     file_serve_ctx_t *ctx = (file_serve_ctx_t *)req->data;
     libuv_connection_t *conn = ctx->conn;
+
+    if (conn->close_completed) {
+        uv_fs_close(conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
+        return;
+    }
 
     if (req->result < 0) {
         log_error("on_file_stat: Failed to stat file: %s", uv_strerror((int)req->result));
@@ -385,6 +407,10 @@ static void on_file_stat(uv_fs_t *req) {
  * @brief Send next chunk of file
  */
 static void send_file_chunk(file_serve_ctx_t *ctx) {
+    if (ctx->conn->close_completed) {
+        uv_fs_close(ctx->conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
+        return;
+    }
     if (ctx->remaining == 0) {
         // Done sending file
         uv_fs_close(ctx->conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
@@ -512,7 +538,11 @@ static void on_file_read(uv_fs_t *req) {
 static void on_file_close(uv_fs_t *req) {
     file_serve_ctx_t *ctx = (file_serve_ctx_t *)req->data;
     if (ctx->head_response_managed) {
+        libuv_connection_t *conn = ctx->conn;
         file_serve_cleanup(ctx);
+        if (--conn->file_serve_refs == 0 && conn->close_completed &&
+            !conn->handler_on_worker && !conn->async_response_pending)
+            libuv_connection_destroy(conn);
         return;
     }
     libuv_connection_t *conn = ctx->conn;
@@ -526,9 +556,16 @@ static void on_file_close(uv_fs_t *req) {
 
     // file_serve_cleanup cleans up all four uv_fs_t requests (including close_req)
     file_serve_cleanup(ctx);
+    conn->file_serve_refs--;
 
     // Clear async response flag
     conn->async_response_pending = false;
+
+    if (conn->close_completed) {
+        if (conn->file_serve_refs == 0 && !conn->handler_on_worker)
+            libuv_connection_destroy(conn);
+        return;
+    }
 
     // If error handler already managed connection, don't do it again
     if (!should_manage_connection) {
