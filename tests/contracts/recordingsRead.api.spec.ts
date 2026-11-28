@@ -330,11 +330,11 @@ test('related mutation boundaries reject historical and mixed unauthorized sets 
       const denied=await wire(server,route,actor,method,body);expect(denied.response.status).toBe(403);safeDenied(denied.body,server,fixture);expect(state()).toEqual(before);expect(existsSync(targetPath)).toBe(true);expect(createHash('sha256').update(readFileSync(targetPath)).digest('hex')).toBe(hash);
     }
     const batchIds=[ids.playable,ids.hidden];
-    const batchRows=batchIds.map(id=>db.prepare('SELECT id,camera_uuid,protected,file_path FROM recordings WHERE id=?').get(id));
+    const batchRows=batchIds.map(id=>db.prepare('SELECT id,camera_uuid,protected,file_path,deletion_pending FROM recordings WHERE id=?').get(id));
     const batchHashes=batchIds.map(id=>createHash('sha256').update(readFileSync(path.join(fixture.directory,`${id}.mp4`))).digest('hex'));
     const denied=await wire(server,'/api/recordings/batch-delete',actor,'POST',{ids:batchIds});
     expect(denied.response.status).toBe(403);safeDenied(denied.body,server,fixture);expect(denied.body).not.toHaveProperty('job_id');
-    expect(batchIds.map(id=>db.prepare('SELECT id,camera_uuid,protected,file_path FROM recordings WHERE id=?').get(id))).toEqual(batchRows);
+    expect(batchIds.map(id=>db.prepare('SELECT id,camera_uuid,protected,file_path,deletion_pending FROM recordings WHERE id=?').get(id))).toEqual(batchRows);
     expect(batchIds.map(id=>createHash('sha256').update(readFileSync(path.join(fixture.directory,`${id}.mp4`))).digest('hex'))).toEqual(batchHashes);
     const deleteOk=await wire(server,`/api/recordings/${ids.sibling}`,actor,'DELETE');
     expect(deleteOk.response.status).toBe(200);
