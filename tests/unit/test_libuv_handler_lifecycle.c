@@ -8,6 +8,8 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/time.h>
+#include <sys/wait.h>
+#include <signal.h>
 #include <time.h>
 #include <unistd.h>
 #include "unity.h"
@@ -171,28 +173,52 @@ static void test_disconnect_close_keeps_worker_response_alive(void) {
 }
 
 static void test_shutdown_waits_for_handler_beyond_three_second_warning(void) {
-    pthread_t release_thread;
-    TEST_ASSERT_EQUAL_INT(0, pthread_create(&release_thread, NULL, release_after_four_seconds, NULL));
-    struct timespec before, after;
-    clock_gettime(CLOCK_MONOTONIC, &before);
-    pthread_mutex_lock(&release_start_mutex);
-    release_start_open = true;
-    pthread_cond_broadcast(&release_start_cond);
-    pthread_mutex_unlock(&release_start_mutex);
-    libuv_server_stop((http_server_handle_t)server);
-    clock_gettime(CLOCK_MONOTONIC, &after);
-    double elapsed = after.tv_sec - before.tv_sec + (after.tv_nsec - before.tv_nsec) / 1e9;
-    pthread_mutex_lock(&mutex);
-    bool done_at_stop = finished;
-    pthread_mutex_unlock(&mutex);
-    pthread_join(release_thread, NULL);
-    TEST_ASSERT_TRUE(done_at_stop);
-    TEST_ASSERT_TRUE(server_state_valid);
-    TEST_ASSERT_TRUE(elapsed >= 3.5);
-    TEST_ASSERT_FALSE(expired);
-    TEST_ASSERT_EQUAL_INT(0, uv_loop_alive(server->loop));
-    libuv_server_destroy((http_server_handle_t)server);
-    server = NULL;
+    pid_t pid = fork();
+    TEST_ASSERT_TRUE(pid >= 0);
+
+    if (pid == 0) {
+        pthread_t release_thread;
+        TEST_ASSERT_EQUAL_INT(0, pthread_create(&release_thread, NULL, release_after_four_seconds, NULL));
+        struct timespec before, after;
+        clock_gettime(CLOCK_MONOTONIC, &before);
+        pthread_mutex_lock(&release_start_mutex);
+        release_start_open = true;
+        pthread_cond_broadcast(&release_start_cond);
+        pthread_mutex_unlock(&release_start_mutex);
+        libuv_server_stop((http_server_handle_t)server);
+        clock_gettime(CLOCK_MONOTONIC, &after);
+        double elapsed = after.tv_sec - before.tv_sec + (after.tv_nsec - before.tv_nsec) / 1e9;
+        pthread_mutex_lock(&mutex);
+        bool done_at_stop = finished;
+        pthread_mutex_unlock(&mutex);
+        pthread_join(release_thread, NULL);
+        TEST_ASSERT_TRUE(done_at_stop);
+        TEST_ASSERT_TRUE(server_state_valid);
+        TEST_ASSERT_TRUE(elapsed >= 3.5);
+        TEST_ASSERT_FALSE(expired);
+        TEST_ASSERT_EQUAL_INT(0, uv_loop_alive(server->loop));
+        libuv_server_destroy((http_server_handle_t)server);
+        server = NULL;
+        _exit(0);
+    } else {
+        int status = 0;
+        const int timeout_seconds = 10;
+        int waited = 0;
+        while (waited < timeout_seconds) {
+            pid_t r = waitpid(pid, &status, WNOHANG);
+            TEST_ASSERT_TRUE(r >= 0);
+            if (r == pid) {
+                TEST_ASSERT_TRUE(WIFEXITED(status));
+                TEST_ASSERT_EQUAL_INT(0, WEXITSTATUS(status));
+                return;
+            }
+            sleep(1);
+            waited++;
+        }
+        kill(pid, SIGKILL);
+        waitpid(pid, &status, 0);
+        TEST_FAIL_MESSAGE("timeout waiting for child shutdown scenario; possible deadlock in libuv_server_stop");
+    }
 }
 
 static void test_destroy_initialized_server_without_start(void) {
