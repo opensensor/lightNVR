@@ -1,6 +1,7 @@
 #define _XOPEN_SOURCE 700
 #include <sqlite3.h>
 #include <stdatomic.h>
+#include <stdlib.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <ftw.h>
@@ -1543,8 +1544,12 @@ static void test_batch_export_waits_for_verified_archive_source(void) {
                 nanosleep(&delay, NULL);
             }
         }
-        TEST_ASSERT_TRUE_MESSAGE(terminal,
-            "batch export worker did not reach terminal state before fixture release");
+        if (!terminal) {
+            fprintf(stderr,
+                    "FATAL: batch export worker did not reach terminal state before fixture release; "
+                    "aborting to avoid teardown race with detached worker\n");
+            abort();
+        }
     }
     TEST_ASSERT_FALSE_MESSAGE(timed_out, "batch export did not complete before polling deadline");
     TEST_ASSERT_TRUE(retrieved);
