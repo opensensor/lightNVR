@@ -128,10 +128,6 @@ void setUp(void) {
 }
 
 void tearDown(void) {
-    pthread_mutex_lock(&upstream_mutex);
-    release_upstream = true;
-    pthread_cond_broadcast(&upstream_ready);
-    pthread_mutex_unlock(&upstream_mutex);
     go2rtc_api_apply_base_path_override(NULL, 0);
     pthread_mutex_lock(&upstream_mutex);
     release_upstream = true;
@@ -193,7 +189,7 @@ static void *slow_snapshot_peer(void *arg) {
         .fd = *(int *)arg,
         .events = POLLIN
     };
-    if (poll(&pfd, 1, 3000) <= 0) return NULL;
+    if (poll(&pfd, 1, 3000) <= 0 || !(pfd.revents & POLLIN)) return NULL;
 
     int client = accept(*(int *)arg, NULL, NULL);
     if (client < 0) return NULL;
