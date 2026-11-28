@@ -280,14 +280,14 @@ test('durable recording IDs survive sorting, repeated polling and supported sibl
   expect((await wire(server,`/api/recordings/${ids.sibling}`,viewer)).response.status).toBe(404);
 });
 
-test('historical capture UUID wins over reused names in rows, counts, facets, detail labels and timelines',async({server})=>{
+test('historical capture UUID wins over reused names in rows, counts, facets, detection status and timelines',async({server})=>{
   const fixture=seedRecordings(server);const historical=seedHistoricalNameReuse(server,fixture);
   const result=await page(server);expect(sortedIds(result.recordings)).toEqual([...replayIds,historical.visible]);expect(result.pagination.total).toBe(5);
   const serialized=JSON.stringify(result);for(const forbidden of [server.cameras.B.camera_uuid,'historical-hidden-label','hidden-vehicle'])expect(serialized).not.toContain(forbidden);
   expect(sortedIds((await page(server,viewer,'limit=all&stream=A')).recordings)).toEqual([...replayIds,historical.visible]);
   const tags=await ok(server,'/api/recordings/tags',viewer);expect(tags.tags).toContain('historical-visible-tag');expect(tags.tags).not.toContain('historical-hidden-tag');
   const labels=await ok(server,'/api/recordings/detection-labels',viewer);expect(labels.labels).toContain('historical-visible-label');expect(labels.labels).not.toContain('historical-hidden-label');
-  for(const id of [ids.playable,historical.visible]) {const detail=await ok(server,`/api/recordings/${id}`,viewer);expect(validateRecordingDetail(detail)).toBe(true);expect(detail.id).toBe(id);expect(detail.camera_uuid).toBe(server.cameras.A.camera_uuid);expect(detail.labels).toContain('historical-visible-label');expect(JSON.stringify(detail)).not.toContain('historical-hidden-label');}
+  for(const id of [ids.playable,historical.visible]) {const detail=await ok(server,`/api/recordings/${id}`,viewer);expect(validateRecordingDetail(detail)).toBe(true);expect(detail.id).toBe(id);expect(detail.camera_uuid).toBe(server.cameras.A.camera_uuid);expect(detail.has_detection).toBe(true);expect(JSON.stringify(detail)).not.toContain('historical-hidden-label');}
   for(const selector of ['stream=A',`camera_uuid=${server.cameras.A.camera_uuid}`]) {
     const timeline=await ok(server,`/api/timeline/segments?${selector}&${timelineQuery(fixture)}`,viewer);expect(sortedIds(timeline.segments)).toEqual([...replayIds,historical.visible]);expect(timeline.segment_count).toBe(5);
   }
@@ -302,12 +302,12 @@ test('historical capture UUID wins over reused names in rows, counts, facets, de
 
 });
 
-test('related mutation boundaries reject historical and mixed unauthorized recording sets without claiming action coverage',async({server})=>{
+test('related mutation boundaries reject historical and mixed unauthorized sets with authorized controls',async({server})=>{
   const fixture=seedRecordings(server);const historical=seedHistoricalNameReuse(server,fixture);
   const actor=await createUser(server,'historical_writer');const actions=await role(server,'Capture-bound fixture writes',['evidence.protect','recording.delete','recordings.export']);await policy(server,actor,[{role_uuid:actions,scope:cameraScope(server.cameras.A.camera_uuid)}]);
   const db=new DatabaseSync(path.join(server.directory,'lightnvr.db'));
   const state=()=>db.prepare('SELECT id,camera_uuid,protected,file_path FROM recordings WHERE id=?').get(historical.hidden);
-  const rowById=(id:number)=>db.prepare('SELECT id,camera_uuid,protected,file_path FROM recordings WHERE id=?').get(id) as {id:number;camera_uuid:string;protected:number;file_path:string}|undefined;
+  const rowById=(id:number)=>db.prepare('SELECT id,camera_uuid,protected,file_path,deletion_pending FROM recordings WHERE id=?').get(id) as {id:number;camera_uuid:string;protected:number;file_path:string;deletion_pending:number}|undefined;
   try {
     const before=state();
     if(!before || typeof before.file_path!=='string')throw new Error('Historical recording has no file path');
@@ -321,30 +321,10 @@ test('related mutation boundaries reject historical and mixed unauthorized recor
     expect(protectOk.response.status).toBe(200);
     const protectRestore=await wire(server,`/api/recordings/${authorizedId}/protect`,actor,'PUT',{protected:!!authorizedBefore.protected});
     expect(protectRestore.response.status).toBe(200);
-    const downloadOk=await wire(server,`/api/recordings/download/${authorizedId}`,actor,'GET');
-    expect(downloadOk.response.status).toBe(200);
-
-    const disposableDeleteId=9101;
-    const disposableDeleteFile=path.join(fixture.directory,`${disposableDeleteId}.mp4`);
-    writeFileSync(disposableDeleteFile,readFileSync(path.join(fixture.directory,`${ids.playable}.mp4`)));
-    database(server,'INSERT INTO recordings (id,camera_uuid,start,end,file_path,protected) VALUES (?,?,?,?,?,?)',[disposableDeleteId,server.cameras.A.camera_uuid,Date.now()/1000|0,(Date.now()/1000|0)+10,`${disposableDeleteId}.mp4`,0]);
-    const deleteOk=await wire(server,`/api/recordings/${disposableDeleteId}`,actor,'DELETE');
-    expect(deleteOk.response.status).toBe(200);
-    expect(rowById(disposableDeleteId)).toBeUndefined();
-    expect(existsSync(disposableDeleteFile)).toBe(false);
-
-    const disposableBatchIds=[9102,9103];
-    for(const id of disposableBatchIds){
-      const p=path.join(fixture.directory,`${id}.mp4`);
-      writeFileSync(p,readFileSync(path.join(fixture.directory,`${ids.playable}.mp4`)));
-      database(server,'INSERT INTO recordings (id,camera_uuid,start,end,file_path,protected) VALUES (?,?,?,?,?,?)',[id,server.cameras.A.camera_uuid,Date.now()/1000|0,(Date.now()/1000|0)+10,`${id}.mp4`,0]);
-    }
-    const batchOk=await wire(server,'/api/recordings/batch-delete',actor,'POST',{ids:disposableBatchIds});
-    expect(batchOk.response.status).toBe(200);
-    for(const id of disposableBatchIds){
-      expect(rowById(id)).toBeUndefined();
-      expect(existsSync(path.join(fixture.directory,`${id}.mp4`))).toBe(false);
-    }
+    expect(rowById(authorizedId)?.protected).toBe(authorizedBefore.protected);
+    const downloadOk=await server.request(`/api/recordings/download/${authorizedId}`,{principal:'anonymous',headers:actor.headers});
+    expect(downloadOk.status).toBe(200);
+    expect(Buffer.from(await downloadOk.arrayBuffer())).toEqual(fixture.bytes);
 
     for(const [route,method,body] of [[`/api/recordings/${historical.hidden}/protect`,'PUT',{protected:true}],[`/api/recordings/${historical.hidden}`,'DELETE',undefined],[`/api/recordings/download/${historical.hidden}`,'GET',undefined]] as const) {
       const denied=await wire(server,route,actor,method,body);expect(denied.response.status).toBe(403);safeDenied(denied.body,server,fixture);expect(state()).toEqual(before);expect(existsSync(targetPath)).toBe(true);expect(createHash('sha256').update(readFileSync(targetPath)).digest('hex')).toBe(hash);
@@ -356,6 +336,16 @@ test('related mutation boundaries reject historical and mixed unauthorized recor
     expect(denied.response.status).toBe(403);safeDenied(denied.body,server,fixture);expect(denied.body).not.toHaveProperty('job_id');
     expect(batchIds.map(id=>db.prepare('SELECT id,camera_uuid,protected,file_path FROM recordings WHERE id=?').get(id))).toEqual(batchRows);
     expect(batchIds.map(id=>createHash('sha256').update(readFileSync(path.join(fixture.directory,`${id}.mp4`))).digest('hex'))).toEqual(batchHashes);
+    const deleteOk=await wire(server,`/api/recordings/${ids.sibling}`,actor,'DELETE');
+    expect(deleteOk.response.status).toBe(200);
+    expect(rowById(ids.sibling)).toBeUndefined();
+    expect(existsSync(path.join(fixture.directory,`${ids.sibling}.mp4`))).toBe(false);
+    const batchOk=await wire(server,'/api/recordings/batch-delete',actor,'POST',{ids:[ids.playable]});
+    expect(batchOk.response.status).toBe(202);
+    expect(typeof batchOk.body.job_id).toBe('string');
+    await expect.poll(async()=>{const progress=await ok(server,`/api/recordings/batch-delete/progress/${batchOk.body.job_id}`,actor);return progress.complete&&progress.succeeded===1;},{timeout:15000}).toBe(true);
+    const pendingRow=rowById(ids.playable);
+    if(pendingRow)expect(pendingRow.deletion_pending).toBe(1);
   } finally {db.close();}
 });
 
