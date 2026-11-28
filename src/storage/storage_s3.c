@@ -705,7 +705,7 @@ int storage_s3_upload(const storage_target_t *target, const char *key, const cha
     FILE *file = fdopen(descriptor, "rb");
     if (!file) { close(descriptor); return STORAGE_S3_ERROR; }
     s3_io_t io = {.limit = S3_REPLY_LIMIT, .control = control};
-    int result = control && control->job_uuid && (uint64_t)status.st_size >= S3_PART_BYTES
+    int result = (uint64_t)status.st_size >= S3_PART_BYTES
         ? multipart_upload(target, key, file, (uint64_t)status.st_size, checksum, control, error)
         : request(target, key, NULL, "PUT", file, (uint64_t)status.st_size, checksum, &io, NULL, error);
     fclose(file);
