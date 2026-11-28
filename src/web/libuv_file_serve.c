@@ -19,6 +19,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <errno.h>
+#include <stdint.h>
 #include <llhttp.h>
 #include <uv.h>
 
@@ -91,29 +93,58 @@ const char *libuv_get_mime_type(const char *path) {
  */
 bool libuv_parse_range_header(const char *range_header, size_t file_size,
                                size_t *start, size_t *end) {
-    if (!range_header || strncmp(range_header, "bytes=", 6) != 0) {
+    if (!range_header || !start || !end || file_size == 0 ||
+        strncmp(range_header, "bytes=", 6) != 0) {
         return false;
     }
-    
+
     const char *range = range_header + 6;
-    
+    if (*range == '\0') {
+        return false;
+    }
+
     if (*range == '-') {
         // Suffix range: bytes=-500 means last 500 bytes
-        size_t suffix_len = strtoull(range + 1, NULL, 10);
+        char *endptr = NULL;
+        errno = 0;
+        unsigned long long suffix_ull = strtoull(range + 1, &endptr, 10);
+        if (range[1] < '0' || range[1] > '9' ||
+            endptr == range + 1 || *endptr != '\0' || errno == ERANGE ||
+            suffix_ull == 0 || suffix_ull > SIZE_MAX) {
+            return false;
+        }
+
+        size_t suffix_len = (size_t)suffix_ull;
         if (suffix_len > file_size) suffix_len = file_size;
         *start = file_size - suffix_len;
         *end = file_size - 1;
     } else {
         // Normal range: bytes=0-499 or bytes=500-
-        *start = strtoull(range, NULL, 10);
-        const char *dash = strchr(range, '-');
-        if (dash && dash[1] != '\0') {
-            *end = strtoull(dash + 1, NULL, 10);
-        } else {
+        char *start_endptr = NULL;
+        errno = 0;
+        unsigned long long start_ull = strtoull(range, &start_endptr, 10);
+        if (*range < '0' || *range > '9' || start_endptr == range ||
+            *start_endptr != '-' || errno == ERANGE || start_ull > SIZE_MAX) {
+            return false;
+        }
+
+        *start = (size_t)start_ull;
+
+        const char *end_part = start_endptr + 1;
+        if (*end_part == '\0') {
             *end = file_size - 1;
+        } else {
+            char *end_endptr = NULL;
+            errno = 0;
+            unsigned long long end_ull = strtoull(end_part, &end_endptr, 10);
+            if (*end_part < '0' || *end_part > '9' || end_endptr == end_part ||
+                *end_endptr != '\0' || errno == ERANGE || end_ull > SIZE_MAX) {
+                return false;
+            }
+            *end = (size_t)end_ull;
         }
     }
-    
+
     // Validate range
     if (*start >= file_size) {
         return false;
@@ -124,7 +155,7 @@ bool libuv_parse_range_header(const char *range_header, size_t file_size,
     if (*start > *end) {
         return false;
     }
-    
+
     return true;
 }
 
@@ -271,6 +302,17 @@ static void on_file_open(uv_fs_t *req) {
     int r = uv_fs_fstat(ctx->conn->server->loop, &ctx->stat_req, ctx->fd, on_file_stat);
     if (r != 0) {
         log_error("on_file_open: Failed to start stat: %s", uv_strerror(r));
+
+        http_response_set_json_error(&conn->response, 500, "Internal Server Error");
+        write_complete_action_t action =
+            (conn->keep_alive && llhttp_should_keep_alive(&conn->parser))
+                ? WRITE_ACTION_KEEP_ALIVE
+                : WRITE_ACTION_CLOSE;
+        libuv_send_response_ex(conn, &conn->response, action);
+
+        ctx->manage_connection_on_close = false;
+        conn->async_response_pending = false;
+
         uv_fs_close(ctx->conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
         return;
     }
@@ -430,6 +472,8 @@ static void send_file_chunk(file_serve_ctx_t *ctx) {
                        &buf, 1, (int64_t)ctx->offset, on_file_read);
     if (r != 0) {
         log_error("send_file_chunk: Failed to start read: %s", uv_strerror(r));
+        // Force connection close: response body is incomplete after headers sent
+        ctx->write_error = true;
         uv_fs_close(ctx->conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
     }
 }

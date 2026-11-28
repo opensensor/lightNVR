@@ -369,6 +369,7 @@ target_link_options(test_api_handlers_openapi PRIVATE
 set_tests_properties(test_api_handlers_openapi PROPERTIES TIMEOUT 30)
 add_layer3_test(test_libuv_handler_lifecycle CI_UNIT CI_SANITIZER)
 add_layer3_test(test_libuv_shared_loop CI_UNIT CI_SANITIZER)
+add_layer3_test(test_libuv_range_header CI_UNIT CI_SANITIZER)
 set_tests_properties(test_libuv_shared_loop PROPERTIES TIMEOUT 15)
 set_tests_properties(test_libuv_handler_lifecycle PROPERTIES TIMEOUT 25)
 add_layer2_test(test_authorization_snapshot CI_UNIT CI_SANITIZER)
