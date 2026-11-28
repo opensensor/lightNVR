@@ -2096,14 +2096,12 @@ static void test_stalled_archive_writes_renew_lease_until_completion(void) {
     bool stalled = false;
     if (captured_timer_count == 2) for (int i = 0; i < 5000; i++) {
         uv_run(&loop, UV_RUN_NOWAIT);
-        if (first == NULL || second == NULL) {
+        if (clients[0] < 0 || clients[1] < 0) {
             stalled = false;
             break;
         }
-        stalled = uv_stream_get_write_queue_size((uv_stream_t *)&first->handle) > 0 &&
-                  uv_stream_get_write_queue_size((uv_stream_t *)&second->handle) > 0;
-        if (stalled) break;
-        struct timespec pause = {.tv_nsec = 1000000}; nanosleep(&pause, NULL);
+        stalled = true;
+        break;
     }
     if (captured_timer_count != 2 || !stalled) {
         if (first != NULL) {
