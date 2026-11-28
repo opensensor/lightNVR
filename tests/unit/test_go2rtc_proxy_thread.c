@@ -36,6 +36,11 @@ static int upstream_requests;
 static char upstream_request[2048];
 static pthread_mutex_t upstream_mutex = PTHREAD_MUTEX_INITIALIZER;
 static libuv_connection_t fixture_connection;
+static bool fixture_connection_in_use;
+static int fixture_server = -1;
+static pthread_t fixture_peer;
+static bool fixture_peer_started;
+static libuv_connection_t fixture_connection;
 static bool fixture_connection_initialized;
 static int fixture_upstream_listener = -1;
 static pthread_t fixture_peer_thread;
@@ -345,25 +350,29 @@ void test_both_proxy_handlers_never_follow_unauthorized_redirects(void) {
     real_authorization = true;
     for (int threaded = 0; threaded < 2; threaded++) {
         upstream_requests = 0;
-        int server = open_upstream_listener();
-        pthread_t peer;
-        TEST_ASSERT_EQUAL_INT(0, pthread_create(&peer, NULL, redirect_peer, &server));
-        libuv_connection_t connection;
-        init_connection(&connection);
-        strcpy(connection.request.path, "/go2rtc/api/streams");
-        connection.request.query_string[0] = '\0';
-        connection.request.user_data = &connection;
+        fixture_server = open_upstream_listener();
+        fixture_peer_started = false;
+        TEST_ASSERT_EQUAL_INT(0, pthread_create(&fixture_peer, NULL, redirect_peer, &fixture_server));
+        fixture_peer_started = true;
+        fixture_connection_in_use = true;
+        init_connection(&fixture_connection);
+        strcpy(fixture_connection.request.path, "/go2rtc/api/streams");
+        fixture_connection.request.query_string[0] = '\0';
+        fixture_connection.request.user_data = &fixture_connection;
         if (threaded) {
-            TEST_ASSERT_EQUAL_INT(0, go2rtc_proxy_thread_submit(&connection, WRITE_ACTION_CLOSE));
+            TEST_ASSERT_EQUAL_INT(0, go2rtc_proxy_thread_submit(&fixture_connection, WRITE_ACTION_CLOSE));
             pump_responses(1, 3000);
             TEST_ASSERT_EQUAL_INT(1, completed_responses);
         } else {
-            handle_go2rtc_proxy(&connection.request, &connection.response);
+            handle_go2rtc_proxy(&fixture_connection.request, &fixture_connection.response);
         }
-        pthread_join(peer, NULL);
-        close(server);
-        int status = connection.response.status_code;
-        http_response_free(&connection.response);
+        pthread_join(fixture_peer, NULL);
+        fixture_peer_started = false;
+        close(fixture_server);
+        fixture_server = -1;
+        int status = fixture_connection.response.status_code;
+        http_response_free(&fixture_connection.response);
+        fixture_connection_in_use = false;
         TEST_ASSERT_EQUAL_INT(1, upstream_requests);
         TEST_ASSERT_EQUAL_INT(502, status);
         TEST_ASSERT_NOT_NULL(strstr(upstream_request, yaml_validate_is_available()
