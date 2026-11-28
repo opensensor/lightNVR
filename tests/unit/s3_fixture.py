@@ -57,8 +57,11 @@ class S3Handler(BaseHTTPRequestHandler):
         if payload_hash != 'UNSIGNED-PAYLOAD' and payload_hash != hashlib.sha256(body).hexdigest():
             return False
         url = urlsplit(self.path)
-        query = '&'.join(f'{quote(k, safe="~")}={quote(v, safe="~")}'
-                         for k, v in sorted(parse_qsl(url.query, keep_blank_values=True)))
+        encoded_query_pairs = [
+            (quote(k, safe="~"), quote(v, safe="~"))
+            for k, v in parse_qsl(url.query, keep_blank_values=True)
+        ]
+        query = '&'.join(f'{k}={v}' for k, v in sorted(encoded_query_pairs))
         canonical_headers = ''.join(f'{key}:{" ".join(self.headers.get(key, "").split())}\n'
                                     for key in match[3].split(';'))
         canonical = '\n'.join([self.command, url.path, query, canonical_headers, match[3], payload_hash])
@@ -118,9 +121,18 @@ class S3Handler(BaseHTTPRequestHandler):
                     del self.uploads[upload_id]
                     return self.respond(204)
                 if self.command == 'GET':
-                    return self.respond(200, b'<ListPartsResult/>')
+                    parts_xml = ''.join(
+                        f'<Part><PartNumber>{part_number}</PartNumber><ETag>{etag}</ETag><Size>{len(part_body)}</Size></Part>'
+                        for part_number, (etag, part_body) in sorted(upload['parts'].items())
+                    )
+                    return self.respond(200, f'<ListPartsResult>{parts_xml}</ListPartsResult>'.encode())
                 if self.command == 'PUT':
-                    part = int(query['partNumber'])
+                    try:
+                        part = int(query['partNumber'])
+                    except (KeyError, ValueError):
+                        return self.respond(400, b'<Error><Code>InvalidArgument</Code></Error>')
+                    if part < 1:
+                        return self.respond(400, b'<Error><Code>InvalidArgument</Code></Error>')
                     if bucket == 'multipart-part-expired' and part == 2 and identity not in self.expired_parts:
                         self.expired_parts.add(identity)
                         del self.uploads[upload_id]
@@ -140,11 +152,38 @@ class S3Handler(BaseHTTPRequestHandler):
                         del self.uploads[upload_id]
                         return self.respond(404 if bucket == 'multipart-expired' else 200,
                                             b'<Error><Code>NoSuchUpload</Code></Error>')
-                    manifest = ET.fromstring(body)
+                    try:
+                        manifest = ET.fromstring(body)
+                    except ET.ParseError:
+                        return self.respond(200, b'<Error><Code>InvalidPart</Code></Error>')
+
+                    def local_name(tag):
+                        return tag.rsplit('}', 1)[-1]
+
+                    def child_text(element, name):
+                        for child in list(element):
+                            if local_name(child.tag) == name:
+                                return child.text
+                        return None
+
+                    if local_name(manifest.tag) != 'CompleteMultipartUpload':
+                        return self.respond(200, b'<Error><Code>InvalidPart</Code></Error>')
+                    parts = [element for element in list(manifest) if local_name(element.tag) == 'Part']
+                    if not parts:
+                        return self.respond(200, b'<Error><Code>InvalidPart</Code></Error>')
+
                     values = []
-                    for part in manifest.findall('Part'):
-                        stored = upload['parts'].get(int(part.findtext('PartNumber')))
-                        if stored is None or stored[0] != part.findtext('ETag'):
+                    for part in parts:
+                        part_number_text = child_text(part, 'PartNumber')
+                        etag_text = child_text(part, 'ETag')
+                        if part_number_text is None or etag_text is None:
+                            return self.respond(200, b'<Error><Code>InvalidPart</Code></Error>')
+                        try:
+                            part_number = int(part_number_text)
+                        except (TypeError, ValueError):
+                            return self.respond(200, b'<Error><Code>InvalidPart</Code></Error>')
+                        stored = upload['parts'].get(part_number)
+                        if stored is None or stored[0] != etag_text:
                             return self.respond(200, b'<Error><Code>InvalidPart</Code></Error>')
                         values.append(stored[1])
                     self.objects[identity] = b''.join(values)
