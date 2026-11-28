@@ -287,7 +287,7 @@ test('historical capture UUID wins over reused names in rows, counts, facets, de
   expect(sortedIds((await page(server,viewer,'limit=all&stream=A')).recordings)).toEqual([...replayIds,historical.visible]);
   const tags=await ok(server,'/api/recordings/tags',viewer);expect(tags.tags).toContain('historical-visible-tag');expect(tags.tags).not.toContain('historical-hidden-tag');
   const labels=await ok(server,'/api/recordings/detection-labels',viewer);expect(labels.labels).toContain('historical-visible-label');expect(labels.labels).not.toContain('historical-hidden-label');
-  for(const id of [ids.playable,historical.visible]) {const detail=await ok(server,`/api/recordings/${id}`,viewer);expect(validateRecordingDetail(detail)).toBe(true);expect(JSON.stringify(detail)).not.toContain('historical-hidden-label');}
+  for(const id of [ids.playable,historical.visible]) {const detail=await ok(server,`/api/recordings/${id}`,viewer);expect(validateRecordingDetail(detail)).toBe(true);expect(detail.id).toBe(id);expect(detail.camera_uuid).toBe(server.cameras.A.camera_uuid);expect(detail.labels).toContain('historical-visible-label');expect(JSON.stringify(detail)).not.toContain('historical-hidden-label');}
   for(const selector of ['stream=A',`camera_uuid=${server.cameras.A.camera_uuid}`]) {
     const timeline=await ok(server,`/api/timeline/segments?${selector}&${timelineQuery(fixture)}`,viewer);expect(sortedIds(timeline.segments)).toEqual([...replayIds,historical.visible]);expect(timeline.segment_count).toBe(5);
   }
