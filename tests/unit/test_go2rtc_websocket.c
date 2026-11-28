@@ -583,7 +583,7 @@ void test_upgrade_with_wrong_accept_is_rejected(void) {
     TEST_ASSERT_TRUE((size_t)req_len + sizeof(masked_frame) <= sizeof(payload));
     memcpy(payload, request, (size_t)req_len);
     memcpy(payload + req_len, masked_frame, sizeof(masked_frame));
-    (void)send_all(client, payload, (size_t)req_len + sizeof(masked_frame));
+    TEST_ASSERT_TRUE(send_all(client, payload, (size_t)req_len + sizeof(masked_frame)));
     TEST_ASSERT_TRUE(read_headers(client, response, sizeof(response)));
     TEST_ASSERT_EQUAL_INT(1, sscanf(response, "HTTP/%*d.%*d %d", &status));
     TEST_ASSERT_EQUAL_INT(502, status);
