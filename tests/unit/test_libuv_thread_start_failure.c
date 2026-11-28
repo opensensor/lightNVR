@@ -61,6 +61,49 @@ void tearDown(void) {
     fail_next_thread = false;
 }
 
+static void assert_http_probe_ok(void) {
+    fixture_client_fd = socket(AF_INET, SOCK_STREAM, 0);
+    TEST_ASSERT_TRUE(fixture_client_fd >= 0);
+
+    struct sockaddr_in server_addr = {0};
+    int address_length = sizeof(server_addr);
+    TEST_ASSERT_EQUAL_INT(0, uv_tcp_getsockname(
+        &((libuv_server_t *)fixture_server)->listener,
+        (struct sockaddr *)&server_addr, &address_length));
+    TEST_ASSERT_TRUE(ntohs(server_addr.sin_port) > 0);
+    struct timeval timeout = {.tv_sec = 2};
+    TEST_ASSERT_EQUAL_INT(0, setsockopt(fixture_client_fd, SOL_SOCKET,
+        SO_RCVTIMEO, &timeout, sizeof(timeout)));
+    TEST_ASSERT_EQUAL_INT(0, connect(fixture_client_fd,
+        (struct sockaddr *)&server_addr, sizeof(server_addr)));
+
+    const char request[] = "GET /probe HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n";
+    size_t total_sent = 0;
+    while (total_sent < sizeof(request) - 1) {
+        ssize_t sent = send(fixture_client_fd, request + total_sent,
+            sizeof(request) - 1 - total_sent, 0);
+        if (sent < 0 && errno == EINTR) continue;
+        TEST_ASSERT_TRUE(sent > 0);
+        total_sent += (size_t)sent;
+    }
+
+    char response[256] = {0};
+    size_t total_received = 0;
+    while (total_received < sizeof(response) - 1 &&
+           strstr(response, "\r\n") == NULL) {
+        ssize_t chunk = recv(fixture_client_fd, response + total_received,
+            sizeof(response) - 1 - total_received, 0);
+        if (chunk < 0 && errno == EINTR) continue;
+        TEST_ASSERT_TRUE(chunk > 0);
+        total_received += (size_t)chunk;
+        response[total_received] = '\0';
+    }
+    TEST_ASSERT_NOT_NULL(strstr(response, "\r\n"));
+    TEST_ASSERT_NOT_NULL(strstr(response, "HTTP/1.1 200"));
+    TEST_ASSERT_EQUAL_INT(0, close(fixture_client_fd));
+    fixture_client_fd = -1;
+}
+
 static void test_failed_thread_start_closes_handles_before_retry(void) {
     http_server_config_t config = {0};
     config.bind_ip = "127.0.0.1";
@@ -68,6 +111,8 @@ static void test_failed_thread_start_closes_handles_before_retry(void) {
     config.max_connections = 8;
     fixture_server = libuv_server_init(&config);
     TEST_ASSERT_NOT_NULL(fixture_server);
+    TEST_ASSERT_EQUAL_INT(0, http_server_register_handler(
+        fixture_server, "/probe", "GET", probe_handler));
 
     fail_next_thread = true;
     TEST_ASSERT_EQUAL_INT(-1, http_server_start(fixture_server));
@@ -89,6 +134,7 @@ static void test_failed_thread_start_closes_handles_before_retry(void) {
         &((libuv_server_t *)fixture_server)->listener,
         (struct sockaddr *)&assigned, &assigned_length));
     TEST_ASSERT_TRUE(ntohs(assigned.sin_port) > 0);
+    assert_http_probe_ok();
 }
 
 static void test_failed_bind_can_retry_after_port_released(void) {
@@ -108,10 +154,13 @@ static void test_failed_bind_can_retry_after_port_released(void) {
     config.max_connections = 8;
     fixture_server = libuv_server_init(&config);
     TEST_ASSERT_NOT_NULL(fixture_server);
+    TEST_ASSERT_EQUAL_INT(0, http_server_register_handler(
+        fixture_server, "/probe", "GET", probe_handler));
     TEST_ASSERT_EQUAL_INT(-1, http_server_start(fixture_server));
     close(fixture_occupied_fd);
     fixture_occupied_fd = -1;
     TEST_ASSERT_EQUAL_INT(0, http_server_start(fixture_server));
+    assert_http_probe_ok();
 }
 
 static void test_duplicate_start_is_rejected_without_disrupting_server(void) {
@@ -126,44 +175,7 @@ static void test_duplicate_start_is_rejected_without_disrupting_server(void) {
     TEST_ASSERT_EQUAL_INT(0, http_server_start(fixture_server));
     TEST_ASSERT_EQUAL_INT(-1, http_server_start(fixture_server));
 
-    fixture_client_fd = socket(AF_INET, SOCK_STREAM, 0);
-    TEST_ASSERT_TRUE(fixture_client_fd >= 0);
-
-    struct sockaddr_in server_addr = {0};
-    int address_length = sizeof(server_addr);
-    TEST_ASSERT_EQUAL_INT(0, uv_tcp_getsockname(
-        &((libuv_server_t *)fixture_server)->listener,
-        (struct sockaddr *)&server_addr, &address_length));
-    struct timeval timeout = {.tv_sec = 2};
-    TEST_ASSERT_EQUAL_INT(0, setsockopt(fixture_client_fd, SOL_SOCKET,
-        SO_RCVTIMEO, &timeout, sizeof(timeout)));
-
-    TEST_ASSERT_EQUAL_INT(0, connect(fixture_client_fd,
-        (struct sockaddr *)&server_addr, sizeof(server_addr)));
-
-    const char request[] = "GET /probe HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n";
-    TEST_ASSERT_EQUAL_INT(sizeof(request) - 1,
-        send(fixture_client_fd, request, sizeof(request) - 1, 0));
-
-    char response[256];
-    size_t total_received = 0;
-    bool status_line_complete = false;
-    while (total_received < sizeof(response) - 1 && !status_line_complete) {
-        ssize_t chunk = recv(fixture_client_fd, response + total_received,
-            (sizeof(response) - 1) - total_received, 0);
-        if (chunk < 0 && errno == EINTR) continue;
-        if (chunk <= 0) {
-            break;
-        }
-        total_received += (size_t)chunk;
-        response[total_received] = '\0';
-        if (strstr(response, "\r\n") != NULL) {
-            status_line_complete = true;
-        }
-    }
-    TEST_ASSERT_TRUE(total_received > 0);
-    TEST_ASSERT_TRUE(status_line_complete);
-    TEST_ASSERT_NOT_NULL(strstr(response, "HTTP/1.1 200"));
+    assert_http_probe_ok();
 }
 
 int main(void) {
