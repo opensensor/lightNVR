@@ -1236,6 +1236,7 @@ static void test_multipart_cancellation_aborts_owned_upload_and_preserves_source
     uint64_t bytes;
     char error[256];
     TEST_ASSERT_EQUAL_INT(STORAGE_S3_MISSING, storage_s3_stat(&target, job.destination_object_key, &bytes, error));
+    TEST_ASSERT_EQUAL_INT(0, storage_s3_abort_upload(&target, job.destination_object_key, original_upload_id, error));
 }
 
 static void test_archive_credentials_require_private_regular_files(void) {
@@ -1958,23 +1959,6 @@ static void test_stalled_archive_writes_renew_lease_until_completion(void) {
     storage_remote_source_t rejected;
     int remote_state = storage_source_remote(id, &rejected);
 
-    if (clients[1] >= 0) {
-        close(clients[1]);
-        clients[1] = -1;
-    }
-    libuv_connection_close(second);
-    uv_run(&loop, UV_RUN_DEFAULT);
-    TEST_ASSERT_EQUAL_INT(0, uv_loop_close(&loop));
-
-    TEST_ASSERT_TRUE(has_lease_after_first);
-    TEST_ASSERT_EQUAL_INT(1, delete_result);
-    TEST_ASSERT_EQUAL_INT(0, deletion_first);
-    TEST_ASSERT_FALSE(close_timer_first_handle);
-    TEST_ASSERT_TRUE(close_timer_first_lease);
-    TEST_ASSERT_TRUE(has_lease_after_second);
-    TEST_ASSERT_EQUAL_INT(0, deletion_second);
-    TEST_ASSERT_EQUAL_INT(STORAGE_SOURCE_DELETING, remote_state);
-
     // The remaining reader may finish even though new readers are excluded.
     TEST_ASSERT_EQUAL_INT(0, fcntl(clients[1], F_SETFL, O_NONBLOCK));
     const size_t capacity = 3145728 + 2048;
@@ -1999,6 +1983,14 @@ static void test_stalled_archive_writes_renew_lease_until_completion(void) {
     close(clients[1]);
     uv_run(&loop, UV_RUN_DEFAULT);
     TEST_ASSERT_EQUAL_INT(0, uv_loop_close(&loop));
+    TEST_ASSERT_TRUE(has_lease_after_first);
+    TEST_ASSERT_EQUAL_INT(1, delete_result);
+    TEST_ASSERT_EQUAL_INT(0, deletion_first);
+    TEST_ASSERT_FALSE(close_timer_first_handle);
+    TEST_ASSERT_TRUE(close_timer_first_lease);
+    TEST_ASSERT_TRUE(has_lease_after_second);
+    TEST_ASSERT_EQUAL_INT(0, deletion_second);
+    TEST_ASSERT_EQUAL_INT(STORAGE_SOURCE_DELETING, remote_state);
     TEST_ASSERT_TRUE(ended);
     char *body = strstr(response, "\r\n\r\n");
     TEST_ASSERT_NOT_NULL(body);
