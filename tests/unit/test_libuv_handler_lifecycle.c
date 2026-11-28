@@ -219,15 +219,30 @@ static void test_tls_request_does_not_start_plain_http(void) {
 static void test_clean_stop_can_restart_on_same_loop(void) {
     tearDown();
     http_server_config_t config = {0};
+    char response[512];
+    ssize_t nread;
     config.bind_ip = "127.0.0.1";
     config.web_root = "/nonexistent-lifecycle-fixture";
     config.max_connections = 8;
     server = (libuv_server_t *)libuv_server_init(&config);
     TEST_ASSERT_NOT_NULL(server);
+    TEST_ASSERT_EQUAL_INT(0, libuv_server_register_handler((http_server_handle_t)server,
+        "/lifecycle", "GET", quick_ok_handler));
     TEST_ASSERT_EQUAL_INT(0, libuv_server_start((http_server_handle_t)server));
     libuv_server_stop((http_server_handle_t)server);
     TEST_ASSERT_EQUAL_INT(0, uv_loop_alive(server->loop));
     TEST_ASSERT_EQUAL_INT(0, libuv_server_start((http_server_handle_t)server));
+    client = open_client_fd_with_timeout(server->port, 1500);
+    TEST_ASSERT_TRUE(client >= 0);
+    write_all_or_fail(client,
+        "GET /lifecycle HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
+    nread = recv_with_timeout(client, response, (int)sizeof(response) - 1, 1500);
+    TEST_ASSERT_TRUE(nread > 0);
+    response[nread] = '\0';
+    TEST_ASSERT_NOT_NULL(strstr(response, "200"));
+    TEST_ASSERT_NOT_NULL(strstr(response, "ok"));
+    close(client);
+    client = -1;
     libuv_server_stop((http_server_handle_t)server);
     TEST_ASSERT_EQUAL_INT(0, uv_loop_alive(server->loop));
     libuv_server_destroy((http_server_handle_t)server);
