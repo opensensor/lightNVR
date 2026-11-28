@@ -232,7 +232,8 @@ test('playback preparation and thumbnails retain their own JSON/media and permis
   const thumbnail=await server.request(`/api/recordings/thumbnail/${ids.playable}/0`,{principal:'viewer'});expect(thumbnail.status).toBe(200);expect(thumbnail.headers.get('content-type')).toBe('image/jpeg');expect(Buffer.from(await thumbnail.arrayBuffer())).toEqual(readFileSync(fixture.thumbnail));
   for(const [route,identity,status] of [[`/api/recordings/thumbnail/${ids.hidden}/0`,viewer,403],[`/api/recordings/thumbnail/${ids.playable}/3`,viewer,400],[`/api/recordings/thumbnail/${ids.playable}/0`,anonymous,401]] as const) {const result=await wire(server,route,identity);expect(result.response.status).toBe(status);safeDenied(result.body,server,fixture);}
   await ok(server,'/api/settings',admin,'POST',{thumbnails_per_recording:1});expect((await wire(server,`/api/recordings/thumbnail/${ids.playable}/1`,viewer)).response.status).toBe(403);
-  expect(validateRecordingPlaybackPreparing({status:'preparing',source:'archive',error:'Preparing archived recording'})).toBe(true);
+  const preparing=await media(server,ids.sibling,viewer,{},'?prepare=1&archive=1&transcode=1');expect(preparing.status).toBe(200);expect(preparing.headers.get('content-type')).toMatch(/^application\/json/);expect(validateRecordingPlaybackPreparing(await preparing.json())).toBe(true);
+  await expect.poll(async()=>{const response=await media(server,ids.sibling,viewer,{},'?prepare=1&archive=1&transcode=1');if(response.status!==200)return false;const body=await response.json();return validateRecordingPlaybackReady(body);}).toBe(true);
   expect(validateRecordingPlaybackReady({status:'preparing'})).toBe(false);expect(validateRecordingPlaybackPreparing({status:'ready'})).toBe(false);
 });
 
