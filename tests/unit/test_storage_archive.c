@@ -884,14 +884,17 @@ static void test_ambiguous_multipart_completion_recovers(void) {
     FILE *file = fopen(source_path, "wb");
     TEST_ASSERT_NOT_NULL(file);
     unsigned char block[65536];
-    unsigned long long expected_checksum = 0;
+    uint64_t expected_checksum = 14695981039346656037ULL;
     uint64_t expected_size = 0;
     for (int i = 0; i < 144; i++) {
         for (size_t j = 0; j < sizeof(block); j++) {
             block[j] = (unsigned char)((i * 131 + (int)j * 17 + (i ^ (int)j)) & 0xff);
         }
         TEST_ASSERT_EQUAL_UINT(sizeof(block), fwrite(block, 1, sizeof(block), file));
-        for (size_t j = 0; j < sizeof(block); j++) expected_checksum += block[j];
+        for (size_t j = 0; j < sizeof(block); j++) {
+            expected_checksum ^= block[j];
+            expected_checksum *= 1099511628211ULL;
+        }
         expected_size += sizeof(block);
     }
     fclose(file);
@@ -908,20 +911,28 @@ static void test_ambiguous_multipart_completion_recovers(void) {
     TEST_ASSERT_EQUAL_STRING("completed", job.state);
     TEST_ASSERT_NOT_EQUAL_INT(0, access(source_path, F_OK));
 
-    char recovered_path[MAX_PATH_LENGTH];
-    TEST_ASSERT_EQUAL_INT(0, storage_s3_download(&target, job.destination_object_key, recovered_path, NULL));
+    char recovered_path[MAX_PATH_LENGTH], error[STORAGE_TARGET_ERROR_MAX] = {0};
+    snprintf(recovered_path, sizeof(recovered_path), "%s/ambiguous-verified.bin", root);
+    TEST_ASSERT_EQUAL_INT(STORAGE_S3_OK,
+        storage_s3_download(&target, job.destination_object_key, recovered_path,
+                            expected_size, job.checksum, NULL, error));
     FILE *recovered = fopen(recovered_path, "rb");
     TEST_ASSERT_NOT_NULL(recovered);
-    unsigned long long actual_checksum = 0;
+    uint64_t actual_checksum = 14695981039346656037ULL;
     uint64_t actual_size = 0;
     while (1) {
         size_t n = fread(block, 1, sizeof(block), recovered);
         actual_size += n;
-        for (size_t j = 0; j < n; j++) actual_checksum += block[j];
+        for (size_t j = 0; j < n; j++) {
+            actual_checksum ^= block[j];
+            actual_checksum *= 1099511628211ULL;
+        }
         if (n < sizeof(block)) break;
     }
+    int read_error = ferror(recovered);
     fclose(recovered);
     unlink(recovered_path);
+    TEST_ASSERT_EQUAL_INT(0, read_error);
     TEST_ASSERT_EQUAL_UINT64(expected_size, actual_size);
     TEST_ASSERT_EQUAL_UINT64(expected_checksum, actual_checksum);
 }
@@ -1520,7 +1531,7 @@ static void test_batch_export_waits_for_verified_archive_source(void) {
         if (!terminal) {
             // Keep draining until terminal (or hard safety cap) before allowing
             // teardown paths to run, to avoid races with detached worker activity.
-            for (int drain = 0; drain < 5000; drain++) {
+            for (int drain = 0; drain < 500; drain++) {
                 (void)storage_source_process_one();
                 json = api(handle_batch_download_status, HTTP_METHOD_GET, path, NULL, NULL, NULL, 200);
                 terminal = strcmp(field(json, "status")->valuestring, "pending") != 0 &&
