@@ -248,13 +248,14 @@ void test_slow_snapshot_releases_its_slot_after_ten_seconds(void) {
     slow_snapshot_thread_started = false;
     close(slow_snapshot_server);
     slow_snapshot_server = -1;
-    http_response_free(&slow_snapshot_connection.response);
-    slow_snapshot_connection_initialized = false;
 
     TEST_ASSERT_EQUAL_INT(1, completed_responses);
     TEST_ASSERT_EQUAL_INT(502, status);
     TEST_ASSERT_GREATER_OR_EQUAL_INT64(9000, elapsed);
     TEST_ASSERT_LESS_THAN_INT64(11000, elapsed);
+
+    http_response_free(&slow_snapshot_connection.response);
+    slow_snapshot_connection_initialized = false;
 
     /* A timed-out request must release its slot so all 32 slots can be used. */
     enum { LIMIT = 32 };
