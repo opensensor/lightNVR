@@ -1706,21 +1706,29 @@ static void test_stalled_archive_writes_renew_lease_until_completion(void) {
     uv_loop_t loop;
     TEST_ASSERT_EQUAL_INT(0, uv_loop_init(&loop));
     libuv_server_t server = {.loop = &loop};
-    int clients[2];
+    int clients[2] = {-1, -1};
+    bool failed = false;
+    const char *failure_message = NULL;
     capture_lease_timers = true;
     libuv_connection_t *first = stalled_archive_connection(&server, &clients[0], id);
     libuv_connection_t *second = stalled_archive_connection(&server, &clients[1], id);
     capture_lease_timers = false;
-    TEST_ASSERT_EQUAL_INT(2, captured_timer_count);
+    if (captured_timer_count != 2) {
+        failed = true;
+        failure_message = "expected two captured lease timers";
+    }
     bool stalled = false;
-    for (int i = 0; i < 5000; i++) {
+    for (int i = 0; i < 5000 && !failed; i++) {
         uv_run(&loop, UV_RUN_NOWAIT);
         stalled = uv_stream_get_write_queue_size((uv_stream_t *)&first->handle) > 0 &&
                   uv_stream_get_write_queue_size((uv_stream_t *)&second->handle) > 0;
         if (stalled) break;
         struct timespec pause = {.tv_nsec = 1000000}; nanosleep(&pause, NULL);
     }
-    TEST_ASSERT_TRUE(stalled);
+    if (!failed && !stalled) {
+        failed = true;
+        failure_message = "expected both archive streams to stall with queued writes";
+    }
     // Advance the database's lease clock without a two-minute wall-clock sleep.
     sql("UPDATE storage_read_leases SET expires_at=0;");
     captured_callbacks[0](captured_timers[0]);
