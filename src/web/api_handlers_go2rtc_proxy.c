@@ -889,6 +889,10 @@ void handle_go2rtc_proxy(const http_request_t *req, http_response_t *res) {
         return;
     }
 
+    // Upstream unsuccessful responses must not retain media lease slots.
+    if (media_lease[0] && (ctx.http_code < 200 || ctx.http_code >= 300))
+        go2rtc_media_policy_release_lease(media_lease);
+
     // Set response
     res->status_code = (int)ctx.http_code;
     if (ctx.content_type[0] != '\0') {
