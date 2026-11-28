@@ -142,8 +142,15 @@ static void test_duplicate_start_is_rejected_without_disrupting_server(void) {
         (struct sockaddr *)&server_addr, sizeof(server_addr)));
 
     const char request[] = "GET /probe HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n";
-    TEST_ASSERT_EQUAL_INT(sizeof(request) - 1,
-        send(fixture_client_fd, request, sizeof(request) - 1, 0));
+    size_t request_len = sizeof(request) - 1;
+    size_t total_sent = 0;
+    while (total_sent < request_len) {
+        ssize_t sent = send(fixture_client_fd, request + total_sent,
+            request_len - total_sent, 0);
+        if (sent < 0 && errno == EINTR) continue;
+        TEST_ASSERT_TRUE(sent > 0);
+        total_sent += (size_t)sent;
+    }
 
     char response[256];
     size_t total_received = 0;
