@@ -645,10 +645,11 @@ static int multipart_upload(const storage_target_t *target, const char *key, FIL
         if (!manifest) result = -1;
         else {
             fputs("<CompleteMultipartUpload>", manifest);
-            for (int i = 0; i < completed; i++) {
-                const cJSON *etag = cJSON_GetArrayItem(parts, i);
+            int part_number = 1;
+            cJSON *etag = NULL;
+            cJSON_ArrayForEach(etag, parts) {
                 if (!cJSON_IsString(etag)) { result = -1; break; }
-                fprintf(manifest, "<Part><PartNumber>%d</PartNumber><ETag>%s</ETag></Part>", i+1, etag->valuestring);
+                fprintf(manifest, "<Part><PartNumber>%d</PartNumber><ETag>%s</ETag></Part>", part_number++, etag->valuestring);
             }
             fputs("</CompleteMultipartUpload>", manifest);
             off_t length = ftello(manifest);
