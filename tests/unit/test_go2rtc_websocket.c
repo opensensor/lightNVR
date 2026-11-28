@@ -101,7 +101,7 @@ typedef struct {
     bool bad_accept;
 } peer_t;
 
-static int tracked_clients[4];
+static int tracked_clients[5];
 static pthread_t tracked_threads[4];
 static bool tracked_thread_started[4];
 static peer_t tracked_peers[4];
@@ -203,6 +203,7 @@ void setUp(void) {
         tracked_thread_started[i] = false;
         memset(&tracked_peers[i], 0, sizeof(tracked_peers[i]));
     }
+    tracked_clients[4] = -1;
     load_default_config(&g_config);
     g_config.web_auth_enabled = false;
     g_config.demo_mode = false;
@@ -243,7 +244,7 @@ void setUp(void) {
     web_port = ntohs(address.sin_port);
 }
 void tearDown(void) {
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 5; i++) {
         if (tracked_clients[i] >= 0) {
             close(tracked_clients[i]);
             tracked_clients[i] = -1;
@@ -320,6 +321,7 @@ void test_four_websockets_relay_media_on_the_web_port_and_close_cleanly(void) {
 void test_websocket_auth_origin_and_query_failures_never_reach_upstream(void) {
     for (int i = 0; i < 5; i++) {
         int client = client_open();
+        tracked_clients[i] = client;
         char origin[64];
         snprintf(origin, sizeof(origin), "http://localhost:%d", web_port);
         if (i == 0) {
@@ -353,6 +355,7 @@ void test_websocket_auth_origin_and_query_failures_never_reach_upstream(void) {
         TEST_ASSERT_EQUAL_INT(1, sscanf(response, "HTTP/1.1 %d", &code));
         TEST_ASSERT_EQUAL_INT(i == 0 ? 401 : (i == 1 || i == 3) ? 403 : 400, code);
         close(client);
+        tracked_clients[i] = -1;
     }
     struct pollfd ready = {.fd = upstream, .events = POLLIN};
     TEST_ASSERT_EQUAL_INT(0, poll(&ready, 1, 0));
