@@ -488,13 +488,14 @@ static int upload_checkpoint(const char *uuid, char id[1024], cJSON **parts, boo
     return result;
 }
 
-static char *upload_query(const char *id, int part) {
+static char *upload_query(const char *id, int part, bool max_parts_one) {
     char *escaped = curl_easy_escape(NULL, id, 0);
     if (!escaped) return NULL;
-    size_t length = strlen(escaped) + 64;
+    size_t length = strlen(escaped) + 96;
     char *query = malloc(length);
     if (query) {
         if (part) snprintf(query, length, "partNumber=%d&uploadId=%s", part, escaped);
+        else if (max_parts_one) snprintf(query, length, "uploadId=%s&max-parts=1", escaped);
         else snprintf(query, length, "uploadId=%s", escaped);
     }
     curl_free(escaped);
@@ -504,7 +505,7 @@ static char *upload_query(const char *id, int part) {
 int storage_s3_abort_upload(const storage_target_t *target, const char *key,
                             const char *id, char error[STORAGE_TARGET_ERROR_MAX]) {
     if (!id || !*id) return 0;
-    char *query = upload_query(id, 0);
+    char *query = upload_query(id, 0, false);
     if (!query) return -1;
     s3_io_t io = {.limit = S3_REPLY_LIMIT};
     int result = request(target, key, query, "DELETE", NULL, 0, NULL, &io, NULL, error);
@@ -515,7 +516,7 @@ int storage_s3_abort_upload(const storage_target_t *target, const char *key,
 int storage_s3_upload_status(const storage_target_t *target, const char *key,
                              const char *id, char error[STORAGE_TARGET_ERROR_MAX]) {
     if (!id || !*id) return STORAGE_S3_ERROR;
-    char *query = upload_query(id, 0);
+    char *query = upload_query(id, 0, true);
     if (!query) return STORAGE_S3_ERROR;
     s3_io_t io = {.limit = S3_REPLY_LIMIT};
     int result = request(target, key, query, "GET", NULL, 0, NULL, &io, NULL, error);
