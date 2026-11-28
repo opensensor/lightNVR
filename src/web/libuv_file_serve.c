@@ -94,7 +94,7 @@ const char *libuv_get_mime_type(const char *path) {
 bool libuv_parse_range_header(const char *range_header, size_t file_size,
                                size_t *start, size_t *end) {
     if (!range_header || !start || !end || file_size == 0 ||
-        strncmp(range_header, "bytes=", 6) != 0) {
+        strncasecmp(range_header, "bytes=", 6) != 0) {
         return false;
     }
 
@@ -420,6 +420,9 @@ static void on_file_stat(uv_fs_t *req) {
 
     char *header_buf = safe_malloc(len);
     if (!header_buf) {
+        // No response headers were sent; close the connection after the file
+        // descriptor closes instead of leaving the request waiting forever.
+        ctx->write_error = true;
         uv_fs_close(ctx->conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
         return;
     }

@@ -10,6 +10,9 @@ static void test_valid_ranges(void) {
     TEST_ASSERT_TRUE(libuv_parse_range_header("bytes=100-199", 1500, &start, &end));
     TEST_ASSERT_EQUAL_UINT(100, start);
     TEST_ASSERT_EQUAL_UINT(199, end);
+    TEST_ASSERT_TRUE(libuv_parse_range_header("BYTES=100-199", 1500, &start, &end));
+    TEST_ASSERT_EQUAL_UINT(100, start);
+    TEST_ASSERT_EQUAL_UINT(199, end);
     TEST_ASSERT_TRUE(libuv_parse_range_header("bytes=-100", 1500, &start, &end));
     TEST_ASSERT_EQUAL_UINT(1400, start);
     TEST_ASSERT_EQUAL_UINT(1499, end);
