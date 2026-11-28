@@ -13,7 +13,7 @@ static bool stop_timer_initialized;
 static bool foreign_async_closed;
 static bool stop_timer_closed;
 
-void setUp(void) {}
+void setUp(void) { load_default_config(&g_config); }
 void tearDown(void) {
     if (loop_initialized) {
         if (foreign_async_initialized && !foreign_async_closed &&
@@ -52,7 +52,6 @@ static void test_stop_preserves_foreign_handle(void) {
     TEST_ASSERT_EQUAL_INT(0, uv_async_init(&loop, &foreign_async, foreign_cb));
     foreign_async_initialized = true;
     foreign_async_closed = false;
-    load_default_config(&g_config);
     http_server_config_t config = {0};
     config.bind_ip = "127.0.0.1";
     config.web_root = "/nonexistent-shared-loop-fixture";
