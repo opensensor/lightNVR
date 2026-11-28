@@ -215,15 +215,16 @@ static bool observe_no_client_ws_data_until_disconnect(int fd, int timeout_ms) {
         }
         if (rc == 0) return false; /* timed out */
 
-        if (pfd.revents & (POLLERR | POLLHUP)) return true; /* disconnected without data */
         if (pfd.revents & POLLIN) {
             unsigned char byte;
             ssize_t n = recv(fd, &byte, 1, MSG_DONTWAIT);
             if (n == 0) return true;      /* clean disconnect */
             if (n > 0) return false;      /* unexpected forwarded data */
             if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) continue;
+            if (errno == ECONNRESET || errno == ENOTCONN) return true;
             return false;
         }
+        if (pfd.revents & (POLLERR | POLLHUP)) return true; /* disconnected without data */
     }
 }
 
@@ -531,10 +532,13 @@ void test_websocket_auth_origin_and_query_failures_never_reach_upstream(void) {
         char origin[64];
         snprintf(origin, sizeof(origin), "http://localhost:%d", web_port);
         if (i == 0) {
-            send_upgrade(client, 0, "https://attacker.invalid", false);
+            g_config.web_auth_enabled = true;
+            send_upgrade(client, 0, origin, false);
         } else if (i == 1) {
+            g_config.web_auth_enabled = false;
             send_upgrade(client, 0, "https://attacker.invalid", false);
         } else if (i == 2) {
+            g_config.web_auth_enabled = false;
             char request[1024];
             snprintf(request, sizeof(request), "GET /go2rtc/api/ws?src=Camera%%200&src=other HTTP/1.1\r\n"
                 "Host: localhost:%d\r\nOrigin: %s\r\n%s\r\n", web_port, origin, upgrade_headers);
@@ -556,7 +560,7 @@ void test_websocket_auth_origin_and_query_failures_never_reach_upstream(void) {
         TEST_ASSERT_TRUE(read_headers(client, response, sizeof(response)));
         int code;
         TEST_ASSERT_EQUAL_INT(1, sscanf(response, "HTTP/1.1 %d", &code));
-        TEST_ASSERT_EQUAL_INT((i == 0 || i == 1 || i == 3) ? 403 : 400, code);
+        TEST_ASSERT_EQUAL_INT(i == 0 ? 401 : (i == 1 || i == 3) ? 403 : 400, code);
         close(client);
         tracked_clients[i] = -1;
     }
