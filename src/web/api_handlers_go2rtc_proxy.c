@@ -831,19 +831,13 @@ void handle_go2rtc_proxy(const http_request_t *req, http_response_t *res) {
         snprintf(header, sizeof(header), "X-LightNVR-Media-Lease: %s", media_lease);
         tmp = curl_slist_append(headers, header);
         if (!tmp) {
-            curl_slist_free_all(headers);
-            curl_easy_cleanup(curl);
-            sem_post(g_proxy_semaphore);
-            return send_json_error(req, 500, "out_of_memory", "failed to build upstream headers");
+            goto header_allocation_failed;
         }
         headers = tmp;
 
         tmp = curl_slist_append(headers, httpd_secure_cookies() ? "X-LightNVR-Media-TLS: 1" : "X-LightNVR-Media-TLS: 0");
         if (!tmp) {
-            curl_slist_free_all(headers);
-            curl_easy_cleanup(curl);
-            sem_post(g_proxy_semaphore);
-            return send_json_error(req, 500, "out_of_memory", "failed to build upstream headers");
+            goto header_allocation_failed;
         }
         headers = tmp;
     }
@@ -863,7 +857,9 @@ void handle_go2rtc_proxy(const http_request_t *req, http_response_t *res) {
     if (req->content_type[0] != '\0') {
         char ct_header[256];
         snprintf(ct_header, sizeof(ct_header), "Content-Type: %s", req->content_type);
-        headers = curl_slist_append(headers, ct_header);
+        struct curl_slist *tmp = curl_slist_append(headers, ct_header);
+        if (!tmp) goto header_allocation_failed;
+        headers = tmp;
     }
     if (headers) {
         curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
@@ -943,4 +939,12 @@ void handle_go2rtc_proxy(const http_request_t *req, http_response_t *res) {
     log_debug("go2rtc proxy: %s %s -> %ld (%zu bytes, type: %s)",
               req->method_str, req->path, ctx.http_code, ctx.buffer_size,
               ctx.content_type[0] ? ctx.content_type : "unknown");
+    return;
+
+header_allocation_failed:
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
+    go2rtc_media_policy_release_lease(media_lease);
+    sem_post(g_proxy_semaphore);
+    http_response_set_json_error(res, 503, "Proxy error: failed to build upstream headers");
 }
