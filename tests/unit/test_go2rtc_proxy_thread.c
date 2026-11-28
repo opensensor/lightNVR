@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include <arpa/inet.h>
+#include <stdint.h>
 #include <pthread.h>
 #include <poll.h>
 #include <stdio.h>
@@ -95,14 +96,14 @@ CURLcode __wrap_curl_easy_perform(CURL *curl) {
     return CURLE_COULDNT_CONNECT;
 }
 
-static long monotonic_ms(void) {
+static int64_t monotonic_ms(void) {
     struct timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
-    return now.tv_sec * 1000L + now.tv_nsec / 1000000L;
+    return (int64_t)now.tv_sec * 1000 + (int64_t)now.tv_nsec / 1000000;
 }
 
-static void pump_responses(int expected, long timeout_ms) {
-    long started = monotonic_ms();
+static void pump_responses(int expected, int64_t timeout_ms) {
+    int64_t started = monotonic_ms();
     while (completed_responses < expected && monotonic_ms() - started < timeout_ms) {
         uv_run(&loop, UV_RUN_NOWAIT);
         struct timespec pause = { .tv_nsec = 10000000L };
