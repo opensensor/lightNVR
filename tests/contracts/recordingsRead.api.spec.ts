@@ -277,9 +277,11 @@ test('related mutation boundaries reject historical and mixed unauthorized recor
   const db=new DatabaseSync(path.join(server.directory,'lightnvr.db'));
   const state=()=>db.prepare('SELECT id,camera_uuid,protected,file_path FROM recordings WHERE id=?').get(historical.hidden);
   try {
-    const before=state();const hash=createHash('sha256').update(readFileSync(fixture.source)).digest('hex');
+    const before=state();
+    const targetPath=path.isAbsolute(before.file_path)?before.file_path:path.join(fixture.directory,before.file_path);
+    const hash=createHash('sha256').update(readFileSync(targetPath)).digest('hex');
     for(const [route,method,body] of [[`/api/recordings/${historical.hidden}/protect`,'PUT',{protected:true}],[`/api/recordings/${historical.hidden}`,'DELETE',undefined],[`/api/recordings/download/${historical.hidden}`,'GET',undefined]] as const) {
-      const denied=await wire(server,route,actor,method,body);expect(denied.response.status).toBe(403);safeDenied(denied.body,server,fixture);expect(state()).toEqual(before);expect(existsSync(fixture.source)).toBe(true);expect(createHash('sha256').update(readFileSync(fixture.source)).digest('hex')).toBe(hash);
+      const denied=await wire(server,route,actor,method,body);expect(denied.response.status).toBe(403);safeDenied(denied.body,server,fixture);expect(state()).toEqual(before);expect(existsSync(targetPath)).toBe(true);expect(createHash('sha256').update(readFileSync(targetPath)).digest('hex')).toBe(hash);
     }
     const batchIds=[ids.playable,ids.hidden];
     const batchRows=batchIds.map(id=>db.prepare('SELECT id,camera_uuid,protected,file_path FROM recordings WHERE id=?').get(id));
