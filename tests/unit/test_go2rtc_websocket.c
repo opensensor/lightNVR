@@ -300,11 +300,14 @@ void test_websocket_auth_origin_and_query_failures_never_reach_upstream(void) {
         } else if (i == 1) {
             g_config.web_auth_enabled = false;
             send_upgrade(client, 0, "https://attacker.invalid", false);
+        } else if (i == 2) {
+            g_config.web_auth_enabled = false;
+            send_upgrade(client, 0, origin, true);
         } else {
             char request[1024];
-            snprintf(request, sizeof(request), "GET /go2rtc/api/ws?src=Camera%%200%s HTTP/1.1\r\n"
+            snprintf(request, sizeof(request), "GET /go2rtc/api/ws?src=Camera%%200 HTTP/1.1\r\n"
                 "Host: localhost:%d\r\nConnection: close\r\n\r\n",
-                i == 2 ? "&src=other" : "", web_port);
+                web_port);
             TEST_ASSERT_TRUE(send_all(client, request, strlen(request)));
         }
         char response[2048];
