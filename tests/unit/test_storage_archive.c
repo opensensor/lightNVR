@@ -1833,6 +1833,12 @@ static void test_stalled_archive_writes_renew_lease_until_completion(void) {
         else TEST_ASSERT_TRUE(errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR);
         struct timespec pause = {.tv_nsec = 1000000}; nanosleep(&pause, NULL);
     }
+    if (!ended) {
+        // Wake the server side of the remaining stream before draining libuv.
+        // Its connection may already have been released, so use the owned
+        // client socket instead of dereferencing the server pointer.
+        shutdown(clients[1], SHUT_RDWR);
+    }
     close(clients[1]);
     uv_run(&loop, UV_RUN_DEFAULT);
     TEST_ASSERT_EQUAL_INT(0, uv_loop_close(&loop));
