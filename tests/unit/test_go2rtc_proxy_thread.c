@@ -259,7 +259,7 @@ void test_both_proxy_handlers_never_follow_unauthorized_redirects(void) {
         int status = connection.response.status_code;
         http_response_free(&connection.response);
         TEST_ASSERT_EQUAL_INT(1, upstream_requests);
-        TEST_ASSERT_EQUAL_INT(302, status);
+        TEST_ASSERT_EQUAL_INT(502, status);
         TEST_ASSERT_NOT_NULL(strstr(upstream_request, yaml_validate_is_available()
             ? "GET /foo/api/streams HTTP/1.1" : "GET /go2rtc/api/streams HTTP/1.1"));
     }

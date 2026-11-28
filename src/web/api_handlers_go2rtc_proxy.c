@@ -815,6 +815,12 @@ void handle_go2rtc_proxy(const http_request_t *req, http_response_t *res) {
         http_response_set_json_error(res, 502, GO2RTC_MEDIA_POLICY_ERROR);
         return;
     }
+    if (ctx.http_code >= 300 && ctx.http_code < 400) {
+        free(ctx.buffer);
+        http_response_set_json_error(res, 502,
+            "Proxy error: upstream redirect is not supported");
+        return;
+    }
 
     // Set response
     res->status_code = (int)ctx.http_code;
