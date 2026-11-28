@@ -2193,7 +2193,10 @@ static void test_stalled_archive_writes_renew_lease_until_completion(void) {
             : "expected both archive streams to stall with queued writes");
     }
     // Advance the database's lease clock without a two-minute wall-clock sleep.
-    sql("UPDATE storage_read_leases SET expires_at=0;");
+    char *lease_update1_err = NULL;
+    bool lease_update1_ok =
+        sqlite3_exec(db, "UPDATE storage_read_leases SET expires_at=0;", NULL, NULL, &lease_update1_err) == SQLITE_OK;
+    if (lease_update1_err != NULL) sqlite3_free(lease_update1_err);
     captured_callbacks[0](captured_timers[0]);
     bool has_lease_after_first = storage_source_has_lease(id);
     int delete_result = storage_recording_delete(id, "delete during stalled playback", NULL);
@@ -2207,7 +2210,10 @@ static void test_stalled_archive_writes_renew_lease_until_completion(void) {
     }
     libuv_connection_close(first);
     for (int i = 0; i < 10; i++) uv_run(&loop, UV_RUN_NOWAIT);
-    sql("UPDATE storage_read_leases SET expires_at=0;");
+    char *lease_update2_err = NULL;
+    bool lease_update2_ok =
+        sqlite3_exec(db, "UPDATE storage_read_leases SET expires_at=0;", NULL, NULL, &lease_update2_err) == SQLITE_OK;
+    if (lease_update2_err != NULL) sqlite3_free(lease_update2_err);
     captured_callbacks[1](captured_timers[1]);
     bool has_lease_after_second = storage_source_has_lease(id);
     int deletion_second = storage_deletion_process_one();
