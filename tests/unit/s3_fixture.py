@@ -57,8 +57,11 @@ class S3Handler(BaseHTTPRequestHandler):
         if payload_hash != 'UNSIGNED-PAYLOAD' and payload_hash != hashlib.sha256(body).hexdigest():
             return False
         url = urlsplit(self.path)
-        query = '&'.join(f'{quote(k, safe="~")}={quote(v, safe="~")}'
-                         for k, v in sorted(parse_qsl(url.query, keep_blank_values=True)))
+        encoded_query_pairs = [
+            (quote(k, safe="~"), quote(v, safe="~"))
+            for k, v in parse_qsl(url.query, keep_blank_values=True)
+        ]
+        query = '&'.join(f'{k}={v}' for k, v in sorted(encoded_query_pairs))
         canonical_headers = ''.join(f'{key}:{" ".join(self.headers.get(key, "").split())}\n'
                                     for key in match[3].split(';'))
         canonical = '\n'.join([self.command, url.path, query, canonical_headers, match[3], payload_hash])
