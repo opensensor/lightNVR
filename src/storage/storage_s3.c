@@ -33,6 +33,7 @@
 
 #define S3_REPLY_LIMIT (128U * 1024U)
 #define S3_SECRET_LIMIT 8192
+#define S3_ERROR_BODY_LIMIT (64U * 1024U)
 
 typedef struct {
     char access[256];
@@ -238,7 +239,14 @@ static size_t receive_bytes(char *buffer, size_t size, size_t count, void *conte
     s3_io_t *io = context;
     if (size && count > SIZE_MAX / size) return 0;
     size_t length = size * count;
-    if (io->status < 200 || io->status >= 300) return length; /* never persist error documents as video */
+    if (io->status < 200 || io->status >= 300) {
+        if (io->bytes > S3_ERROR_BODY_LIMIT || length > S3_ERROR_BODY_LIMIT - io->bytes) {
+            io->limit_exceeded = true;
+            return 0;
+        }
+        io->bytes += length;
+        return length; /* never persist error documents as video */
+    }
     if (io->bytes > io->limit || length > io->limit - io->bytes) {
         io->limit_exceeded = true;
         return 0;
