@@ -1236,8 +1236,6 @@ static void test_multipart_cancellation_aborts_owned_upload_and_preserves_source
     uint64_t bytes;
     char error[256];
     TEST_ASSERT_EQUAL_INT(STORAGE_S3_MISSING, storage_s3_stat(&target, job.destination_object_key, &bytes, error));
-    /* Assert cancellation aborted the original multipart upload (not just DB/object state). */
-    TEST_ASSERT_EQUAL_INT(STORAGE_S3_MISSING, storage_s3_stat(&target, job.destination_object_key, &bytes, error));
     /* Best-effort fixture cleanup only; do not use abort success as proof that cancellation cleaned up multipart state. */
     (void)storage_s3_abort_upload(&target, job.destination_object_key, original_upload_id, error);
 }
@@ -1418,7 +1416,8 @@ static void test_lifecycle_attestation_rejects_stale_mismatched_and_unsafe_files
     }
     const char *unsafe[] = {"garbage", "<WrongRoot/>",
         "<LifecycleConfiguration><Rule><Status>Enabled</Status><Expiration><Days>1</Days></Expiration></Rule></LifecycleConfiguration>",
-        "<LifecycleConfiguration><Rule><Status>Enabled</Status><AbortIncompleteMultipartUpload><DaysAfterInitiation>8</DaysAfterInitiation></AbortIncompleteMultipartUpload></Rule></LifecycleConfiguration>"};
+        "<LifecycleConfiguration><Rule><Status>Enabled</Status><AbortIncompleteMultipartUpload><DaysAfterInitiation>8</DaysAfterInitiation></AbortIncompleteMultipartUpload></Rule></LifecycleConfiguration>",
+        "<LifecycleConfiguration><Rule><Status>Enabled</Status><AbortIncompleteMultipartUpload><DaysAfterInitiation>0</DaysAfterInitiation></AbortIncompleteMultipartUpload></Rule></LifecycleConfiguration>"};
     for (size_t i = 0; i < sizeof(unsafe)/sizeof(unsafe[0]); i++) {
         write_lifecycle_attestation(&target, time(NULL), unsafe[i], path);
         int result = storage_s3_probe(&target, false);
@@ -1909,14 +1908,9 @@ static void test_stalled_archive_writes_renew_lease_until_completion(void) {
     libuv_connection_t *first = stalled_archive_connection(&server, &clients[0], id);
     libuv_connection_t *second = stalled_archive_connection(&server, &clients[1], id);
     capture_lease_timers = false;
-    bool first_alive = first != NULL;
-    bool second_alive = second != NULL;
     bool stalled = false;
     if (captured_timer_count == 2) for (int i = 0; i < 5000; i++) {
         uv_run(&loop, UV_RUN_NOWAIT);
-        if (!first_alive || uv_is_closing((uv_handle_t *)&first->handle)) first_alive = false;
-        if (!second_alive || uv_is_closing((uv_handle_t *)&second->handle)) second_alive = false;
-        if (!first_alive || !second_alive) break;
         stalled = uv_stream_get_write_queue_size((uv_stream_t *)&first->handle) > 0 &&
                   uv_stream_get_write_queue_size((uv_stream_t *)&second->handle) > 0;
         if (stalled) break;
@@ -1924,8 +1918,8 @@ static void test_stalled_archive_writes_renew_lease_until_completion(void) {
     }
     if (captured_timer_count != 2 || !stalled) {
         for (int i = 0; i < 2; i++) close(clients[i]);
-        if (first_alive) libuv_connection_close(first);
-        if (second_alive) libuv_connection_close(second);
+        libuv_connection_close(first);
+        libuv_connection_close(second);
         uv_run(&loop, UV_RUN_DEFAULT);
         TEST_ASSERT_EQUAL_INT(0, uv_loop_close(&loop));
         TEST_FAIL_MESSAGE(captured_timer_count != 2
