@@ -193,15 +193,17 @@ static void *upstream_peer(void *arg) {
         send_all(peer->fd, media_response, sizeof(media_response));
     }
     // Keep the socket alive until its consumer or the server disconnects.
-    // Ignore socket receive timeouts here so idle peers are not closed
-    // prematurely during slower test runs.
+    // Allow a few receive timeouts on slow test hosts, but keep teardown bounded.
     char byte;
-    for (;;) {
-        ssize_t n = recv(peer->fd, &byte, 1, MSG_PEEK);
+    for (int timeouts = 0; timeouts < 5;) {
+        ssize_t n = recv(peer->fd, &byte, 1, 0);
         if (n == 0) break; // remote closed
-        if (n > 0) continue; // still connected; keep waiting
+        if (n > 0) continue;
         if (errno == EINTR) continue;
-        if (errno == EAGAIN || errno == EWOULDBLOCK) continue;
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            timeouts++;
+            continue;
+        }
         break; // other socket error
     }
 done:
@@ -215,8 +217,6 @@ void setUp(void) {
         memset(&tracked_peers[i], 0, sizeof(tracked_peers[i]));
     }
     tracked_clients[4] = -1;
-    tracked_thread_started[4] = false;
-    memset(&tracked_peers[4], 0, sizeof(tracked_peers[4]));
     load_default_config(&g_config);
     g_config.web_auth_enabled = false;
     g_config.demo_mode = false;
