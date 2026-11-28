@@ -164,9 +164,9 @@ int libuv_serve_file(libuv_connection_t *conn, const char *path,
         safe_strcpy(ctx->extra_headers, extra_headers, sizeof(ctx->extra_headers), 0);
     }
     
-    // Check for Range header
+    // Check for Range header (HTTP: only GET supports Range processing)
     const char *range_header = http_request_get_header(&conn->request, "Range");
-    if (range_header) {
+    if (range_header && conn->request.method == HTTP_GET) {
         ctx->has_range = true;
         // Range will be parsed after we know the file size
     }
