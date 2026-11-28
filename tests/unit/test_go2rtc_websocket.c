@@ -174,9 +174,12 @@ static void *upstream_peer(void *arg) {
         send_all(peer->fd, invalid, sizeof(invalid) - 1);
         goto done;
     }
-    // End-to-end relay coverage only: TCP does not guarantee read boundaries.
-    send_all(peer->fd, upgrade_response, sizeof(upgrade_response) - 1);
-    send_all(peer->fd, media_response, sizeof(media_response));
+    // Send the upgrade and first frame together; the client must handle
+    // coalescing or splitting because TCP does not preserve write boundaries.
+    unsigned char combined[sizeof(upgrade_response) - 1 + sizeof(media_response)];
+    memcpy(combined, upgrade_response, sizeof(upgrade_response) - 1);
+    memcpy(combined + sizeof(upgrade_response) - 1, media_response, sizeof(media_response));
+    if (!send_all(peer->fd, combined, sizeof(combined))) goto done;
     unsigned char frame[sizeof(mse_request)];
     if (read_all(peer->fd, frame, sizeof(frame))) {
         peer->received_mse = memcmp(frame, mse_request, sizeof(frame)) == 0;
