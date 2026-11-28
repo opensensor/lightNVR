@@ -1,4 +1,4 @@
-/* Real libuv worker/connection ownership regressions. All waits are finite. */
+/* Real libuv worker/connection ownership regressions. Condition-variable waits in this test are bounded by explicit timeouts. */
 #define _POSIX_C_SOURCE 200809L
 #include <arpa/inet.h>
 #include <errno.h>
