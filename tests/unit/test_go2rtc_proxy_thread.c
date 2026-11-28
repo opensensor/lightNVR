@@ -148,8 +148,21 @@ void test_proxy_rejects_overflow_and_recovers_slots_after_completion(void) {
 }
 
 static void *slow_snapshot_peer(void *arg) {
+    struct pollfd pfd = {
+        .fd = *(int *)arg,
+        .events = POLLIN
+    };
+    if (poll(&pfd, 1, 3000) <= 0) return NULL;
+
     int client = accept(*(int *)arg, NULL, NULL);
     if (client < 0) return NULL;
+
+    struct timeval rcv_timeout = {
+        .tv_sec = 3,
+        .tv_usec = 0
+    };
+    (void)setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &rcv_timeout, sizeof(rcv_timeout));
+
     char request[2048];
     (void)read(client, request, sizeof(request));
     struct timespec delay = { .tv_sec = 11 };
