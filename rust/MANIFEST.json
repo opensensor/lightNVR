@@ -619,9 +619,9 @@
     },
     {
       "c": "src/storage/storage_s3.c",
-      "c_sha256": "fc2b6239bb238ab8a458846237ce5ba25b423aceceda67ed3f2aa2bd78032f01",
+      "c_sha256": "28e07b9e5d6e5e51e01512fc0bdeab65b5d38968e280c7c05a20c79b5da48f11",
       "rust": "generated/src__storage__storage_s3.rs",
-      "rust_sha256": "1651ac08c462c57f982932f57c2bce3b786c6e23029bbf39cc02c0d44ea137b7",
+      "rust_sha256": "749857eac544c95981df533fd8ff7762986944a99782f368a1851062d3986145",
       "adapted": false
     },
     {
