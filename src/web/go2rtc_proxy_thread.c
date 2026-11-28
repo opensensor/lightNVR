@@ -84,6 +84,7 @@ typedef struct proxy_thread_ctx {
     // Response populated by the worker thread
     char *response_buffer;      // malloc'd body, may be NULL
     size_t response_size;
+    size_t response_capacity;
     char response_content_type[256];
     long http_code;
     bool error;
@@ -130,13 +131,31 @@ static size_t proxy_write_cb(void *contents, size_t size, size_t nmemb, void *us
         return 0;
     }
 
-    char *new_buf = realloc(ctx->response_buffer, ctx->response_size + total);
-    if (!new_buf) {
-        log_error("go2rtc proxy thread: Response buffer realloc failed");
-        ctx->error = true;
-        return 0;
+    size_t required = ctx->response_size + total;
+    if (required > ctx->response_capacity) {
+        size_t new_cap = ctx->response_capacity ? ctx->response_capacity : 1024;
+        while (new_cap < required) {
+            if (new_cap >= PROXY_MAX_RESPONSE_BYTES / 2) {
+                new_cap = PROXY_MAX_RESPONSE_BYTES;
+                break;
+            }
+            new_cap *= 2;
+        }
+        if (new_cap < required || new_cap > PROXY_MAX_RESPONSE_BYTES) {
+            log_warn("go2rtc proxy thread: upstream response exceeds buffer limit");
+            ctx->error = true;
+            return 0;
+        }
+        char *new_buf = realloc(ctx->response_buffer, new_cap);
+        if (!new_buf) {
+            log_error("go2rtc proxy thread: Response buffer realloc failed");
+            ctx->error = true;
+            return 0;
+        }
+        ctx->response_buffer = new_buf;
+        ctx->response_capacity = new_cap;
     }
-    ctx->response_buffer = new_buf;
+
     memcpy(ctx->response_buffer + ctx->response_size, contents, total);
     ctx->response_size += total;
     return total;
@@ -316,6 +335,9 @@ static void *proxy_worker_thread(void *arg) {
         if (ctx->body && ctx->body_len > 0) {
             curl_easy_setopt(curl, CURLOPT_POSTFIELDS, ctx->body);
             curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)ctx->body_len);
+        } else {
+            curl_easy_setopt(curl, CURLOPT_POSTFIELDS, "");
+            curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, 0L);
         }
     } else if (strcmp(ctx->method, "PUT") == 0) {
         curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "PUT");
