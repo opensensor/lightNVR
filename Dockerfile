@@ -255,7 +255,7 @@ ARG GIT_COMMIT
 RUN mkdir -p /usr/lib/pkgconfig && \
     case "$TARGETARCH/$TARGETVARIANT" in \
         amd64/) LIB_DIR="/usr/lib/x86_64-linux-gnu"; MBEDTLS_PACKAGE=libmbedtls-dev ;; \
-        arm64/|arm64/v8) LIB_DIR="/usr/lib/aarch64-linux-gnu"; MBEDTLS_PACKAGE=libmbedtls-dev ;; \
+        arm64/*) LIB_DIR="/usr/lib/aarch64-linux-gnu"; MBEDTLS_PACKAGE=libmbedtls-dev ;; \
         arm/v7) LIB_DIR="/usr/lib/arm-linux-gnueabihf"; MBEDTLS_PACKAGE=libmbedtls-dev; \
                 DPKG_ADMINDIR="--admindir=/opt/target-sysroot/var/lib/dpkg" ;; \
         *) echo "Unsupported target architecture: $TARGETARCH/$TARGETVARIANT"; exit 1 ;; \
@@ -275,7 +275,7 @@ RUN mkdir -p /bin /etc/lightnvr/go2rtc && \
     GOTOOLCHAIN=auto go mod tidy && \
     case "$TARGETARCH/$TARGETVARIANT" in \
       amd64/) GOARCH=amd64; GOARM= ;; \
-      arm64/) GOARCH=arm64; GOARM= ;; \
+      arm64/*) GOARCH=arm64; GOARM= ;; \
       arm/v7) GOARCH=arm; GOARM=7 ;; \
       *) echo "Unsupported target architecture: $TARGETARCH/$TARGETVARIANT"; exit 1 ;; \
     esac && \
@@ -334,7 +334,7 @@ RUN mkdir -p /etc/lightnvr /var/lib/lightnvr/data /var/log/lightnvr /var/run/lig
     # Determine architecture-specific pkgconfig path
     case "$TARGETARCH/$TARGETVARIANT" in \
         amd64/) PKG_CONFIG_ARCH_PATH="/usr/lib/x86_64-linux-gnu/pkgconfig"; PKG_CONFIG_SYSROOT=""; TOOLCHAIN_FILE="" ;; \
-        arm64/) PKG_CONFIG_ARCH_PATH="/usr/lib/aarch64-linux-gnu/pkgconfig"; PKG_CONFIG_SYSROOT=""; TOOLCHAIN_FILE="" ;; \
+        arm64/*) PKG_CONFIG_ARCH_PATH="/usr/lib/aarch64-linux-gnu/pkgconfig"; PKG_CONFIG_SYSROOT=""; TOOLCHAIN_FILE="" ;; \
         arm/v7) PKG_CONFIG_ARCH_PATH="/opt/target-sysroot/usr/lib/arm-linux-gnueabihf/pkgconfig"; \
                 PKG_CONFIG_SYSROOT="/opt/target-sysroot"; \
                 TOOLCHAIN_FILE="/opt/cmake/toolchains/armv7-linux-gnueabihf.cmake" ;; \
