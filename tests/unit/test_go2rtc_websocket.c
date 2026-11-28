@@ -196,6 +196,38 @@ static int client_open(void) {
     TEST_ASSERT_EQUAL_INT(0, rc);
     return fd;
 }
+static bool observe_no_client_ws_data_until_disconnect(int fd, int timeout_ms) {
+    struct timespec start, now;
+    if (clock_gettime(CLOCK_MONOTONIC, &start) != 0) return false;
+
+    for (;;) {
+        if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) return false;
+        int elapsed_ms = (int)((now.tv_sec - start.tv_sec) * 1000 +
+            (now.tv_nsec - start.tv_nsec) / 1000000);
+        int remaining_ms = timeout_ms - elapsed_ms;
+        if (remaining_ms <= 0) return false; /* timed out waiting for disconnect */
+
+        struct pollfd pfd = {.fd = fd, .events = POLLIN | POLLHUP | POLLERR};
+        int rc = poll(&pfd, 1, remaining_ms);
+        if (rc < 0) {
+            if (errno == EINTR) continue;
+            return false;
+        }
+        if (rc == 0) return false; /* timed out */
+
+        if (pfd.revents & POLLIN) {
+            unsigned char byte;
+            ssize_t n = recv(fd, &byte, 1, MSG_DONTWAIT);
+            if (n == 0) return true;      /* clean disconnect */
+            if (n > 0) return false;      /* unexpected forwarded data */
+            if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) continue;
+            if (errno == ECONNRESET || errno == ENOTCONN) return true;
+            return false;
+        }
+        if (pfd.revents & (POLLERR | POLLHUP)) return true; /* disconnected without data */
+    }
+}
+
 static void *upstream_peer(void *arg) {
     peer_t *peer = arg;
     struct pollfd ready = {.fd = upstream, .events = POLLIN};
@@ -208,11 +240,8 @@ static void *upstream_peer(void *arg) {
     if (peer->status != 101) {
         const char error[] = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n";
         peer->sent_configured_response = send_all(peer->fd, error, sizeof(error) - 1);
-        struct pollfd ready = {.fd = peer->fd, .events = POLLIN};
-        if (poll(&ready, 1, 200) > 0 && (ready.revents & POLLIN)) {
-            unsigned char byte;
-            peer->observed_client_ws_data_after_reject = recv(peer->fd, &byte, 1, MSG_DONTWAIT) > 0;
-        }
+        peer->observed_client_ws_data_after_reject =
+            !observe_no_client_ws_data_until_disconnect(peer->fd, 3000);
         goto done;
     }
     if (peer->omit_media_ack) {
@@ -221,11 +250,8 @@ static void *upstream_peer(void *arg) {
             "Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n";
         peer->sent_configured_response = send_all(peer->fd, unsupported, sizeof(unsupported) - 1);
         send_all(peer->fd, media_response, sizeof(media_response));
-        struct pollfd ready = {.fd = peer->fd, .events = POLLIN};
-        if (poll(&ready, 1, 200) > 0 && (ready.revents & POLLIN)) {
-            unsigned char byte;
-            peer->observed_client_ws_data_after_reject = recv(peer->fd, &byte, 1, MSG_DONTWAIT) > 0;
-        }
+        peer->observed_client_ws_data_after_reject =
+            !observe_no_client_ws_data_until_disconnect(peer->fd, 3000);
         goto done;
     }
     if (peer->bad_accept) {
@@ -233,11 +259,8 @@ static void *upstream_peer(void *arg) {
             "Upgrade: websocket\r\nConnection: Upgrade\r\n"
             "Sec-WebSocket-Accept: invalid\r\nX-LightNVR-Media-Policy: 1\r\n\r\n";
         peer->sent_configured_response = send_all(peer->fd, invalid, sizeof(invalid) - 1);
-        struct pollfd ready = {.fd = peer->fd, .events = POLLIN};
-        if (poll(&ready, 1, 200) > 0 && (ready.revents & POLLIN)) {
-            unsigned char byte;
-            peer->observed_client_ws_data_after_reject = recv(peer->fd, &byte, 1, MSG_DONTWAIT) > 0;
-        }
+        peer->observed_client_ws_data_after_reject =
+            !observe_no_client_ws_data_until_disconnect(peer->fd, 3000);
         goto done;
     }
     if (peer->split_upgrade) {
