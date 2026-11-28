@@ -91,6 +91,7 @@ unsafe extern "C" {
         data: *const ::core::ffi::c_char,
     ) -> *mut curl_slist;
     unsafe fn curl_slist_free_all(list: *mut curl_slist);
+    unsafe fn curl_easy_strerror(error: CURLcode) -> *const ::core::ffi::c_char;
     unsafe fn curl_easy_init() -> *mut ::core::ffi::c_void;
     unsafe fn curl_easy_setopt(curl: *mut ::core::ffi::c_void, option: CURLoption, ...)
     -> CURLcode;
@@ -462,6 +463,7 @@ pub struct s3_io_t {
     pub digest: *mut mbedtls_sha256_context,
     pub bytes: uint64_t,
     pub limit: uint64_t,
+    pub limit_exceeded: bool,
     pub control: *const storage_transfer_control_t,
     pub status: ::core::ffi::c_long,
     pub etag: [::core::ffi::c_char; 192],
@@ -1069,11 +1071,12 @@ impl C2Rust_Unnamed_0 {
     pub const _ISpunct: Self = Self(4);
     pub const _ISalnum: Self = Self(8);
 }
-pub const EINVAL: ::core::ffi::c_int = 22 as ::core::ffi::c_int;
+pub const PATH_MAX: ::core::ffi::c_int = 4096 as ::core::ffi::c_int;
 pub const SIZE_MAX: ::core::ffi::c_ulong = 18446744073709551615 as ::core::ffi::c_ulong;
 pub const MAX_PATH_LENGTH: ::core::ffi::c_int = 512 as ::core::ffi::c_int;
 pub const STORAGE_TARGET_ERROR_MAX: ::core::ffi::c_int = 256 as ::core::ffi::c_int;
 pub const __O_CLOEXEC: ::core::ffi::c_int = 0o2000000 as ::core::ffi::c_int;
+pub const EINVAL: ::core::ffi::c_int = 22 as ::core::ffi::c_int;
 pub const __S_IFMT: ::core::ffi::c_int = 0o170000 as ::core::ffi::c_int;
 pub const O_RDONLY: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
 pub const O_WRONLY: ::core::ffi::c_int = 0o1 as ::core::ffi::c_int;
@@ -1160,6 +1163,8 @@ pub const SQLITE_DONE: ::core::ffi::c_int = 101 as ::core::ffi::c_int;
 pub const S3_REPLY_LIMIT: ::core::ffi::c_uint =
     (128 as ::core::ffi::c_uint).wrapping_mul(1024 as ::core::ffi::c_uint);
 pub const S3_SECRET_LIMIT: ::core::ffi::c_int = 8192 as ::core::ffi::c_int;
+pub const S3_ERROR_BODY_LIMIT: ::core::ffi::c_uint =
+    (64 as ::core::ffi::c_uint).wrapping_mul(1024 as ::core::ffi::c_uint);
 unsafe extern "C" fn error_set(
     mut error: *mut ::core::ffi::c_char,
     mut message: *const ::core::ffi::c_char,
@@ -1750,11 +1755,20 @@ unsafe extern "C" fn receive_bytes(
     }
     let mut length: size_t = size.wrapping_mul(count);
     if (*io).status < 200 as ::core::ffi::c_long || (*io).status >= 300 as ::core::ffi::c_long {
+        if (*io).bytes > S3_ERROR_BODY_LIMIT as uint64_t
+            || length > (S3_ERROR_BODY_LIMIT as size_t).wrapping_sub((*io).bytes as size_t)
+        {
+            (*io).limit_exceeded = r#true != 0;
+            return 0 as size_t;
+        }
+        (*io).bytes = ((*io).bytes as ::core::ffi::c_ulong)
+            .wrapping_add(length as ::core::ffi::c_ulong) as uint64_t;
         return length;
     }
     if (*io).bytes > (*io).limit
         || length > ((*io).limit as size_t).wrapping_sub((*io).bytes as size_t)
     {
+        (*io).limit_exceeded = r#true != 0;
         return 0 as size_t;
     }
     if !(*io).data.is_null() {
@@ -1783,6 +1797,7 @@ unsafe extern "C" fn receive_bytes(
     }
     if !(*io).body.is_null() {
         if (*io).length.wrapping_add(length) >= S3_REPLY_LIMIT as size_t {
+            (*io).limit_exceeded = r#true != 0;
             return 0 as size_t;
         }
         memcpy(
@@ -2303,25 +2318,47 @@ unsafe extern "C" fn request(
         CURLoption::CURLOPT_CONNECTTIMEOUT,
         10 as ::core::ffi::c_long,
     );
-    curl_easy_setopt(
-        curl,
-        CURLoption::CURLOPT_TIMEOUT,
+    let mut timeout_s: ::core::ffi::c_long =
         if !upload.is_null() || !(*io).digest.is_null() || !(*io).file.is_null() {
             3600 as ::core::ffi::c_long
         } else {
             20 as ::core::ffi::c_long
-        },
-    );
-    curl_easy_setopt(
-        curl,
-        CURLoption::CURLOPT_LOW_SPEED_LIMIT,
-        1024 as ::core::ffi::c_long,
-    );
-    curl_easy_setopt(
-        curl,
-        CURLoption::CURLOPT_LOW_SPEED_TIME,
-        30 as ::core::ffi::c_long,
-    );
+        };
+    let mut low_speed_limit: ::core::ffi::c_long = 1024 as ::core::ffi::c_long;
+    let mut low_speed_time: ::core::ffi::c_long = 30 as ::core::ffi::c_long;
+    if !(*io).control.is_null() && (*(*io).control).bandwidth_bps != 0 {
+        let mut bw: uint64_t = (*(*io).control).bandwidth_bps;
+        let mut expected_bytes: uint64_t = 0 as uint64_t;
+        if !upload.is_null() {
+            expected_bytes = upload_size;
+        } else if (*io).limit != 0 {
+            expected_bytes = (*io).limit;
+        }
+        if bw > 0 as uint64_t && bw < low_speed_limit as uint64_t {
+            low_speed_limit = bw as ::core::ffi::c_long;
+            if low_speed_limit < 1 as ::core::ffi::c_long {
+                low_speed_limit = 1 as ::core::ffi::c_long;
+            }
+        }
+        if bw > 0 as uint64_t && expected_bytes > 0 as uint64_t {
+            let mut seconds: uint64_t = expected_bytes.wrapping_div(bw).wrapping_add(
+                (expected_bytes.wrapping_rem(bw) != 0 as uint64_t) as ::core::ffi::c_int
+                    as uint64_t,
+            );
+            let mut required: ::core::ffi::c_long =
+                if seconds > (LONG_MAX as uint64_t).wrapping_sub(15 as uint64_t) {
+                    LONG_MAX
+                } else {
+                    seconds as ::core::ffi::c_long + 15 as ::core::ffi::c_long
+                };
+            if required > timeout_s {
+                timeout_s = required;
+            }
+        }
+    }
+    curl_easy_setopt(curl, CURLoption::CURLOPT_TIMEOUT, timeout_s);
+    curl_easy_setopt(curl, CURLoption::CURLOPT_LOW_SPEED_LIMIT, low_speed_limit);
+    curl_easy_setopt(curl, CURLoption::CURLOPT_LOW_SPEED_TIME, low_speed_time);
     curl_easy_setopt(
         curl,
         CURLoption::CURLOPT_WRITEFUNCTION,
@@ -2439,12 +2476,20 @@ unsafe extern "C" fn request(
         );
         return C2Rust_Unnamed::STORAGE_S3_CANCELLED.0;
     }
+    if (*io).limit_exceeded {
+        error_set(
+            error,
+            b"Archive response exceeded size limit\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        return C2Rust_Unnamed::STORAGE_S3_ERROR.0;
+    }
     if code.0 != CURLcode::CURLE_OK.0 {
         snprintf(
             error,
             STORAGE_TARGET_ERROR_MAX as size_t,
-            b"Archive transport failed (%d)\0".as_ptr() as *const ::core::ffi::c_char,
+            b"Archive transport failed (%d: %s)\0".as_ptr() as *const ::core::ffi::c_char,
             code.0 as ::core::ffi::c_int,
+            curl_easy_strerror(code),
         );
         return C2Rust_Unnamed::STORAGE_S3_ERROR.0;
     }
@@ -2492,6 +2537,7 @@ pub unsafe extern "C" fn storage_s3_read_range(
         digest: ::core::ptr::null_mut::<mbedtls_sha256_context>(),
         bytes: 0,
         limit: length as uint64_t,
+        limit_exceeded: false,
         control: control,
         status: 0,
         etag: [0; 192],
@@ -2563,6 +2609,7 @@ pub unsafe extern "C" fn storage_s3_stat(
         digest: ::core::ptr::null_mut::<mbedtls_sha256_context>(),
         bytes: 0,
         limit: S3_REPLY_LIMIT as uint64_t,
+        limit_exceeded: false,
         control: ::core::ptr::null::<storage_transfer_control_t>(),
         status: 0,
         etag: [0; 192],
@@ -2688,12 +2735,13 @@ unsafe extern "C" fn upload_checkpoint(
 unsafe extern "C" fn upload_query(
     mut id: *const ::core::ffi::c_char,
     mut part: ::core::ffi::c_int,
+    mut max_parts_one: bool,
 ) -> *mut ::core::ffi::c_char {
     let mut escaped: *mut ::core::ffi::c_char = curl_easy_escape(NULL, id, 0 as ::core::ffi::c_int);
     if escaped.is_null() {
         return ::core::ptr::null_mut::<::core::ffi::c_char>();
     }
-    let mut length: size_t = strlen(escaped).wrapping_add(64 as size_t);
+    let mut length: size_t = strlen(escaped).wrapping_add(96 as size_t);
     let mut query: *mut ::core::ffi::c_char = malloc(length) as *mut ::core::ffi::c_char;
     if !query.is_null() {
         if part != 0 {
@@ -2702,6 +2750,13 @@ unsafe extern "C" fn upload_query(
                 length,
                 b"partNumber=%d&uploadId=%s\0".as_ptr() as *const ::core::ffi::c_char,
                 part,
+                escaped,
+            );
+        } else if max_parts_one {
+            snprintf(
+                query,
+                length,
+                b"uploadId=%s&max-parts=1\0".as_ptr() as *const ::core::ffi::c_char,
                 escaped,
             );
         } else {
@@ -2726,7 +2781,8 @@ pub unsafe extern "C" fn storage_s3_abort_upload(
     if id.is_null() || *id == 0 {
         return 0 as ::core::ffi::c_int;
     }
-    let mut query: *mut ::core::ffi::c_char = upload_query(id, 0 as ::core::ffi::c_int);
+    let mut query: *mut ::core::ffi::c_char =
+        upload_query(id, 0 as ::core::ffi::c_int, r#false != 0);
     if query.is_null() {
         return -1 as ::core::ffi::c_int;
     }
@@ -2737,6 +2793,7 @@ pub unsafe extern "C" fn storage_s3_abort_upload(
         digest: ::core::ptr::null_mut::<mbedtls_sha256_context>(),
         bytes: 0,
         limit: S3_REPLY_LIMIT as uint64_t,
+        limit_exceeded: false,
         control: ::core::ptr::null::<storage_transfer_control_t>(),
         status: 0,
         etag: [0; 192],
@@ -2763,6 +2820,52 @@ pub unsafe extern "C" fn storage_s3_abort_upload(
     } else {
         result
     };
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn storage_s3_upload_status(
+    mut target: *const storage_target_t,
+    mut key: *const ::core::ffi::c_char,
+    mut id: *const ::core::ffi::c_char,
+    mut error: *mut ::core::ffi::c_char,
+) -> ::core::ffi::c_int {
+    if id.is_null() || *id == 0 {
+        return C2Rust_Unnamed::STORAGE_S3_ERROR.0;
+    }
+    let mut query: *mut ::core::ffi::c_char =
+        upload_query(id, 0 as ::core::ffi::c_int, r#true != 0);
+    if query.is_null() {
+        return C2Rust_Unnamed::STORAGE_S3_ERROR.0;
+    }
+    let mut io: s3_io_t = s3_io_t {
+        body: ::core::ptr::null_mut::<::core::ffi::c_char>(),
+        length: 0,
+        file: ::core::ptr::null_mut::<FILE>(),
+        digest: ::core::ptr::null_mut::<mbedtls_sha256_context>(),
+        bytes: 0,
+        limit: S3_REPLY_LIMIT as uint64_t,
+        limit_exceeded: false,
+        control: ::core::ptr::null::<storage_transfer_control_t>(),
+        status: 0,
+        etag: [0; 192],
+        range: [0; 64],
+        content_range: [0; 128],
+        data: ::core::ptr::null_mut::<::core::ffi::c_uchar>(),
+        anonymous: false,
+    };
+    let mut result: ::core::ffi::c_int = request(
+        target,
+        key,
+        query,
+        b"GET\0".as_ptr() as *const ::core::ffi::c_char,
+        ::core::ptr::null_mut::<FILE>(),
+        0 as uint64_t,
+        ::core::ptr::null::<::core::ffi::c_char>(),
+        &raw mut io,
+        ::core::ptr::null_mut::<uint64_t>(),
+        error,
+    );
+    free(query as *mut ::core::ffi::c_void);
+    return result;
 }
 unsafe extern "C" fn response_xml(
     mut body: *mut ::core::ffi::c_char,
@@ -2863,6 +2966,23 @@ unsafe extern "C" fn file_section_hash(
     } else {
         0 as ::core::ffi::c_int
     };
+}
+unsafe extern "C" fn ezxml_child_local(
+    mut node: ezxml_t,
+    mut local: *const ::core::ffi::c_char,
+) -> ezxml_t {
+    if node.is_null() || local.is_null() {
+        return ::core::ptr::null_mut::<ezxml>();
+    }
+    let mut child: ezxml_t = (*node).child;
+    while !child.is_null() {
+        let mut name: *const ::core::ffi::c_char = xml_local_name(child);
+        if !name.is_null() && strcmp(name, local) == 0 {
+            return child;
+        }
+        child = (*child).next;
+    }
+    return ::core::ptr::null_mut::<ezxml>();
 }
 unsafe extern "C" fn multipart_upload(
     mut target: *const storage_target_t,
@@ -4009,6 +4129,7 @@ unsafe extern "C" fn multipart_upload(
             digest: ::core::ptr::null_mut::<mbedtls_sha256_context>(),
             bytes: 0,
             limit: S3_REPLY_LIMIT.wrapping_sub(1 as ::core::ffi::c_uint) as uint64_t,
+            limit_exceeded: false,
             control: control,
             status: 0,
             etag: [0; 192],
@@ -4029,38 +4150,41 @@ unsafe extern "C" fn multipart_upload(
             ::core::ptr::null_mut::<uint64_t>(),
             error,
         );
-        let mut root: ezxml_t = if result == 0 as ::core::ffi::c_int {
-            response_xml(
+        if result == 0 {
+            let mut root: ezxml_t = response_xml(
                 body,
                 b"InitiateMultipartUploadResult\0".as_ptr() as *const ::core::ffi::c_char,
-            )
-        } else {
-            ::core::ptr::null_mut::<ezxml>()
-        };
-        let mut value: *const ::core::ffi::c_char = if !root.is_null() {
-            if !ezxml_child(root, b"UploadId\0".as_ptr() as *const ::core::ffi::c_char).is_null() {
-                (*ezxml_child(root, b"UploadId\0".as_ptr() as *const ::core::ffi::c_char)).txt
-            } else {
-                b"\0".as_ptr() as *const ::core::ffi::c_char
-            }
-        } else {
-            ::core::ptr::null::<::core::ffi::c_char>()
-        };
-        if value.is_null()
-            || *value == 0
-            || strlen(value) >= ::core::mem::size_of::<[::core::ffi::c_char; 1024]>()
-        {
-            result = -1 as ::core::ffi::c_int;
-        } else {
-            safe_strcpy(
-                &raw mut id as *mut ::core::ffi::c_char,
-                value,
-                ::core::mem::size_of::<[::core::ffi::c_char; 1024]>(),
-                0 as size_t,
             );
-        }
-        if !root.is_null() {
-            ezxml_free(root);
+            let mut upload_id: ezxml_t = if !root.is_null() {
+                ezxml_child_local(root, b"UploadId\0".as_ptr() as *const ::core::ffi::c_char)
+            } else {
+                ::core::ptr::null_mut::<ezxml>()
+            };
+            let mut value: *const ::core::ffi::c_char = if !upload_id.is_null() {
+                if !upload_id.is_null() {
+                    (*upload_id).txt
+                } else {
+                    b"\0".as_ptr() as *const ::core::ffi::c_char
+                }
+            } else {
+                ::core::ptr::null::<::core::ffi::c_char>()
+            };
+            if value.is_null()
+                || *value == 0
+                || strlen(value) >= ::core::mem::size_of::<[::core::ffi::c_char; 1024]>()
+            {
+                result = -1 as ::core::ffi::c_int;
+            } else {
+                safe_strcpy(
+                    &raw mut id as *mut ::core::ffi::c_char,
+                    value,
+                    ::core::mem::size_of::<[::core::ffi::c_char; 1024]>(),
+                    0 as size_t,
+                );
+            }
+            if !root.is_null() {
+                ezxml_free(root);
+            }
         }
         if result == 0
             && upload_checkpoint(
@@ -4086,6 +4210,7 @@ unsafe extern "C" fn multipart_upload(
         let mut query: *mut ::core::ffi::c_char = upload_query(
             &raw mut id as *mut ::core::ffi::c_char,
             completed + 1 as ::core::ffi::c_int,
+            r#false != 0,
         );
         if query.is_null()
             || file_section_hash(
@@ -4106,6 +4231,7 @@ unsafe extern "C" fn multipart_upload(
                 digest: ::core::ptr::null_mut::<mbedtls_sha256_context>(),
                 bytes: 0,
                 limit: S3_REPLY_LIMIT as uint64_t,
+                limit_exceeded: false,
                 control: control,
                 status: 0,
                 etag: [0; 192],
@@ -4227,6 +4353,7 @@ unsafe extern "C" fn multipart_upload(
             let mut query_0: *mut ::core::ffi::c_char = upload_query(
                 &raw mut id as *mut ::core::ffi::c_char,
                 0 as ::core::ffi::c_int,
+                r#false != 0,
             );
             memset(
                 body as *mut ::core::ffi::c_void,
@@ -4240,6 +4367,7 @@ unsafe extern "C" fn multipart_upload(
                 digest: ::core::ptr::null_mut::<mbedtls_sha256_context>(),
                 bytes: 0,
                 limit: S3_REPLY_LIMIT.wrapping_sub(1 as ::core::ffi::c_uint) as uint64_t,
+                limit_exceeded: false,
                 control: control,
                 status: 0,
                 etag: [0; 192],
@@ -4309,7 +4437,7 @@ unsafe extern "C" fn multipart_upload(
             } else {
                 ::core::ptr::null_mut::<ezxml>()
             };
-            if root_0.is_null() {
+            if result == 0 as ::core::ffi::c_int && root_0.is_null() {
                 result = -1 as ::core::ffi::c_int;
             }
             if missing_upload {
@@ -4366,7 +4494,8 @@ pub unsafe extern "C" fn storage_s3_upload(
     mut control: *const storage_transfer_control_t,
     mut error: *mut ::core::ffi::c_char,
 ) -> ::core::ffi::c_int {
-    let mut descriptor: ::core::ffi::c_int = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    let mut descriptor: ::core::ffi::c_int =
+        open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
     let mut status: stat = stat {
         st_dev: 0,
         st_ino: 0,
@@ -4420,6 +4549,7 @@ pub unsafe extern "C" fn storage_s3_upload(
         digest: ::core::ptr::null_mut::<mbedtls_sha256_context>(),
         bytes: 0,
         limit: S3_REPLY_LIMIT as uint64_t,
+        limit_exceeded: false,
         control: control,
         status: 0,
         etag: [0; 192],
@@ -4485,6 +4615,7 @@ unsafe extern "C" fn receive_object(
         digest: &raw mut digest,
         bytes: 0,
         limit: expected_size,
+        limit_exceeded: false,
         control: control,
         status: 0,
         etag: [0; 192],
@@ -4620,6 +4751,7 @@ pub unsafe extern "C" fn storage_s3_delete(
         digest: ::core::ptr::null_mut::<mbedtls_sha256_context>(),
         bytes: 0,
         limit: S3_REPLY_LIMIT as uint64_t,
+        limit_exceeded: false,
         control: ::core::ptr::null::<storage_transfer_control_t>(),
         status: 0,
         etag: [0; 192],
@@ -5095,6 +5227,7 @@ pub unsafe extern "C" fn storage_s3_probe(
         digest: ::core::ptr::null_mut::<mbedtls_sha256_context>(),
         bytes: 0,
         limit: S3_REPLY_LIMIT.wrapping_sub(1 as ::core::ffi::c_uint) as uint64_t,
+        limit_exceeded: false,
         control: ::core::ptr::null::<storage_transfer_control_t>(),
         status: 0,
         etag: [0; 192],
@@ -5195,6 +5328,7 @@ pub unsafe extern "C" fn storage_s3_probe(
                 digest: ::core::ptr::null_mut::<mbedtls_sha256_context>(),
                 bytes: 0,
                 limit: S3_REPLY_LIMIT as uint64_t,
+                limit_exceeded: false,
                 control: ::core::ptr::null::<storage_transfer_control_t>(),
                 status: 0,
                 etag: [0; 192],
@@ -5236,6 +5370,7 @@ pub unsafe extern "C" fn storage_s3_probe(
                     digest: ::core::ptr::null_mut::<mbedtls_sha256_context>(),
                     bytes: 0,
                     limit: S3_REPLY_LIMIT as uint64_t,
+                    limit_exceeded: false,
                     control: ::core::ptr::null::<storage_transfer_control_t>(),
                     status: 0,
                     etag: [0; 192],
@@ -5315,4 +5450,5 @@ pub unsafe extern "C" fn storage_s3_probe(
 pub const NULL: *mut ::core::ffi::c_void = ::core::ptr::null_mut::<::core::ffi::c_void>();
 pub const r#true: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
 pub const r#false: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
-pub const PATH_MAX: ::core::ffi::c_int = 4096 as ::core::ffi::c_int;
+pub const LONG_MAX: ::core::ffi::c_long = __LONG_MAX__;
+pub const __LONG_MAX__: ::core::ffi::c_long = 9223372036854775807 as ::core::ffi::c_long;

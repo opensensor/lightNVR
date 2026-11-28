@@ -469,6 +469,7 @@ pub struct http_request_t {
     pub headers: [http_header_t; 50],
     pub num_headers: ::core::ffi::c_int,
     pub client_ip: [::core::ffi::c_char; 64],
+    pub is_tls: bool,
     pub request_id: [::core::ffi::c_char; 65],
     pub user_data: *mut ::core::ffi::c_void,
 }
@@ -2714,6 +2715,15 @@ pub unsafe extern "C" fn register_all_libuv_handlers(
         b"GET\0".as_ptr() as *const ::core::ffi::c_char,
         Some(
             handle_internal_media_lease
+                as unsafe extern "C" fn(*const http_request_t, *mut http_response_t) -> (),
+        ),
+    );
+    http_server_register_handler(
+        server,
+        b"/go2rtc/*\0".as_ptr() as *const ::core::ffi::c_char,
+        b"OPTIONS\0".as_ptr() as *const ::core::ffi::c_char,
+        Some(
+            handle_go2rtc_proxy
                 as unsafe extern "C" fn(*const http_request_t, *mut http_response_t) -> (),
         ),
     );

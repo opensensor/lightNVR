@@ -412,6 +412,7 @@ pub struct http_request_t {
     pub headers: [http_header_t; 50],
     pub num_headers: ::core::ffi::c_int,
     pub client_ip: [::core::ffi::c_char; 64],
+    pub is_tls: bool,
     pub request_id: [::core::ffi::c_char; 65],
     pub user_data: *mut ::core::ffi::c_void,
 }
@@ -1673,6 +1674,7 @@ unsafe extern "C" fn audit_batch_delete_job(
         }; 50],
         num_headers: 0,
         client_ip: [0; 64],
+        is_tls: false,
         request_id: [0; 65],
         user_data: ::core::ptr::null_mut::<::core::ffi::c_void>(),
     };

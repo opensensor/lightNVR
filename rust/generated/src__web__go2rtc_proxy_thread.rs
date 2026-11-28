@@ -112,6 +112,7 @@ unsafe extern "C" {
         req: *const http_request_t,
         fingerprint: *mut ::core::ffi::c_char,
     ) -> ::core::ffi::c_int;
+    unsafe fn libuv_connection_is_tls(conn: *const libuv_connection) -> bool;
     unsafe fn _log_message_ctx(
         level: log_level_t,
         component: *const ::core::ffi::c_char,
@@ -138,6 +139,11 @@ unsafe extern "C" {
     ) -> *mut ::core::ffi::c_void;
     unsafe fn memset(
         __s: *mut ::core::ffi::c_void,
+        __c: ::core::ffi::c_int,
+        __n: size_t,
+    ) -> *mut ::core::ffi::c_void;
+    unsafe fn memchr(
+        __s: *const ::core::ffi::c_void,
         __c: ::core::ffi::c_int,
         __n: size_t,
     ) -> *mut ::core::ffi::c_void;
@@ -1199,6 +1205,7 @@ pub struct http_request_t {
     pub headers: [http_header_t; 50],
     pub num_headers: ::core::ffi::c_int,
     pub client_ip: [::core::ffi::c_char; 64],
+    pub is_tls: bool,
     pub request_id: [::core::ffi::c_char; 65],
     pub user_data: *mut ::core::ffi::c_void,
 }
@@ -1342,6 +1349,7 @@ pub struct proxy_thread_ctx {
     pub url: [::core::ffi::c_char; 2048],
     pub media_lease: [::core::ffi::c_char; 37],
     pub media_policy_ack: bool,
+    pub header_block_is_informational: bool,
     pub incompatible_media_policy: bool,
     pub method: [::core::ffi::c_char; 16],
     pub body: *mut ::core::ffi::c_char,
@@ -1355,6 +1363,7 @@ pub struct proxy_thread_ctx {
     pub conn: *mut libuv_connection_t,
     pub response_buffer: *mut ::core::ffi::c_char,
     pub response_size: size_t,
+    pub response_capacity: size_t,
     pub response_content_type: [::core::ffi::c_char; 256],
     pub http_code: ::core::ffi::c_long,
     pub error: bool,
@@ -1453,22 +1462,49 @@ unsafe extern "C" fn proxy_write_cb(
         (*ctx).error = r#true != 0;
         return 0 as size_t;
     }
-    let mut new_buf: *mut ::core::ffi::c_char = realloc(
-        (*ctx).response_buffer as *mut ::core::ffi::c_void,
-        (*ctx).response_size.wrapping_add(total),
-    ) as *mut ::core::ffi::c_char;
-    if new_buf.is_null() {
-        _log_message_ctx(
-            log_level_t::LOG_LEVEL_ERROR,
-            LOG_COMPONENT.as_ptr(),
-            _log_stream_name,
-            b"go2rtc proxy thread: Response buffer realloc failed\0".as_ptr()
-                as *const ::core::ffi::c_char,
-        );
-        (*ctx).error = r#true != 0;
-        return 0 as size_t;
+    let mut required: size_t = (*ctx).response_size.wrapping_add(total);
+    if required > (*ctx).response_capacity {
+        let mut new_cap: size_t = if (*ctx).response_capacity != 0 {
+            (*ctx).response_capacity
+        } else {
+            1024 as size_t
+        };
+        while new_cap < required {
+            if new_cap >= PROXY_MAX_RESPONSE_BYTES.wrapping_div(2 as size_t) {
+                new_cap = PROXY_MAX_RESPONSE_BYTES;
+                break;
+            } else {
+                new_cap = new_cap.wrapping_mul(2 as size_t);
+            }
+        }
+        if new_cap < required || new_cap > PROXY_MAX_RESPONSE_BYTES {
+            _log_message_ctx(
+                log_level_t::LOG_LEVEL_WARN,
+                LOG_COMPONENT.as_ptr(),
+                _log_stream_name,
+                b"go2rtc proxy thread: upstream response exceeds buffer limit\0".as_ptr()
+                    as *const ::core::ffi::c_char,
+            );
+            (*ctx).error = r#true != 0;
+            return 0 as size_t;
+        }
+        let mut new_buf: *mut ::core::ffi::c_char =
+            realloc((*ctx).response_buffer as *mut ::core::ffi::c_void, new_cap)
+                as *mut ::core::ffi::c_char;
+        if new_buf.is_null() {
+            _log_message_ctx(
+                log_level_t::LOG_LEVEL_ERROR,
+                LOG_COMPONENT.as_ptr(),
+                _log_stream_name,
+                b"go2rtc proxy thread: Response buffer realloc failed\0".as_ptr()
+                    as *const ::core::ffi::c_char,
+            );
+            (*ctx).error = r#true != 0;
+            return 0 as size_t;
+        }
+        (*ctx).response_buffer = new_buf;
+        (*ctx).response_capacity = new_cap;
     }
-    (*ctx).response_buffer = new_buf;
     memcpy(
         (*ctx).response_buffer.offset((*ctx).response_size as isize) as *mut ::core::ffi::c_void,
         contents,
@@ -1485,33 +1521,102 @@ unsafe extern "C" fn proxy_header_cb(
 ) -> size_t {
     let mut total: size_t = size.wrapping_mul(nitems);
     let mut ctx: *mut proxy_thread_ctx_t = userp as *mut proxy_thread_ctx_t;
-    if total == ::core::mem::size_of::<[::core::ffi::c_char; 29]>().wrapping_sub(1usize)
+    if total >= 12 as size_t
         && strncasecmp(
             buffer,
-            b"X-LightNVR-Media-Policy: 1\r\n\0".as_ptr() as *const ::core::ffi::c_char,
-            total,
+            b"HTTP/\0".as_ptr() as *const ::core::ffi::c_char,
+            5 as size_t,
         ) == 0 as ::core::ffi::c_int
     {
-        (*ctx).media_policy_ack = r#true != 0;
+        let mut space: *const ::core::ffi::c_char = memchr(
+            buffer as *const ::core::ffi::c_void,
+            ' ' as ::core::ffi::c_int,
+            total,
+        ) as *const ::core::ffi::c_char;
+        let mut code: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+        if !space.is_null()
+            && buffer.offset(total as isize).offset_from(space) as size_t >= 4 as size_t
+            && *space.offset(1isize) as ::core::ffi::c_int >= '0' as ::core::ffi::c_int
+            && *space.offset(1isize) as ::core::ffi::c_int <= '9' as ::core::ffi::c_int
+            && *space.offset(2isize) as ::core::ffi::c_int >= '0' as ::core::ffi::c_int
+            && *space.offset(2isize) as ::core::ffi::c_int <= '9' as ::core::ffi::c_int
+            && *space.offset(3isize) as ::core::ffi::c_int >= '0' as ::core::ffi::c_int
+            && *space.offset(3isize) as ::core::ffi::c_int <= '9' as ::core::ffi::c_int
+        {
+            code = (*space.offset(1isize) as ::core::ffi::c_int - '0' as ::core::ffi::c_int)
+                * 100 as ::core::ffi::c_int
+                + (*space.offset(2isize) as ::core::ffi::c_int - '0' as ::core::ffi::c_int)
+                    * 10 as ::core::ffi::c_int
+                + *space.offset(3isize) as ::core::ffi::c_int
+                - '0' as ::core::ffi::c_int;
+        }
+        (*ctx).header_block_is_informational =
+            code >= 100 as ::core::ffi::c_int && code < 200 as ::core::ffi::c_int;
+        (*ctx).media_policy_ack = r#false != 0;
+        (*ctx).response_content_type[0usize] = '\0' as ::core::ffi::c_char;
+        return total;
     }
-    if total > 14 as size_t
+    if !(*ctx).header_block_is_informational {
+        let mut colon: *const ::core::ffi::c_char = memchr(
+            buffer as *const ::core::ffi::c_void,
+            ':' as ::core::ffi::c_int,
+            total,
+        ) as *const ::core::ffi::c_char;
+        if !colon.is_null() {
+            let mut name_len: size_t = colon.offset_from(buffer) as size_t;
+            if name_len == ::core::mem::size_of::<[::core::ffi::c_char; 24]>().wrapping_sub(1usize)
+                && strncasecmp(
+                    buffer,
+                    b"X-LightNVR-Media-Policy\0".as_ptr() as *const ::core::ffi::c_char,
+                    name_len,
+                ) == 0 as ::core::ffi::c_int
+            {
+                let mut val: *const ::core::ffi::c_char =
+                    colon.offset(1 as ::core::ffi::c_int as isize);
+                let mut end: *const ::core::ffi::c_char = buffer.offset(total as isize);
+                while val < end
+                    && (*val as ::core::ffi::c_int == ' ' as ::core::ffi::c_int
+                        || *val as ::core::ffi::c_int == '\t' as ::core::ffi::c_int)
+                {
+                    val = val.offset(1);
+                }
+                while end > val
+                    && (*end.offset(-1isize) as ::core::ffi::c_int == '\r' as ::core::ffi::c_int
+                        || *end.offset(-1isize) as ::core::ffi::c_int == '\n' as ::core::ffi::c_int
+                        || *end.offset(-1isize) as ::core::ffi::c_int == ' ' as ::core::ffi::c_int
+                        || *end.offset(-1isize) as ::core::ffi::c_int == '\t' as ::core::ffi::c_int)
+                {
+                    end = end.offset(-1);
+                }
+                if end.offset_from(val) as size_t == 1 as size_t
+                    && *val.offset(0isize) as ::core::ffi::c_int == '1' as ::core::ffi::c_int
+                {
+                    (*ctx).media_policy_ack = r#true != 0;
+                }
+            }
+        }
+    }
+    if !(*ctx).header_block_is_informational
+        && total > 14 as size_t
         && strncasecmp(
             buffer,
             b"Content-Type:\0".as_ptr() as *const ::core::ffi::c_char,
             13 as size_t,
         ) == 0 as ::core::ffi::c_int
     {
-        let mut val: *const ::core::ffi::c_char = buffer.offset(13 as ::core::ffi::c_int as isize);
-        while *val as ::core::ffi::c_int == ' ' as ::core::ffi::c_int
-            || *val as ::core::ffi::c_int == '\t' as ::core::ffi::c_int
+        let mut val_0: *const ::core::ffi::c_char =
+            buffer.offset(13 as ::core::ffi::c_int as isize);
+        while val_0 < buffer.offset(total as isize)
+            && (*val_0 as ::core::ffi::c_int == ' ' as ::core::ffi::c_int
+                || *val_0 as ::core::ffi::c_int == '\t' as ::core::ffi::c_int)
         {
-            val = val.offset(1);
+            val_0 = val_0.offset(1);
         }
-        let mut len: size_t = total.wrapping_sub(val.offset_from(buffer) as size_t);
+        let mut len: size_t = total.wrapping_sub(val_0.offset_from(buffer) as size_t);
         while len > 0 as size_t
-            && (*val.offset(len.wrapping_sub(1 as size_t) as isize) as ::core::ffi::c_int
+            && (*val_0.offset(len.wrapping_sub(1 as size_t) as isize) as ::core::ffi::c_int
                 == '\r' as ::core::ffi::c_int
-                || *val.offset(len.wrapping_sub(1 as size_t) as isize) as ::core::ffi::c_int
+                || *val_0.offset(len.wrapping_sub(1 as size_t) as isize) as ::core::ffi::c_int
                     == '\n' as ::core::ffi::c_int)
         {
             len = len.wrapping_sub(1);
@@ -1523,7 +1628,7 @@ unsafe extern "C" fn proxy_header_cb(
         memcpy(
             &raw mut (*ctx).response_content_type as *mut ::core::ffi::c_char
                 as *mut ::core::ffi::c_void,
-            val as *const ::core::ffi::c_void,
+            val_0 as *const ::core::ffi::c_void,
             len,
         );
         (*ctx).response_content_type[len] = '\0' as ::core::ffi::c_char;
@@ -1784,6 +1889,33 @@ unsafe extern "C" fn proxy_worker_thread(
                 }
                 if strcmp(
                     &raw mut (*ctx).method as *mut ::core::ffi::c_char,
+                    b"GET\0".as_ptr() as *const ::core::ffi::c_char,
+                ) == 0 as ::core::ffi::c_int
+                {
+                    curl_easy_setopt(curl, CURLoption::CURLOPT_HTTPGET, 1 as ::core::ffi::c_long);
+                } else if strcmp(
+                    &raw mut (*ctx).method as *mut ::core::ffi::c_char,
+                    b"HEAD\0".as_ptr() as *const ::core::ffi::c_char,
+                ) == 0 as ::core::ffi::c_int
+                {
+                    curl_easy_setopt(
+                        curl,
+                        CURLoption::CURLOPT_CUSTOMREQUEST,
+                        b"HEAD\0".as_ptr() as *const ::core::ffi::c_char,
+                    );
+                    curl_easy_setopt(curl, CURLoption::CURLOPT_NOBODY, 1 as ::core::ffi::c_long);
+                } else if strcmp(
+                    &raw mut (*ctx).method as *mut ::core::ffi::c_char,
+                    b"OPTIONS\0".as_ptr() as *const ::core::ffi::c_char,
+                ) == 0 as ::core::ffi::c_int
+                {
+                    curl_easy_setopt(
+                        curl,
+                        CURLoption::CURLOPT_CUSTOMREQUEST,
+                        b"OPTIONS\0".as_ptr() as *const ::core::ffi::c_char,
+                    );
+                } else if strcmp(
+                    &raw mut (*ctx).method as *mut ::core::ffi::c_char,
                     b"POST\0".as_ptr() as *const ::core::ffi::c_char,
                 ) == 0 as ::core::ffi::c_int
                 {
@@ -1794,6 +1926,17 @@ unsafe extern "C" fn proxy_worker_thread(
                             curl,
                             CURLoption::CURLOPT_POSTFIELDSIZE,
                             (*ctx).body_len as ::core::ffi::c_long,
+                        );
+                    } else {
+                        curl_easy_setopt(
+                            curl,
+                            CURLoption::CURLOPT_POSTFIELDS,
+                            b"\0".as_ptr() as *const ::core::ffi::c_char,
+                        );
+                        curl_easy_setopt(
+                            curl,
+                            CURLoption::CURLOPT_POSTFIELDSIZE,
+                            0 as ::core::ffi::c_long,
                         );
                     }
                 } else if strcmp(
@@ -1824,6 +1967,16 @@ unsafe extern "C" fn proxy_worker_thread(
                         CURLoption::CURLOPT_CUSTOMREQUEST,
                         b"DELETE\0".as_ptr() as *const ::core::ffi::c_char,
                     );
+                } else {
+                    _log_message_ctx(
+                        log_level_t::LOG_LEVEL_WARN,
+                        LOG_COMPONENT.as_ptr(),
+                        _log_stream_name,
+                        b"go2rtc proxy thread: unsupported method: %s\0".as_ptr()
+                            as *const ::core::ffi::c_char,
+                        &raw mut (*ctx).method as *mut ::core::ffi::c_char,
+                    );
+                    (*ctx).error = r#true != 0;
                 }
                 if (*ctx).content_type[0usize] as ::core::ffi::c_int != '\0' as ::core::ffi::c_int {
                     let mut ct_header: [::core::ffi::c_char; 280] = [0; 280];
@@ -1837,12 +1990,15 @@ unsafe extern "C" fn proxy_worker_thread(
                         curl_slist_append(headers, &raw mut ct_header as *mut ::core::ffi::c_char);
                     curl_easy_setopt(curl, CURLoption::CURLOPT_HTTPHEADER, headers);
                 }
-                let mut cres: CURLcode = curl_easy_perform(curl);
-                curl_easy_getinfo(
-                    curl,
-                    CURLINFO::CURLINFO_RESPONSE_CODE,
-                    &raw mut (*ctx).http_code,
-                );
+                let mut cres: CURLcode = CURLcode::CURLE_OK;
+                if !(*ctx).error {
+                    cres = curl_easy_perform(curl);
+                    curl_easy_getinfo(
+                        curl,
+                        CURLINFO::CURLINFO_RESPONSE_CODE,
+                        &raw mut (*ctx).http_code,
+                    );
+                }
                 if !headers.is_null() {
                     curl_slist_free_all(headers);
                 }
@@ -1862,7 +2018,7 @@ unsafe extern "C" fn proxy_worker_thread(
                         log_level_t::LOG_LEVEL_WARN,
                         LOG_COMPONENT.as_ptr(),
                         _log_stream_name,
-                        b"go2rtc proxy thread: response buffering failed\0".as_ptr()
+                        b"go2rtc proxy thread: request or response processing failed\0".as_ptr()
                             as *const ::core::ffi::c_char,
                     );
                 } else if (*ctx).media_lease[0usize] as ::core::ffi::c_int != 0
@@ -1940,6 +2096,15 @@ unsafe extern "C" fn proxy_async_cb(mut handle: *mut uv_async_t) {
                         b"Proxy error: go2rtc is not responding\0".as_ptr()
                             as *const ::core::ffi::c_char
                     },
+                );
+            } else if (*ctx).http_code >= 300 as ::core::ffi::c_long
+                && (*ctx).http_code < 400 as ::core::ffi::c_long
+            {
+                http_response_set_json_error(
+                    &raw mut (*conn).response,
+                    502 as ::core::ffi::c_int,
+                    b"Proxy error: upstream redirect is not supported\0".as_ptr()
+                        as *const ::core::ffi::c_char,
                 );
             } else {
                 (*conn).response.status_code = (*ctx).http_code as ::core::ffi::c_int;
@@ -2127,6 +2292,7 @@ pub unsafe extern "C" fn go2rtc_proxy_thread_submit(
         return -1 as ::core::ffi::c_int;
     }
     (*ctx).request = *req;
+    (*ctx).request.is_tls = libuv_connection_is_tls(conn);
     (*ctx).request.user_data = NULL;
     (*ctx).request.body = NULL;
     (*ctx).request.body_len = 0 as size_t;

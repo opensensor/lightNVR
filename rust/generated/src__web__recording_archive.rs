@@ -102,6 +102,7 @@ unsafe extern "C" {
         __accept: *const ::core::ffi::c_char,
     ) -> ::core::ffi::c_ulong;
     unsafe fn strlen(__s: *const ::core::ffi::c_char) -> size_t;
+    unsafe fn malloc(__size: size_t) -> *mut ::core::ffi::c_void;
     unsafe fn calloc(__nmemb: size_t, __size: size_t) -> *mut ::core::ffi::c_void;
     unsafe fn free(__ptr: *mut ::core::ffi::c_void);
 }
@@ -197,6 +198,7 @@ pub struct http_request_t {
     pub headers: [http_header_t; 50],
     pub num_headers: ::core::ffi::c_int,
     pub client_ip: [::core::ffi::c_char; 64],
+    pub is_tls: bool,
     pub request_id: [::core::ffi::c_char; 65],
     pub user_data: *mut ::core::ffi::c_void,
 }
@@ -783,7 +785,7 @@ pub struct archive_stream_t {
     pub error: [::core::ffi::c_char; 256],
     pub headers: [::core::ffi::c_char; 1024],
     pub header_length: size_t,
-    pub buffer: [::core::ffi::c_uchar; 1048576],
+    pub buffer: *mut ::core::ffi::c_uchar,
 }
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -860,6 +862,7 @@ static mut active_streams: ::core::ffi::c_uint = 0;
 unsafe extern "C" fn archive_release(mut stream: *mut archive_stream_t) {
     (*stream).references = (*stream).references.wrapping_sub(1);
     if (*stream).references == 0 as ::core::ffi::c_uint {
+        free((*stream).buffer as *mut ::core::ffi::c_void);
         free(stream as *mut ::core::ffi::c_void);
     }
 }
@@ -987,7 +990,7 @@ unsafe extern "C" fn archive_read(mut work: *mut uv_work_t) {
             (*stream).offset,
             (*stream).length,
             (*stream).source.size,
-            &raw mut (*stream).buffer as *mut ::core::ffi::c_uchar as *mut ::core::ffi::c_void,
+            (*stream).buffer as *mut ::core::ffi::c_void,
             &raw mut control,
             &raw mut (*stream).error as *mut ::core::ffi::c_char,
         );
@@ -1035,7 +1038,7 @@ unsafe extern "C" fn archive_read_done(mut work: *mut uv_work_t, mut status: ::c
     let c2rust_fresh1 = count;
     count = count.wrapping_add(1);
     buffers[c2rust_fresh1 as usize] = uv_buf_init(
-        &raw mut (*stream).buffer as *mut ::core::ffi::c_uchar as *mut ::core::ffi::c_char,
+        (*stream).buffer as *mut ::core::ffi::c_char,
         (*stream).length as ::core::ffi::c_uint,
     );
     (*stream).write.data = stream as *mut ::core::ffi::c_void;
@@ -1300,6 +1303,22 @@ pub unsafe extern "C" fn recording_archive_start(
         );
         (*conn).archive_stream = NULL;
         archive_free(stream);
+        return -1 as ::core::ffi::c_int;
+    }
+    (*stream).buffer = malloc(ARCHIVE_CHUNK as size_t) as *mut ::core::ffi::c_uchar;
+    if (*stream).buffer.is_null() {
+        (*conn).archive_stream = NULL;
+        archive_free(stream);
+        http_response_set_json_error(
+            &raw mut (*conn).response,
+            503 as ::core::ffi::c_int,
+            b"Archive streaming is busy; retry later\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        http_response_add_header(
+            &raw mut (*conn).response,
+            b"Retry-After\0".as_ptr() as *const ::core::ffi::c_char,
+            b"5\0".as_ptr() as *const ::core::ffi::c_char,
+        );
         return -1 as ::core::ffi::c_int;
     }
     (*stream).offset = start as uint64_t;

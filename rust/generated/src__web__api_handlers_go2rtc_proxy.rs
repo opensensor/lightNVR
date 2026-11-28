@@ -174,9 +174,7 @@ unsafe extern "C" {
 }
 pub type size_t = usize;
 pub type __time_t = ::core::ffi::c_long;
-pub type ssize_t = isize;
 pub type time_t = __time_t;
-pub type int32_t = i32;
 pub type int64_t = i64;
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -197,22 +195,6 @@ pub struct __pthread_mutex_s {
     pub __glibc_reserved: ::core::ffi::c_short,
     pub __list: __pthread_list_t,
 }
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct __pthread_rwlock_arch_t {
-    pub __readers: ::core::ffi::c_uint,
-    pub __writers: ::core::ffi::c_uint,
-    pub __wrphase_futex: ::core::ffi::c_uint,
-    pub __writers_futex: ::core::ffi::c_uint,
-    pub __pad3: ::core::ffi::c_uint,
-    pub __pad4: ::core::ffi::c_uint,
-    pub __cur_writer: ::core::ffi::c_int,
-    pub __shared: ::core::ffi::c_int,
-    pub __pad1: ::core::ffi::c_ulong,
-    pub __pad2: ::core::ffi::c_ulong,
-    pub __flags: ::core::ffi::c_uint,
-}
-pub type pthread_t = ::core::ffi::c_ulong;
 pub type pthread_once_t = ::core::ffi::c_int;
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -221,15 +203,7 @@ pub union pthread_mutex_t {
     pub __size: [::core::ffi::c_char; 40],
     pub __align: ::core::ffi::c_long,
 }
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub union pthread_rwlock_t {
-    pub __data: __pthread_rwlock_arch_t,
-    pub __size: [::core::ffi::c_char; 56],
-    pub __align: ::core::ffi::c_long,
-}
 pub type uint32_t = u32;
-pub type uint16_t = u16;
 pub type uint8_t = u8;
 pub type CURL = ();
 #[derive(Copy, Clone)]
@@ -787,7 +761,6 @@ impl C2Rust_Unnamed_0 {
     pub const _ISalnum: Self = Self(8);
 }
 pub type uint64_t = u64;
-pub type uintptr_t = usize;
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct system_health_policy_settings_t {
@@ -1039,6 +1012,7 @@ pub struct http_request_t {
     pub headers: [http_header_t; 50],
     pub num_headers: ::core::ffi::c_int,
     pub client_ip: [::core::ffi::c_char; 64],
+    pub is_tls: bool,
     pub request_id: [::core::ffi::c_char; 65],
     pub user_data: *mut ::core::ffi::c_void,
 }
@@ -1054,16 +1028,27 @@ pub struct http_response_t {
     pub num_headers: ::core::ffi::c_int,
     pub user_data: *mut ::core::ffi::c_void,
 }
-pub type request_handler_t =
-    Option<unsafe extern "C" fn(*const http_request_t, *mut http_response_t) -> ()>;
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct C2Rust_Unnamed_1 {
+    pub token: [::core::ffi::c_char; 37],
+    pub source: [::core::ffi::c_char; 256],
+    pub camera_uuid: [::core::ffi::c_char; 37],
+    pub principal_id: int64_t,
+    pub authentication_method: [::core::ffi::c_char; 24],
+    pub request: *mut http_request_t,
+    pub touched: time_t,
+}
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct streaming_proxy_ctx_t {
     pub buffer: *mut ::core::ffi::c_char,
     pub buffer_size: size_t,
+    pub buffer_capacity: size_t,
     pub content_type: [::core::ffi::c_char; 256],
     pub http_code: ::core::ffi::c_long,
     pub media_policy_ack: bool,
+    pub header_block_is_informational: bool,
     pub error_occurred: bool,
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -1104,480 +1089,6 @@ impl go2rtc_proxy_endpoint_t {
     pub const GO2RTC_PROXY_WEBRTC: Self = Self(5);
     pub const GO2RTC_PROXY_WEBSOCKET: Self = Self(6);
     pub const GO2RTC_PROXY_HLS: Self = Self(7);
-}
-pub type libuv_connection_t = libuv_connection;
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct libuv_connection {
-    pub handle: uv_tcp_t,
-    pub read_buf: uv_buf_t,
-    pub recv_buffer: *mut ::core::ffi::c_char,
-    pub recv_buffer_size: size_t,
-    pub recv_buffer_used: size_t,
-    pub parser: llhttp_t,
-    pub settings: llhttp_settings_t,
-    pub request: http_request_t,
-    pub response: http_response_t,
-    pub body_capacity: size_t,
-    pub unread_bytes: size_t,
-    pub server: *mut libuv_server_t,
-    pub server_next: *mut libuv_connection,
-    pub server_prev: *mut libuv_connection,
-    pub tls_session: *mut ::core::ffi::c_void,
-    pub headers_complete: bool,
-    pub message_complete: bool,
-    pub current_header_field: [::core::ffi::c_char; 128],
-    pub current_header_field_len: size_t,
-    pub keep_alive: bool,
-    pub requests_handled: ::core::ffi::c_int,
-    pub async_response_pending: bool,
-    pub file_serve_refs: ::core::ffi::c_uint,
-    pub handler_on_worker: bool,
-    pub close_completed: bool,
-    pub go2rtc_websocket: *mut ::core::ffi::c_void,
-    pub archive_stream: *mut ::core::ffi::c_void,
-    pub deferred_file_serve: bool,
-    pub deferred_file_path: [::core::ffi::c_char; 512],
-    pub deferred_content_type: [::core::ffi::c_char; 128],
-    pub deferred_extra_headers: [::core::ffi::c_char; 512],
-    pub deferred_action: write_complete_action_t,
-}
-#[derive(Clone, Copy, PartialEq, Eq)]
-#[repr(transparent)]
-pub struct write_complete_action_t(pub ::core::ffi::c_uint);
-impl write_complete_action_t {
-    pub const WRITE_ACTION_NONE: Self = Self(0);
-    pub const WRITE_ACTION_KEEP_ALIVE: Self = Self(1);
-    pub const WRITE_ACTION_CLOSE: Self = Self(2);
-}
-pub type libuv_server_t = libuv_server;
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct libuv_server {
-    pub r#loop: *mut uv_loop_t,
-    pub listener: uv_tcp_t,
-    pub stop_async: uv_async_t,
-    pub config: http_server_config_t,
-    pub running: atomic_bool,
-    pub owns_loop: bool,
-    pub shutting_down: atomic_bool,
-    pub handlers: *mut C2Rust_Unnamed_1,
-    pub handler_count: ::core::ffi::c_int,
-    pub handler_capacity: ::core::ffi::c_int,
-    pub tls_ctx: *mut ::core::ffi::c_void,
-    pub thread: uv_thread_t,
-    pub thread_running: atomic_bool,
-    pub thread_joinable: atomic_bool,
-    pub init_close_pending: ::core::ffi::c_uint,
-    pub connections: *mut libuv_connection,
-    pub destroy_pending: bool,
-}
-pub type atomic_bool = bool;
-pub type uv_thread_t = pthread_t;
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct C2Rust_Unnamed_1 {
-    pub path: [::core::ffi::c_char; 256],
-    pub method: [::core::ffi::c_char; 16],
-    pub handler: request_handler_t,
-}
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct http_server_config_t {
-    pub port: ::core::ffi::c_int,
-    pub bind_ip: *const ::core::ffi::c_char,
-    pub web_root: *const ::core::ffi::c_char,
-    pub auth_enabled: bool,
-    pub username: [::core::ffi::c_char; 32],
-    pub password: [::core::ffi::c_char; 32],
-    pub cors_enabled: bool,
-    pub allowed_origins: [::core::ffi::c_char; 256],
-    pub allowed_methods: [::core::ffi::c_char; 256],
-    pub allowed_headers: [::core::ffi::c_char; 256],
-    pub ssl_enabled: bool,
-    pub cert_path: [::core::ffi::c_char; 512],
-    pub key_path: [::core::ffi::c_char; 512],
-    pub max_connections: ::core::ffi::c_int,
-    pub connection_timeout: ::core::ffi::c_int,
-    pub daemon_mode: bool,
-    pub pid_file: [::core::ffi::c_char; 512],
-}
-pub type uv_async_t = uv_async_s;
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct uv_async_s {
-    pub data: *mut ::core::ffi::c_void,
-    pub r#loop: *mut uv_loop_t,
-    pub r#type: uv_handle_type,
-    pub close_cb: uv_close_cb,
-    pub handle_queue: uv__queue,
-    pub u: C2Rust_Unnamed_7,
-    pub next_closing: *mut uv_handle_t,
-    pub flags: ::core::ffi::c_uint,
-    pub async_cb: uv_async_cb,
-    pub queue: uv__queue,
-    pub pending: ::core::ffi::c_int,
-}
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct uv__queue {
-    pub next: *mut uv__queue,
-    pub prev: *mut uv__queue,
-}
-pub type uv_async_cb = Option<unsafe extern "C" fn(*mut uv_async_t) -> ()>;
-pub type uv_handle_t = uv_handle_s;
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct uv_handle_s {
-    pub data: *mut ::core::ffi::c_void,
-    pub r#loop: *mut uv_loop_t,
-    pub r#type: uv_handle_type,
-    pub close_cb: uv_close_cb,
-    pub handle_queue: uv__queue,
-    pub u: C2Rust_Unnamed_2,
-    pub next_closing: *mut uv_handle_t,
-    pub flags: ::core::ffi::c_uint,
-}
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub union C2Rust_Unnamed_2 {
-    pub fd: ::core::ffi::c_int,
-    pub reserved: [*mut ::core::ffi::c_void; 4],
-}
-pub type uv_close_cb = Option<unsafe extern "C" fn(*mut uv_handle_t) -> ()>;
-#[derive(Clone, Copy, PartialEq, Eq)]
-#[repr(transparent)]
-pub struct uv_handle_type(pub ::core::ffi::c_uint);
-impl uv_handle_type {
-    pub const UV_UNKNOWN_HANDLE: Self = Self(0);
-    pub const UV_ASYNC: Self = Self(1);
-    pub const UV_CHECK: Self = Self(2);
-    pub const UV_FS_EVENT: Self = Self(3);
-    pub const UV_FS_POLL: Self = Self(4);
-    pub const UV_HANDLE: Self = Self(5);
-    pub const UV_IDLE: Self = Self(6);
-    pub const UV_NAMED_PIPE: Self = Self(7);
-    pub const UV_POLL: Self = Self(8);
-    pub const UV_PREPARE: Self = Self(9);
-    pub const UV_PROCESS: Self = Self(10);
-    pub const UV_STREAM: Self = Self(11);
-    pub const UV_TCP: Self = Self(12);
-    pub const UV_TIMER: Self = Self(13);
-    pub const UV_TTY: Self = Self(14);
-    pub const UV_UDP: Self = Self(15);
-    pub const UV_SIGNAL: Self = Self(16);
-    pub const UV_FILE: Self = Self(17);
-    pub const UV_HANDLE_TYPE_MAX: Self = Self(18);
-}
-pub type uv_loop_t = uv_loop_s;
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct uv_loop_s {
-    pub data: *mut ::core::ffi::c_void,
-    pub active_handles: ::core::ffi::c_uint,
-    pub handle_queue: uv__queue,
-    pub active_reqs: C2Rust_Unnamed_6,
-    pub internal_fields: *mut ::core::ffi::c_void,
-    pub stop_flag: ::core::ffi::c_uint,
-    pub flags: ::core::ffi::c_ulong,
-    pub backend_fd: ::core::ffi::c_int,
-    pub pending_queue: uv__queue,
-    pub watcher_queue: uv__queue,
-    pub watchers: *mut *mut uv__io_t,
-    pub nwatchers: ::core::ffi::c_uint,
-    pub nfds: ::core::ffi::c_uint,
-    pub wq: uv__queue,
-    pub wq_mutex: uv_mutex_t,
-    pub wq_async: uv_async_t,
-    pub cloexec_lock: uv_rwlock_t,
-    pub closing_handles: *mut uv_handle_t,
-    pub process_handles: uv__queue,
-    pub prepare_handles: uv__queue,
-    pub check_handles: uv__queue,
-    pub idle_handles: uv__queue,
-    pub async_handles: uv__queue,
-    pub async_unused: Option<unsafe extern "C" fn() -> ()>,
-    pub async_io_watcher: uv__io_t,
-    pub async_wfd: ::core::ffi::c_int,
-    pub timer_heap: C2Rust_Unnamed_5,
-    pub timer_counter: uint64_t,
-    pub time: uint64_t,
-    pub signal_pipefd: [::core::ffi::c_int; 2],
-    pub signal_io_watcher: uv__io_t,
-    pub child_watcher: uv_signal_t,
-    pub emfile_fd: ::core::ffi::c_int,
-    pub inotify_read_watcher: uv__io_t,
-    pub inotify_watchers: *mut ::core::ffi::c_void,
-    pub inotify_fd: ::core::ffi::c_int,
-}
-pub type uv__io_t = uv__io_s;
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct uv__io_s {
-    pub bits: uintptr_t,
-    pub pending_queue: uv__queue,
-    pub watcher_queue: uv__queue,
-    pub pevents: ::core::ffi::c_uint,
-    pub events: ::core::ffi::c_uint,
-    pub fd: ::core::ffi::c_int,
-}
-pub type uv_signal_t = uv_signal_s;
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct uv_signal_s {
-    pub data: *mut ::core::ffi::c_void,
-    pub r#loop: *mut uv_loop_t,
-    pub r#type: uv_handle_type,
-    pub close_cb: uv_close_cb,
-    pub handle_queue: uv__queue,
-    pub u: C2Rust_Unnamed_4,
-    pub next_closing: *mut uv_handle_t,
-    pub flags: ::core::ffi::c_uint,
-    pub signal_cb: uv_signal_cb,
-    pub signum: ::core::ffi::c_int,
-    pub tree_entry: C2Rust_Unnamed_3,
-    pub caught_signals: ::core::ffi::c_uint,
-    pub dispatched_signals: ::core::ffi::c_uint,
-}
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct C2Rust_Unnamed_3 {
-    pub rbe_left: *mut uv_signal_s,
-    pub rbe_right: *mut uv_signal_s,
-    pub rbe_parent: *mut uv_signal_s,
-    pub rbe_color: ::core::ffi::c_int,
-}
-pub type uv_signal_cb = Option<unsafe extern "C" fn(*mut uv_signal_t, ::core::ffi::c_int) -> ()>;
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub union C2Rust_Unnamed_4 {
-    pub fd: ::core::ffi::c_int,
-    pub reserved: [*mut ::core::ffi::c_void; 4],
-}
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct C2Rust_Unnamed_5 {
-    pub min: *mut ::core::ffi::c_void,
-    pub nelts: ::core::ffi::c_uint,
-}
-pub type uv_rwlock_t = pthread_rwlock_t;
-pub type uv_mutex_t = pthread_mutex_t;
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub union C2Rust_Unnamed_6 {
-    pub unused: *mut ::core::ffi::c_void,
-    pub count: ::core::ffi::c_uint,
-}
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub union C2Rust_Unnamed_7 {
-    pub fd: ::core::ffi::c_int,
-    pub reserved: [*mut ::core::ffi::c_void; 4],
-}
-pub type uv_tcp_t = uv_tcp_s;
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct uv_tcp_s {
-    pub data: *mut ::core::ffi::c_void,
-    pub r#loop: *mut uv_loop_t,
-    pub r#type: uv_handle_type,
-    pub close_cb: uv_close_cb,
-    pub handle_queue: uv__queue,
-    pub u: C2Rust_Unnamed_11,
-    pub next_closing: *mut uv_handle_t,
-    pub flags: ::core::ffi::c_uint,
-    pub write_queue_size: size_t,
-    pub alloc_cb: uv_alloc_cb,
-    pub read_cb: uv_read_cb,
-    pub connect_req: *mut uv_connect_t,
-    pub shutdown_req: *mut uv_shutdown_t,
-    pub io_watcher: uv__io_t,
-    pub write_queue: uv__queue,
-    pub write_completed_queue: uv__queue,
-    pub connection_cb: uv_connection_cb,
-    pub delayed_error: ::core::ffi::c_int,
-    pub accepted_fd: ::core::ffi::c_int,
-    pub queued_fds: *mut ::core::ffi::c_void,
-}
-pub type uv_connection_cb =
-    Option<unsafe extern "C" fn(*mut uv_stream_t, ::core::ffi::c_int) -> ()>;
-pub type uv_stream_t = uv_stream_s;
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct uv_stream_s {
-    pub data: *mut ::core::ffi::c_void,
-    pub r#loop: *mut uv_loop_t,
-    pub r#type: uv_handle_type,
-    pub close_cb: uv_close_cb,
-    pub handle_queue: uv__queue,
-    pub u: C2Rust_Unnamed_10,
-    pub next_closing: *mut uv_handle_t,
-    pub flags: ::core::ffi::c_uint,
-    pub write_queue_size: size_t,
-    pub alloc_cb: uv_alloc_cb,
-    pub read_cb: uv_read_cb,
-    pub connect_req: *mut uv_connect_t,
-    pub shutdown_req: *mut uv_shutdown_t,
-    pub io_watcher: uv__io_t,
-    pub write_queue: uv__queue,
-    pub write_completed_queue: uv__queue,
-    pub connection_cb: uv_connection_cb,
-    pub delayed_error: ::core::ffi::c_int,
-    pub accepted_fd: ::core::ffi::c_int,
-    pub queued_fds: *mut ::core::ffi::c_void,
-}
-pub type uv_shutdown_t = uv_shutdown_s;
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct uv_shutdown_s {
-    pub data: *mut ::core::ffi::c_void,
-    pub r#type: uv_req_type,
-    pub reserved: [*mut ::core::ffi::c_void; 5],
-    pub c2rust_unnamed: C2Rust_Unnamed_8,
-    pub handle: *mut uv_stream_t,
-    pub cb: uv_shutdown_cb,
-}
-pub type uv_shutdown_cb =
-    Option<unsafe extern "C" fn(*mut uv_shutdown_t, ::core::ffi::c_int) -> ()>;
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub union C2Rust_Unnamed_8 {
-    pub reserved2: [*mut ::core::ffi::c_void; 1],
-    pub write_extra: uv__req_write_extra_s,
-}
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct uv__req_write_extra_s {
-    pub nwritten: size_t,
-}
-#[derive(Clone, Copy, PartialEq, Eq)]
-#[repr(transparent)]
-pub struct uv_req_type(pub ::core::ffi::c_uint);
-impl uv_req_type {
-    pub const UV_UNKNOWN_REQ: Self = Self(0);
-    pub const UV_REQ: Self = Self(1);
-    pub const UV_CONNECT: Self = Self(2);
-    pub const UV_WRITE: Self = Self(3);
-    pub const UV_SHUTDOWN: Self = Self(4);
-    pub const UV_UDP_SEND: Self = Self(5);
-    pub const UV_FS: Self = Self(6);
-    pub const UV_WORK: Self = Self(7);
-    pub const UV_GETADDRINFO: Self = Self(8);
-    pub const UV_GETNAMEINFO: Self = Self(9);
-    pub const UV_RANDOM: Self = Self(10);
-    pub const UV_REQ_TYPE_MAX: Self = Self(11);
-}
-pub type uv_connect_t = uv_connect_s;
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct uv_connect_s {
-    pub data: *mut ::core::ffi::c_void,
-    pub r#type: uv_req_type,
-    pub reserved: [*mut ::core::ffi::c_void; 5],
-    pub c2rust_unnamed: C2Rust_Unnamed_9,
-    pub cb: uv_connect_cb,
-    pub handle: *mut uv_stream_t,
-    pub queue: uv__queue,
-}
-pub type uv_connect_cb = Option<unsafe extern "C" fn(*mut uv_connect_t, ::core::ffi::c_int) -> ()>;
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub union C2Rust_Unnamed_9 {
-    pub reserved2: [*mut ::core::ffi::c_void; 1],
-    pub write_extra: uv__req_write_extra_s,
-}
-pub type uv_read_cb =
-    Option<unsafe extern "C" fn(*mut uv_stream_t, ssize_t, *const uv_buf_t) -> ()>;
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct uv_buf_t {
-    pub base: *mut ::core::ffi::c_char,
-    pub len: size_t,
-}
-pub type uv_alloc_cb = Option<unsafe extern "C" fn(*mut uv_handle_t, size_t, *mut uv_buf_t) -> ()>;
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub union C2Rust_Unnamed_10 {
-    pub fd: ::core::ffi::c_int,
-    pub reserved: [*mut ::core::ffi::c_void; 4],
-}
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub union C2Rust_Unnamed_11 {
-    pub fd: ::core::ffi::c_int,
-    pub reserved: [*mut ::core::ffi::c_void; 4],
-}
-pub type llhttp_settings_t = llhttp_settings_s;
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct llhttp_settings_s {
-    pub on_message_begin: llhttp_cb,
-    pub on_protocol: llhttp_data_cb,
-    pub on_url: llhttp_data_cb,
-    pub on_status: llhttp_data_cb,
-    pub on_method: llhttp_data_cb,
-    pub on_version: llhttp_data_cb,
-    pub on_header_field: llhttp_data_cb,
-    pub on_header_value: llhttp_data_cb,
-    pub on_chunk_extension_name: llhttp_data_cb,
-    pub on_chunk_extension_value: llhttp_data_cb,
-    pub on_headers_complete: llhttp_cb,
-    pub on_body: llhttp_data_cb,
-    pub on_message_complete: llhttp_cb,
-    pub on_protocol_complete: llhttp_cb,
-    pub on_url_complete: llhttp_cb,
-    pub on_status_complete: llhttp_cb,
-    pub on_method_complete: llhttp_cb,
-    pub on_version_complete: llhttp_cb,
-    pub on_header_field_complete: llhttp_cb,
-    pub on_header_value_complete: llhttp_cb,
-    pub on_chunk_extension_name_complete: llhttp_cb,
-    pub on_chunk_extension_value_complete: llhttp_cb,
-    pub on_chunk_header: llhttp_cb,
-    pub on_chunk_complete: llhttp_cb,
-    pub on_reset: llhttp_cb,
-}
-pub type llhttp_cb = Option<unsafe extern "C" fn(*mut llhttp_t) -> ::core::ffi::c_int>;
-pub type llhttp_t = llhttp__internal_t;
-pub type llhttp__internal_t = llhttp__internal_s;
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct llhttp__internal_s {
-    pub _index: int32_t,
-    pub _span_pos0: *mut ::core::ffi::c_void,
-    pub _span_cb0: *mut ::core::ffi::c_void,
-    pub error: int32_t,
-    pub reason: *const ::core::ffi::c_char,
-    pub error_pos: *const ::core::ffi::c_char,
-    pub data: *mut ::core::ffi::c_void,
-    pub _current: *mut ::core::ffi::c_void,
-    pub content_length: uint64_t,
-    pub r#type: uint8_t,
-    pub method: uint8_t,
-    pub http_major: uint8_t,
-    pub http_minor: uint8_t,
-    pub header_state: uint8_t,
-    pub lenient_flags: uint16_t,
-    pub upgrade: uint8_t,
-    pub finish: uint8_t,
-    pub flags: uint16_t,
-    pub status_code: uint16_t,
-    pub initial_message_completed: uint8_t,
-    pub settings: *mut ::core::ffi::c_void,
-}
-pub type llhttp_data_cb = Option<
-    unsafe extern "C" fn(*mut llhttp_t, *const ::core::ffi::c_char, size_t) -> ::core::ffi::c_int,
->;
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct C2Rust_Unnamed_12 {
-    pub token: [::core::ffi::c_char; 37],
-    pub source: [::core::ffi::c_char; 256],
-    pub camera_uuid: [::core::ffi::c_char; 37],
-    pub principal_id: int64_t,
-    pub authentication_method: [::core::ffi::c_char; 24],
-    pub request: *mut http_request_t,
-    pub touched: time_t,
 }
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -1737,6 +1248,7 @@ impl authorization_decision_source_t {
 pub const GO2RTC_BASE_PATH: [::core::ffi::c_char; 8] =
     unsafe { ::core::mem::transmute::<[u8; 8], [::core::ffi::c_char; 8]>(*b"/go2rtc\0") };
 pub const PTHREAD_ONCE_INIT: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+pub const SIZE_MAX: ::core::ffi::c_ulong = 18446744073709551615 as ::core::ffi::c_ulong;
 pub const MAX_STREAM_NAME: ::core::ffi::c_int = 256 as ::core::ffi::c_int;
 pub const MAX_STREAMS: ::core::ffi::c_int = LIGHTNVR_MAX_STREAMS;
 pub const LOG_COMPONENT: [::core::ffi::c_char; 10] =
@@ -1765,6 +1277,8 @@ pub const HLS_SESSION_CACHE_CAPACITY: ::core::ffi::c_int =
     };
 pub const HLS_SESSION_AUTH_TTL_SECONDS: ::core::ffi::c_int = 30 as ::core::ffi::c_int;
 pub const HLS_SESSION_ID_MAX: ::core::ffi::c_int = 128 as ::core::ffi::c_int;
+pub const GO2RTC_PROXY_MAX_BUFFERED_RESPONSE: ::core::ffi::c_int =
+    16 as ::core::ffi::c_int * 1024 as ::core::ffi::c_int * 1024 as ::core::ffi::c_int;
 static mut g_hls_sessions: [hls_session_auth_t; 1024] = [hls_session_auth_t {
     occupied: false,
     session_id: [0; 128],
@@ -1834,23 +1348,78 @@ unsafe extern "C" fn buffered_write_cb(
     mut nmemb: size_t,
     mut userp: *mut ::core::ffi::c_void,
 ) -> size_t {
-    let mut total: size_t = size.wrapping_mul(nmemb);
-    let mut ctx: *mut streaming_proxy_ctx_t = userp as *mut streaming_proxy_ctx_t;
-    let mut new_buf: *mut ::core::ffi::c_char = realloc(
-        (*ctx).buffer as *mut ::core::ffi::c_void,
-        (*ctx).buffer_size.wrapping_add(total),
-    ) as *mut ::core::ffi::c_char;
-    if new_buf.is_null() {
+    if size != 0 as size_t && nmemb > (SIZE_MAX as size_t).wrapping_div(size) {
         _log_message_ctx(
             log_level_t::LOG_LEVEL_ERROR,
             LOG_COMPONENT.as_ptr(),
             _log_stream_name,
-            b"go2rtc proxy: Failed to allocate buffer\0".as_ptr() as *const ::core::ffi::c_char,
+            b"go2rtc proxy: Response chunk size overflow\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        (*(userp as *mut streaming_proxy_ctx_t)).error_occurred = r#true != 0;
+        return 0 as size_t;
+    }
+    let mut total: size_t = size.wrapping_mul(nmemb);
+    let mut ctx: *mut streaming_proxy_ctx_t = userp as *mut streaming_proxy_ctx_t;
+    if total == 0 as size_t {
+        return 0 as size_t;
+    }
+    if (*ctx).buffer_size > (SIZE_MAX as size_t).wrapping_sub(total) {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_ERROR,
+            LOG_COMPONENT.as_ptr(),
+            _log_stream_name,
+            b"go2rtc proxy: Buffered response size overflow\0".as_ptr()
+                as *const ::core::ffi::c_char,
         );
         (*ctx).error_occurred = r#true != 0;
         return 0 as size_t;
     }
-    (*ctx).buffer = new_buf;
+    let mut required: size_t = (*ctx).buffer_size.wrapping_add(total);
+    if required > GO2RTC_PROXY_MAX_BUFFERED_RESPONSE as size_t {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_ERROR,
+            LOG_COMPONENT.as_ptr(),
+            _log_stream_name,
+            b"go2rtc proxy: Buffered response exceeds limit (%u bytes)\0".as_ptr()
+                as *const ::core::ffi::c_char,
+            (16 as ::core::ffi::c_int * 1024 as ::core::ffi::c_int * 1024 as ::core::ffi::c_int)
+                as ::core::ffi::c_uint,
+        );
+        (*ctx).error_occurred = r#true != 0;
+        return 0 as size_t;
+    }
+    if required > (*ctx).buffer_capacity {
+        let mut new_capacity: size_t = if (*ctx).buffer_capacity == 0 as size_t {
+            4096 as size_t
+        } else {
+            (*ctx).buffer_capacity
+        };
+        while new_capacity < required {
+            if new_capacity
+                > (GO2RTC_PROXY_MAX_BUFFERED_RESPONSE / 2 as ::core::ffi::c_int) as size_t
+            {
+                new_capacity = GO2RTC_PROXY_MAX_BUFFERED_RESPONSE as size_t;
+                break;
+            } else {
+                new_capacity = new_capacity.wrapping_mul(2 as size_t);
+            }
+        }
+        let mut new_buf: *mut ::core::ffi::c_char =
+            realloc((*ctx).buffer as *mut ::core::ffi::c_void, new_capacity)
+                as *mut ::core::ffi::c_char;
+        if new_buf.is_null() {
+            _log_message_ctx(
+                log_level_t::LOG_LEVEL_ERROR,
+                LOG_COMPONENT.as_ptr(),
+                _log_stream_name,
+                b"go2rtc proxy: Failed to allocate buffer\0".as_ptr() as *const ::core::ffi::c_char,
+            );
+            (*ctx).error_occurred = r#true != 0;
+            return 0 as size_t;
+        }
+        (*ctx).buffer = new_buf;
+        (*ctx).buffer_capacity = new_capacity;
+    }
     memcpy(
         (*ctx).buffer.offset((*ctx).buffer_size as isize) as *mut ::core::ffi::c_void,
         contents,
@@ -1867,34 +1436,107 @@ unsafe extern "C" fn buffered_header_cb(
 ) -> size_t {
     let mut total: size_t = size.wrapping_mul(nitems);
     let mut ctx: *mut streaming_proxy_ctx_t = userp as *mut streaming_proxy_ctx_t;
-    if total == ::core::mem::size_of::<[::core::ffi::c_char; 29]>().wrapping_sub(1usize)
+    if total >= 12 as size_t
         && strncasecmp(
             buffer,
-            b"X-LightNVR-Media-Policy: 1\r\n\0".as_ptr() as *const ::core::ffi::c_char,
-            total,
+            b"HTTP/\0".as_ptr() as *const ::core::ffi::c_char,
+            5 as size_t,
         ) == 0 as ::core::ffi::c_int
     {
-        (*ctx).media_policy_ack = r#true != 0;
+        let mut space: *const ::core::ffi::c_char = memchr(
+            buffer as *const ::core::ffi::c_void,
+            ' ' as ::core::ffi::c_int,
+            total,
+        ) as *const ::core::ffi::c_char;
+        let mut code: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+        if !space.is_null()
+            && buffer.offset(total as isize).offset_from(space) as size_t >= 4 as size_t
+            && *space.offset(1isize) as ::core::ffi::c_int >= '0' as ::core::ffi::c_int
+            && *space.offset(1isize) as ::core::ffi::c_int <= '9' as ::core::ffi::c_int
+            && *space.offset(2isize) as ::core::ffi::c_int >= '0' as ::core::ffi::c_int
+            && *space.offset(2isize) as ::core::ffi::c_int <= '9' as ::core::ffi::c_int
+            && *space.offset(3isize) as ::core::ffi::c_int >= '0' as ::core::ffi::c_int
+            && *space.offset(3isize) as ::core::ffi::c_int <= '9' as ::core::ffi::c_int
+        {
+            code = (*space.offset(1isize) as ::core::ffi::c_int - '0' as ::core::ffi::c_int)
+                * 100 as ::core::ffi::c_int
+                + (*space.offset(2isize) as ::core::ffi::c_int - '0' as ::core::ffi::c_int)
+                    * 10 as ::core::ffi::c_int
+                + *space.offset(3isize) as ::core::ffi::c_int
+                - '0' as ::core::ffi::c_int;
+        }
+        (*ctx).header_block_is_informational =
+            code >= 100 as ::core::ffi::c_int && code < 200 as ::core::ffi::c_int;
+        (*ctx).media_policy_ack = r#false != 0;
+        (*ctx).content_type[0usize] = '\0' as ::core::ffi::c_char;
+        return total;
     }
-    if total > 14 as size_t
+    if !(*ctx).header_block_is_informational {
+        static mut k_media_policy_header: [::core::ffi::c_char; 24] = unsafe {
+            ::core::mem::transmute::<[u8; 24], [::core::ffi::c_char; 24]>(
+                *b"X-LightNVR-Media-Policy\0",
+            )
+        };
+        let header_name_len: size_t =
+            ::core::mem::size_of::<[::core::ffi::c_char; 24]>().wrapping_sub(1 as size_t);
+        if total > header_name_len.wrapping_add(1 as size_t)
+            && strncasecmp(
+                buffer,
+                &raw const k_media_policy_header as *const ::core::ffi::c_char,
+                header_name_len,
+            ) == 0 as ::core::ffi::c_int
+            && *buffer.offset(header_name_len as isize) as ::core::ffi::c_int
+                == ':' as ::core::ffi::c_int
+        {
+            let mut val: *const ::core::ffi::c_char = buffer
+                .offset(header_name_len as isize)
+                .offset(1 as ::core::ffi::c_int as isize);
+            let mut end: *const ::core::ffi::c_char = buffer.offset(total as isize);
+            while val < end
+                && (*val as ::core::ffi::c_int == ' ' as ::core::ffi::c_int
+                    || *val as ::core::ffi::c_int == '\t' as ::core::ffi::c_int)
+            {
+                val = val.offset(1);
+            }
+            while end > val
+                && (*end.offset(-1isize) as ::core::ffi::c_int == '\r' as ::core::ffi::c_int
+                    || *end.offset(-1isize) as ::core::ffi::c_int == '\n' as ::core::ffi::c_int
+                    || *end.offset(-1isize) as ::core::ffi::c_int == ' ' as ::core::ffi::c_int
+                    || *end.offset(-1isize) as ::core::ffi::c_int == '\t' as ::core::ffi::c_int)
+            {
+                end = end.offset(-1);
+            }
+            (*ctx).media_policy_ack = end.offset_from(val) as size_t == 1 as size_t
+                && *val.offset(0isize) as ::core::ffi::c_int == '1' as ::core::ffi::c_int;
+        }
+    }
+    if !(*ctx).header_block_is_informational
+        && total > 14 as size_t
         && strncasecmp(
             buffer,
             b"Content-Type:\0".as_ptr() as *const ::core::ffi::c_char,
             13 as size_t,
         ) == 0 as ::core::ffi::c_int
     {
-        let mut val: *const ::core::ffi::c_char = buffer.offset(13 as ::core::ffi::c_int as isize);
-        while *val as ::core::ffi::c_int == ' ' as ::core::ffi::c_int
-            || *val as ::core::ffi::c_int == '\t' as ::core::ffi::c_int
+        let mut val_0: *const ::core::ffi::c_char =
+            buffer.offset(13 as ::core::ffi::c_int as isize);
+        let mut end_0: *const ::core::ffi::c_char = buffer.offset(total as isize);
+        while val_0 < end_0
+            && (*val_0 as ::core::ffi::c_int == ' ' as ::core::ffi::c_int
+                || *val_0 as ::core::ffi::c_int == '\t' as ::core::ffi::c_int)
         {
-            val = val.offset(1);
+            val_0 = val_0.offset(1);
         }
-        let mut len: size_t = total.wrapping_sub(val.offset_from(buffer) as size_t);
+        let mut len: size_t = end_0.offset_from(val_0) as size_t;
         while len > 0 as size_t
-            && (*val.offset(len.wrapping_sub(1 as size_t) as isize) as ::core::ffi::c_int
+            && (*val_0.offset(len.wrapping_sub(1 as size_t) as isize) as ::core::ffi::c_int
                 == '\r' as ::core::ffi::c_int
-                || *val.offset(len.wrapping_sub(1 as size_t) as isize) as ::core::ffi::c_int
-                    == '\n' as ::core::ffi::c_int)
+                || *val_0.offset(len.wrapping_sub(1 as size_t) as isize) as ::core::ffi::c_int
+                    == '\n' as ::core::ffi::c_int
+                || *val_0.offset(len.wrapping_sub(1 as size_t) as isize) as ::core::ffi::c_int
+                    == ' ' as ::core::ffi::c_int
+                || *val_0.offset(len.wrapping_sub(1 as size_t) as isize) as ::core::ffi::c_int
+                    == '\t' as ::core::ffi::c_int)
         {
             len = len.wrapping_sub(1);
         }
@@ -1904,7 +1546,7 @@ unsafe extern "C" fn buffered_header_cb(
         }
         memcpy(
             &raw mut (*ctx).content_type as *mut ::core::ffi::c_char as *mut ::core::ffi::c_void,
-            val as *const ::core::ffi::c_void,
+            val_0 as *const ::core::ffi::c_void,
             len,
         );
         (*ctx).content_type[len] = '\0' as ::core::ffi::c_char;
@@ -2159,12 +1801,18 @@ unsafe extern "C" fn parse_proxy_query(
         if end.is_null() {
             end = p.offset(strlen(p) as isize);
         }
+        if end == p {
+            return r#false != 0;
+        }
         let mut eq: *const ::core::ffi::c_char = memchr(
             p as *const ::core::ffi::c_void,
             '=' as ::core::ffi::c_int,
             end.offset_from(p) as size_t,
         ) as *const ::core::ffi::c_char;
         let mut key_end: *const ::core::ffi::c_char = if !eq.is_null() { eq } else { end };
+        if key_end == p {
+            return r#false != 0;
+        }
         let mut key: ::core::ffi::c_int = -1 as ::core::ffi::c_int;
         let mut i: size_t = 0 as size_t;
         while i < ::core::mem::size_of::<[*const ::core::ffi::c_char; 13]>()
@@ -2413,7 +2061,7 @@ unsafe extern "C" fn authorize_source(
 }
 pub const MEDIA_LEASE_CAPACITY: ::core::ffi::c_int = 256 as ::core::ffi::c_int;
 pub const MEDIA_LEASE_IDLE_SECONDS: ::core::ffi::c_int = 20 as ::core::ffi::c_int;
-static mut media_leases: [C2Rust_Unnamed_12; 256] = [C2Rust_Unnamed_12 {
+static mut media_leases: [C2Rust_Unnamed_1; 256] = [C2Rust_Unnamed_1 {
     token: [0; 37],
     source: [0; 256],
     camera_uuid: [0; 37],
@@ -2437,6 +2085,39 @@ static mut media_lease_mutex: pthread_mutex_t = pthread_mutex_t {
         },
     },
 };
+unsafe extern "C" fn go2rtc_media_policy_release_lease(mut token: *const ::core::ffi::c_char) {
+    if token.is_null() || *token.offset(0isize) == 0 {
+        return;
+    }
+    pthread_mutex_lock(&raw mut media_lease_mutex);
+    let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    while i < MEDIA_LEASE_CAPACITY {
+        if media_leases[i as usize].request.is_null()
+            || strcmp(
+                &raw mut (*(&raw mut media_leases as *mut C2Rust_Unnamed_1).offset(i as isize))
+                    .token as *mut ::core::ffi::c_char,
+                token,
+            ) != 0
+        {
+            i += 1;
+        } else {
+            memset(
+                media_leases[i as usize].request as *mut ::core::ffi::c_void,
+                0 as ::core::ffi::c_int,
+                ::core::mem::size_of::<http_request_t>(),
+            );
+            free(media_leases[i as usize].request as *mut ::core::ffi::c_void);
+            memset(
+                (&raw mut media_leases as *mut C2Rust_Unnamed_1).offset(i as isize)
+                    as *mut ::core::ffi::c_void,
+                0 as ::core::ffi::c_int,
+                ::core::mem::size_of::<C2Rust_Unnamed_1>(),
+            );
+            break;
+        }
+    }
+    pthread_mutex_unlock(&raw mut media_lease_mutex);
+}
 unsafe extern "C" fn lease_camera(
     mut source: *const ::core::ffi::c_char,
     mut camera: *mut fleet_camera_t,
@@ -2465,6 +2146,28 @@ unsafe extern "C" fn lease_camera(
         );
     }
     return result;
+}
+unsafe extern "C" fn go2rtc_proxy_cleanup_expired_media_leases_locked(mut now: time_t) {
+    let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    while i < MEDIA_LEASE_CAPACITY {
+        if !media_leases[i as usize].request.is_null()
+            && now - media_leases[i as usize].touched > MEDIA_LEASE_IDLE_SECONDS as time_t
+        {
+            memset(
+                media_leases[i as usize].request as *mut ::core::ffi::c_void,
+                0 as ::core::ffi::c_int,
+                ::core::mem::size_of::<http_request_t>(),
+            );
+            free(media_leases[i as usize].request as *mut ::core::ffi::c_void);
+            memset(
+                (&raw mut media_leases as *mut C2Rust_Unnamed_1).offset(i as isize)
+                    as *mut ::core::ffi::c_void,
+                0 as ::core::ffi::c_int,
+                ::core::mem::size_of::<C2Rust_Unnamed_1>(),
+            );
+        }
+        i += 1;
+    }
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn go2rtc_proxy_create_media_lease(
@@ -2634,25 +2337,10 @@ pub unsafe extern "C" fn go2rtc_proxy_create_media_lease(
     }
     let mut now: time_t = time(::core::ptr::null_mut::<time_t>());
     pthread_mutex_lock(&raw mut media_lease_mutex);
+    go2rtc_proxy_cleanup_expired_media_leases_locked(now);
     let mut slot: ::core::ffi::c_int = -1 as ::core::ffi::c_int;
     let mut i_0: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
     while i_0 < MEDIA_LEASE_CAPACITY {
-        if !media_leases[i_0 as usize].request.is_null()
-            && now - media_leases[i_0 as usize].touched > MEDIA_LEASE_IDLE_SECONDS as time_t
-        {
-            memset(
-                media_leases[i_0 as usize].request as *mut ::core::ffi::c_void,
-                0 as ::core::ffi::c_int,
-                ::core::mem::size_of::<http_request_t>(),
-            );
-            free(media_leases[i_0 as usize].request as *mut ::core::ffi::c_void);
-            memset(
-                (&raw mut media_leases as *mut C2Rust_Unnamed_12).offset(i_0 as isize)
-                    as *mut ::core::ffi::c_void,
-                0 as ::core::ffi::c_int,
-                ::core::mem::size_of::<C2Rust_Unnamed_12>(),
-            );
-        }
         if media_leases[i_0 as usize].request.is_null() && slot < 0 as ::core::ffi::c_int {
             slot = i_0;
         }
@@ -2660,20 +2348,20 @@ pub unsafe extern "C" fn go2rtc_proxy_create_media_lease(
     }
     if slot >= 0 as ::core::ffi::c_int {
         memcpy(
-            &raw mut (*(&raw mut media_leases as *mut C2Rust_Unnamed_12).offset(slot as isize))
-                .token as *mut ::core::ffi::c_char as *mut ::core::ffi::c_void,
+            &raw mut (*(&raw mut media_leases as *mut C2Rust_Unnamed_1).offset(slot as isize)).token
+                as *mut ::core::ffi::c_char as *mut ::core::ffi::c_void,
             token as *const ::core::ffi::c_void,
             ::core::mem::size_of::<[::core::ffi::c_char; 37]>(),
         );
         safe_strcpy(
-            &raw mut (*(&raw mut media_leases as *mut C2Rust_Unnamed_12).offset(slot as isize))
+            &raw mut (*(&raw mut media_leases as *mut C2Rust_Unnamed_1).offset(slot as isize))
                 .source as *mut ::core::ffi::c_char,
             &raw mut source as *mut ::core::ffi::c_char,
             ::core::mem::size_of::<[::core::ffi::c_char; 256]>(),
             0 as size_t,
         );
         safe_strcpy(
-            &raw mut (*(&raw mut media_leases as *mut C2Rust_Unnamed_12).offset(slot as isize))
+            &raw mut (*(&raw mut media_leases as *mut C2Rust_Unnamed_1).offset(slot as isize))
                 .camera_uuid as *mut ::core::ffi::c_char,
             &raw mut camera.camera_uuid as *mut ::core::ffi::c_char,
             ::core::mem::size_of::<[::core::ffi::c_char; 37]>(),
@@ -2681,7 +2369,7 @@ pub unsafe extern "C" fn go2rtc_proxy_create_media_lease(
         );
         media_leases[slot as usize].principal_id = principal.id;
         safe_strcpy(
-            &raw mut (*(&raw mut media_leases as *mut C2Rust_Unnamed_12).offset(slot as isize))
+            &raw mut (*(&raw mut media_leases as *mut C2Rust_Unnamed_1).offset(slot as isize))
                 .authentication_method as *mut ::core::ffi::c_char,
             &raw mut principal.authentication_method as *mut ::core::ffi::c_char,
             ::core::mem::size_of::<[::core::ffi::c_char; 24]>(),
@@ -2793,12 +2481,12 @@ pub unsafe extern "C" fn handle_internal_media_lease(
         if !media_leases[i as usize].request.is_null()
             && strcmp(
                 token,
-                &raw mut (*(&raw mut media_leases as *mut C2Rust_Unnamed_12).offset(i as isize))
+                &raw mut (*(&raw mut media_leases as *mut C2Rust_Unnamed_1).offset(i as isize))
                     .token as *mut ::core::ffi::c_char,
             ) == 0
             && strcmp(
                 &raw mut source as *mut ::core::ffi::c_char,
-                &raw mut (*(&raw mut media_leases as *mut C2Rust_Unnamed_12).offset(i as isize))
+                &raw mut (*(&raw mut media_leases as *mut C2Rust_Unnamed_1).offset(i as isize))
                     .source as *mut ::core::ffi::c_char,
             ) == 0
             && now - media_leases[i as usize].touched <= MEDIA_LEASE_IDLE_SECONDS as time_t
@@ -2806,13 +2494,13 @@ pub unsafe extern "C" fn handle_internal_media_lease(
             *saved = *media_leases[i as usize].request;
             strcpy(
                 &raw mut uuid as *mut ::core::ffi::c_char,
-                &raw mut (*(&raw mut media_leases as *mut C2Rust_Unnamed_12).offset(i as isize))
+                &raw mut (*(&raw mut media_leases as *mut C2Rust_Unnamed_1).offset(i as isize))
                     .camera_uuid as *mut ::core::ffi::c_char,
             );
             principal_id = media_leases[i as usize].principal_id;
             strcpy(
                 &raw mut authentication_method as *mut ::core::ffi::c_char,
-                &raw mut (*(&raw mut media_leases as *mut C2Rust_Unnamed_12).offset(i as isize))
+                &raw mut (*(&raw mut media_leases as *mut C2Rust_Unnamed_1).offset(i as isize))
                     .authentication_method as *mut ::core::ffi::c_char,
             );
             media_leases[i as usize].touched = now;
@@ -2868,7 +2556,7 @@ pub unsafe extern "C" fn handle_internal_media_lease(
         ) == 0
     {
         let mut principal: user_t = user_t {
-            id: 0,
+            id: 0 as int64_t,
             username: [0; 64],
             email: [0; 128],
             role: user_role_t::USER_ROLE_ADMIN,
@@ -2888,7 +2576,7 @@ pub unsafe extern "C" fn handle_internal_media_lease(
             authentication_method: [0; 24],
         };
         let mut evaluation: authorization_evaluation_t = authorization_evaluation_t {
-            decision: authorization_decision_t::AUTHZ_DECISION_DENY,
+            decision: authorization_decision_t(0 as ::core::ffi::c_int as ::core::ffi::c_uint),
             source: authorization_decision_source_t::AUTHZ_SOURCE_NONE,
             policy_version: 0,
             grant_uuid: [0; 37],
@@ -3559,6 +3247,41 @@ pub unsafe extern "C" fn go2rtc_proxy_authorize_request(
     } else {
         b"GET\0".as_ptr() as *const ::core::ffi::c_char
     };
+    if strcmp(
+        &raw const (*req).method_str as *const ::core::ffi::c_char,
+        b"OPTIONS\0".as_ptr() as *const ::core::ffi::c_char,
+    ) == 0 as ::core::ffi::c_int
+    {
+        let mut allow_value: [::core::ffi::c_char; 32] = [0; 32];
+        snprintf(
+            &raw mut allow_value as *mut ::core::ffi::c_char,
+            ::core::mem::size_of::<[::core::ffi::c_char; 32]>(),
+            b"%s, OPTIONS\0".as_ptr() as *const ::core::ffi::c_char,
+            allowed_method,
+        );
+        (*res).status_code = 204 as ::core::ffi::c_int;
+        http_response_add_header(
+            res,
+            b"Allow\0".as_ptr() as *const ::core::ffi::c_char,
+            &raw mut allow_value as *mut ::core::ffi::c_char,
+        );
+        http_response_add_header(
+            res,
+            b"Access-Control-Allow-Origin\0".as_ptr() as *const ::core::ffi::c_char,
+            b"*\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        http_response_add_header(
+            res,
+            b"Access-Control-Allow-Methods\0".as_ptr() as *const ::core::ffi::c_char,
+            &raw mut allow_value as *mut ::core::ffi::c_char,
+        );
+        http_response_add_header(
+            res,
+            b"Access-Control-Allow-Headers\0".as_ptr() as *const ::core::ffi::c_char,
+            b"Authorization, Content-Type\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        return r#false != 0;
+    }
     if strcmp(
         &raw const (*req).method_str as *const ::core::ffi::c_char,
         allowed_method,
@@ -4504,6 +4227,7 @@ pub unsafe extern "C" fn handle_go2rtc_proxy(
     mut req: *const http_request_t,
     mut res: *mut http_response_t,
 ) {
+    let mut cres: CURLcode = CURLcode::CURLE_OK;
     if !go2rtc_proxy_authorize_request(req, res) {
         return;
     }
@@ -4583,29 +4307,14 @@ pub unsafe extern "C" fn handle_go2rtc_proxy(
         &raw const (*req).path as *const ::core::ffi::c_char,
         &raw mut url as *mut ::core::ffi::c_char,
     );
-    let mut conn: *mut libuv_connection_t = (*req).user_data as *mut libuv_connection_t;
-    if conn.is_null() {
-        _log_message_ctx(
-            log_level_t::LOG_LEVEL_ERROR,
-            LOG_COMPONENT.as_ptr(),
-            _log_stream_name,
-            b"go2rtc proxy: No connection handle available\0".as_ptr()
-                as *const ::core::ffi::c_char,
-        );
-        sem_post(g_proxy_semaphore);
-        http_response_set_json_error(
-            res,
-            500 as ::core::ffi::c_int,
-            b"Internal server error\0".as_ptr() as *const ::core::ffi::c_char,
-        );
-        return;
-    }
     let mut ctx: streaming_proxy_ctx_t = streaming_proxy_ctx_t {
         buffer: ::core::ptr::null_mut::<::core::ffi::c_char>(),
         buffer_size: 0 as size_t,
+        buffer_capacity: 0,
         content_type: [0; 256],
         http_code: 0 as ::core::ffi::c_long,
         media_policy_ack: false,
+        header_block_is_informational: false,
         error_occurred: r#false != 0,
     };
     ctx.content_type[0usize] = '\0' as ::core::ffi::c_char;
@@ -4617,6 +4326,7 @@ pub unsafe extern "C" fn handle_go2rtc_proxy(
             _log_stream_name,
             b"go2rtc proxy: curl_easy_init failed\0".as_ptr() as *const ::core::ffi::c_char,
         );
+        go2rtc_media_policy_release_lease(&raw mut media_lease as *mut ::core::ffi::c_char);
         sem_post(g_proxy_semaphore);
         http_response_set_json_error(
             res,
@@ -4630,6 +4340,11 @@ pub unsafe extern "C" fn handle_go2rtc_proxy(
         curl,
         CURLoption::CURLOPT_URL,
         &raw mut url as *mut ::core::ffi::c_char,
+    );
+    curl_easy_setopt(
+        curl,
+        CURLoption::CURLOPT_PROXY,
+        b"\0".as_ptr() as *const ::core::ffi::c_char,
     );
     curl_easy_setopt(
         curl,
@@ -4677,191 +4392,254 @@ pub unsafe extern "C" fn handle_go2rtc_proxy(
         0 as ::core::ffi::c_long,
     );
     let mut headers: *mut curl_slist = ::core::ptr::null_mut::<curl_slist>();
-    if media_lease[0usize] != 0 {
-        let mut header: [::core::ffi::c_char; 80] = [0; 80];
-        snprintf(
-            &raw mut header as *mut ::core::ffi::c_char,
-            ::core::mem::size_of::<[::core::ffi::c_char; 80]>(),
-            b"X-LightNVR-Media-Lease: %s\0".as_ptr() as *const ::core::ffi::c_char,
-            &raw mut media_lease as *mut ::core::ffi::c_char,
-        );
-        headers = curl_slist_append(headers, &raw mut header as *mut ::core::ffi::c_char);
-        headers = curl_slist_append(
-            headers,
-            if httpd_secure_cookies() as ::core::ffi::c_int != 0 {
-                b"X-LightNVR-Media-TLS: 1\0".as_ptr() as *const ::core::ffi::c_char
+    '_header_allocation_failed: {
+        if media_lease[0usize] != 0 {
+            let mut tmp: *mut curl_slist = ::core::ptr::null_mut::<curl_slist>();
+            let mut header: [::core::ffi::c_char; 80] = [0; 80];
+            snprintf(
+                &raw mut header as *mut ::core::ffi::c_char,
+                ::core::mem::size_of::<[::core::ffi::c_char; 80]>(),
+                b"X-LightNVR-Media-Lease: %s\0".as_ptr() as *const ::core::ffi::c_char,
+                &raw mut media_lease as *mut ::core::ffi::c_char,
+            );
+            tmp = curl_slist_append(headers, &raw mut header as *mut ::core::ffi::c_char);
+            if tmp.is_null() {
+                break '_header_allocation_failed;
             } else {
-                b"X-LightNVR-Media-TLS: 0\0".as_ptr() as *const ::core::ffi::c_char
-            },
-        );
-    }
-    if strcmp(
-        &raw const (*req).method_str as *const ::core::ffi::c_char,
-        b"POST\0".as_ptr() as *const ::core::ffi::c_char,
-    ) == 0 as ::core::ffi::c_int
-    {
-        curl_easy_setopt(curl, CURLoption::CURLOPT_POST, 1 as ::core::ffi::c_long);
-        if !(*req).body.is_null() && (*req).body_len > 0 as size_t {
-            curl_easy_setopt(curl, CURLoption::CURLOPT_POSTFIELDS, (*req).body);
-            curl_easy_setopt(
-                curl,
-                CURLoption::CURLOPT_POSTFIELDSIZE,
-                (*req).body_len as ::core::ffi::c_long,
-            );
+                headers = tmp;
+                tmp = curl_slist_append(
+                    headers,
+                    if httpd_secure_cookies() as ::core::ffi::c_int != 0 {
+                        b"X-LightNVR-Media-TLS: 1\0".as_ptr() as *const ::core::ffi::c_char
+                    } else {
+                        b"X-LightNVR-Media-TLS: 0\0".as_ptr() as *const ::core::ffi::c_char
+                    },
+                );
+                if tmp.is_null() {
+                    break '_header_allocation_failed;
+                } else {
+                    headers = tmp;
+                }
+            }
         }
-    } else if strcmp(
-        &raw const (*req).method_str as *const ::core::ffi::c_char,
-        b"PUT\0".as_ptr() as *const ::core::ffi::c_char,
-    ) == 0 as ::core::ffi::c_int
-    {
-        curl_easy_setopt(
-            curl,
-            CURLoption::CURLOPT_CUSTOMREQUEST,
-            b"PUT\0".as_ptr() as *const ::core::ffi::c_char,
-        );
-        if !(*req).body.is_null() && (*req).body_len > 0 as size_t {
-            curl_easy_setopt(curl, CURLoption::CURLOPT_POSTFIELDS, (*req).body);
-            curl_easy_setopt(
-                curl,
-                CURLoption::CURLOPT_POSTFIELDSIZE,
-                (*req).body_len as ::core::ffi::c_long,
-            );
+        if strcmp(
+            &raw const (*req).method_str as *const ::core::ffi::c_char,
+            b"POST\0".as_ptr() as *const ::core::ffi::c_char,
+        ) == 0 as ::core::ffi::c_int
+        {
+            curl_easy_setopt(curl, CURLoption::CURLOPT_POST, 1 as ::core::ffi::c_long);
+            if !(*req).body.is_null() && (*req).body_len > 0 as size_t {
+                curl_easy_setopt(curl, CURLoption::CURLOPT_POSTFIELDS, (*req).body);
+                curl_easy_setopt(
+                    curl,
+                    CURLoption::CURLOPT_POSTFIELDSIZE,
+                    (*req).body_len as ::core::ffi::c_long,
+                );
+            } else {
+                curl_easy_setopt(
+                    curl,
+                    CURLoption::CURLOPT_POSTFIELDS,
+                    b"\0".as_ptr() as *const ::core::ffi::c_char,
+                );
+                curl_easy_setopt(
+                    curl,
+                    CURLoption::CURLOPT_POSTFIELDSIZE,
+                    0 as ::core::ffi::c_long,
+                );
+            }
         }
-    } else if strcmp(
-        &raw const (*req).method_str as *const ::core::ffi::c_char,
-        b"DELETE\0".as_ptr() as *const ::core::ffi::c_char,
-    ) == 0 as ::core::ffi::c_int
-    {
-        curl_easy_setopt(
+        if (*req).content_type[0usize] as ::core::ffi::c_int != '\0' as ::core::ffi::c_int {
+            let mut ct_header: [::core::ffi::c_char; 256] = [0; 256];
+            snprintf(
+                &raw mut ct_header as *mut ::core::ffi::c_char,
+                ::core::mem::size_of::<[::core::ffi::c_char; 256]>(),
+                b"Content-Type: %s\0".as_ptr() as *const ::core::ffi::c_char,
+                &raw const (*req).content_type as *const ::core::ffi::c_char,
+            );
+            let mut tmp_0: *mut curl_slist =
+                curl_slist_append(headers, &raw mut ct_header as *mut ::core::ffi::c_char);
+            if tmp_0.is_null() {
+                break '_header_allocation_failed;
+            } else {
+                headers = tmp_0;
+            }
+        }
+        if !headers.is_null() {
+            curl_easy_setopt(curl, CURLoption::CURLOPT_HTTPHEADER, headers);
+        }
+        cres = curl_easy_perform(curl);
+        curl_easy_getinfo(
             curl,
-            CURLoption::CURLOPT_CUSTOMREQUEST,
-            b"DELETE\0".as_ptr() as *const ::core::ffi::c_char,
+            CURLINFO::CURLINFO_RESPONSE_CODE,
+            &raw mut ctx.http_code,
         );
-    }
-    if (*req).content_type[0usize] as ::core::ffi::c_int != '\0' as ::core::ffi::c_int {
-        let mut ct_header: [::core::ffi::c_char; 256] = [0; 256];
-        snprintf(
-            &raw mut ct_header as *mut ::core::ffi::c_char,
-            ::core::mem::size_of::<[::core::ffi::c_char; 256]>(),
-            b"Content-Type: %s\0".as_ptr() as *const ::core::ffi::c_char,
-            &raw const (*req).content_type as *const ::core::ffi::c_char,
-        );
-        headers = curl_slist_append(headers, &raw mut ct_header as *mut ::core::ffi::c_char);
-    }
-    if !headers.is_null() {
-        curl_easy_setopt(curl, CURLoption::CURLOPT_HTTPHEADER, headers);
-    }
-    let mut cres: CURLcode = curl_easy_perform(curl);
-    curl_easy_getinfo(
-        curl,
-        CURLINFO::CURLINFO_RESPONSE_CODE,
-        &raw mut ctx.http_code,
-    );
-    if !headers.is_null() {
-        curl_slist_free_all(headers);
-    }
-    curl_easy_cleanup(curl);
-    sem_post(g_proxy_semaphore);
-    if cres.0 != CURLcode::CURLE_OK.0 || ctx.error_occurred as ::core::ffi::c_int != 0 {
-        if cres.0 != CURLcode::CURLE_OK.0 {
+        if !headers.is_null() {
+            curl_slist_free_all(headers);
+        }
+        curl_easy_cleanup(curl);
+        sem_post(g_proxy_semaphore);
+        if cres.0 != CURLcode::CURLE_OK.0 || ctx.error_occurred as ::core::ffi::c_int != 0 {
+            if cres.0 != CURLcode::CURLE_OK.0 {
+                _log_message_ctx(
+                    log_level_t::LOG_LEVEL_WARN,
+                    LOG_COMPONENT.as_ptr(),
+                    _log_stream_name,
+                    b"go2rtc proxy: curl request failed: %s\0".as_ptr()
+                        as *const ::core::ffi::c_char,
+                    curl_easy_strerror(cres),
+                );
+            } else {
+                _log_message_ctx(
+                    log_level_t::LOG_LEVEL_WARN,
+                    LOG_COMPONENT.as_ptr(),
+                    _log_stream_name,
+                    b"go2rtc proxy: response buffering failed\0".as_ptr()
+                        as *const ::core::ffi::c_char,
+                );
+            }
+            if !ctx.buffer.is_null() {
+                free(ctx.buffer as *mut ::core::ffi::c_void);
+            }
+            if media_lease[0usize] != 0 {
+                go2rtc_media_policy_release_lease(&raw mut media_lease as *mut ::core::ffi::c_char);
+            }
+            if ctx.error_occurred {
+                http_response_set_json_error(
+                    res,
+                    502 as ::core::ffi::c_int,
+                    b"Proxy error: unable to complete upstream response\0".as_ptr()
+                        as *const ::core::ffi::c_char,
+                );
+            } else {
+                http_response_set_json_error(
+                    res,
+                    502 as ::core::ffi::c_int,
+                    b"Proxy error: go2rtc is not responding\0".as_ptr()
+                        as *const ::core::ffi::c_char,
+                );
+            }
+            return;
+        }
+        if media_lease[0usize] as ::core::ffi::c_int != 0
+            && ctx.http_code >= 200 as ::core::ffi::c_long
+            && ctx.http_code < 300 as ::core::ffi::c_long
+            && !ctx.media_policy_ack
+        {
             _log_message_ctx(
                 log_level_t::LOG_LEVEL_WARN,
                 LOG_COMPONENT.as_ptr(),
                 _log_stream_name,
-                b"go2rtc proxy: curl request failed: %s\0".as_ptr() as *const ::core::ffi::c_char,
-                curl_easy_strerror(cres),
+                b"%s (HTTP %ld)\0".as_ptr() as *const ::core::ffi::c_char,
+                b"go2rtc did not acknowledge LightNVR media policy; use the compatible OpenSensor go2rtc fork\0"
+                    .as_ptr() as *const ::core::ffi::c_char,
+                ctx.http_code,
             );
-        } else {
-            _log_message_ctx(
-                log_level_t::LOG_LEVEL_WARN,
-                LOG_COMPONENT.as_ptr(),
-                _log_stream_name,
-                b"go2rtc proxy: response buffering failed\0".as_ptr() as *const ::core::ffi::c_char,
+            if !ctx.buffer.is_null() {
+                free(ctx.buffer as *mut ::core::ffi::c_void);
+            }
+            go2rtc_media_policy_release_lease(&raw mut media_lease as *mut ::core::ffi::c_char);
+            http_response_set_json_error(
+                res,
+                502 as ::core::ffi::c_int,
+                GO2RTC_MEDIA_POLICY_ERROR.as_ptr(),
             );
+            return;
         }
-        if !ctx.buffer.is_null() {
+        if ctx.http_code >= 300 as ::core::ffi::c_long && ctx.http_code < 400 as ::core::ffi::c_long
+        {
             free(ctx.buffer as *mut ::core::ffi::c_void);
+            if media_lease[0usize] != 0 {
+                go2rtc_media_policy_release_lease(&raw mut media_lease as *mut ::core::ffi::c_char);
+            }
+            http_response_set_json_error(
+                res,
+                502 as ::core::ffi::c_int,
+                b"Proxy error: upstream redirect is not supported\0".as_ptr()
+                    as *const ::core::ffi::c_char,
+            );
+            return;
         }
-        http_response_set_json_error(
+        if media_lease[0usize] as ::core::ffi::c_int != 0
+            && (ctx.http_code < 200 as ::core::ffi::c_long
+                || ctx.http_code >= 300 as ::core::ffi::c_long)
+        {
+            go2rtc_media_policy_release_lease(&raw mut media_lease as *mut ::core::ffi::c_char);
+        }
+        (*res).status_code = ctx.http_code as ::core::ffi::c_int;
+        if ctx.content_type[0usize] as ::core::ffi::c_int != '\0' as ::core::ffi::c_int {
+            safe_strcpy(
+                &raw mut (*res).content_type as *mut ::core::ffi::c_char,
+                &raw mut ctx.content_type as *mut ::core::ffi::c_char,
+                ::core::mem::size_of::<[::core::ffi::c_char; 128]>(),
+                0 as size_t,
+            );
+        }
+        http_response_add_header(
             res,
-            502 as ::core::ffi::c_int,
-            b"Proxy error: go2rtc is not responding\0".as_ptr() as *const ::core::ffi::c_char,
+            b"Cache-Control\0".as_ptr() as *const ::core::ffi::c_char,
+            b"private, no-store\0".as_ptr() as *const ::core::ffi::c_char,
         );
-        return;
-    }
-    if media_lease[0usize] as ::core::ffi::c_int != 0
-        && ctx.http_code >= 200 as ::core::ffi::c_long
-        && ctx.http_code < 300 as ::core::ffi::c_long
-        && !ctx.media_policy_ack
-    {
+        http_response_add_header(
+            res,
+            b"Pragma\0".as_ptr() as *const ::core::ffi::c_char,
+            b"no-cache\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        http_response_add_header(
+            res,
+            b"Expires\0".as_ptr() as *const ::core::ffi::c_char,
+            b"0\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        http_response_add_header(
+            res,
+            b"Access-Control-Allow-Origin\0".as_ptr() as *const ::core::ffi::c_char,
+            b"*\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        http_response_add_header(
+            res,
+            b"Access-Control-Allow-Methods\0".as_ptr() as *const ::core::ffi::c_char,
+            b"GET, POST, OPTIONS\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        http_response_add_header(
+            res,
+            b"Access-Control-Allow-Headers\0".as_ptr() as *const ::core::ffi::c_char,
+            b"Content-Type, Authorization\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        (*res).body = ctx.buffer as *mut ::core::ffi::c_void;
+        (*res).body_length = ctx.buffer_size;
+        (*res).body_allocated = r#true != 0;
+        if ctx.http_code == 200 as ::core::ffi::c_long {
+            go2rtc_proxy_capture_hls_sessions(
+                req,
+                ctx.buffer as *const ::core::ffi::c_void,
+                ctx.buffer_size,
+            );
+        }
         _log_message_ctx(
-            log_level_t::LOG_LEVEL_WARN,
+            log_level_t::LOG_LEVEL_DEBUG,
             LOG_COMPONENT.as_ptr(),
             _log_stream_name,
-            b"%s (HTTP %ld)\0".as_ptr() as *const ::core::ffi::c_char,
-            b"go2rtc did not acknowledge LightNVR media policy; use the compatible OpenSensor go2rtc fork\0"
-                .as_ptr() as *const ::core::ffi::c_char,
+            b"go2rtc proxy: %s %s -> %ld (%zu bytes, type: %s)\0".as_ptr()
+                as *const ::core::ffi::c_char,
+            &raw const (*req).method_str as *const ::core::ffi::c_char,
+            &raw const (*req).path as *const ::core::ffi::c_char,
             ctx.http_code,
-        );
-        if !ctx.buffer.is_null() {
-            free(ctx.buffer as *mut ::core::ffi::c_void);
-        }
-        http_response_set_json_error(
-            res,
-            502 as ::core::ffi::c_int,
-            GO2RTC_MEDIA_POLICY_ERROR.as_ptr(),
+            ctx.buffer_size,
+            if ctx.content_type[0usize] as ::core::ffi::c_int != 0 {
+                &raw mut ctx.content_type as *mut ::core::ffi::c_char
+            } else {
+                b"unknown\0".as_ptr() as *const ::core::ffi::c_char
+            },
         );
         return;
     }
-    (*res).status_code = ctx.http_code as ::core::ffi::c_int;
-    if ctx.content_type[0usize] as ::core::ffi::c_int != '\0' as ::core::ffi::c_int {
-        safe_strcpy(
-            &raw mut (*res).content_type as *mut ::core::ffi::c_char,
-            &raw mut ctx.content_type as *mut ::core::ffi::c_char,
-            ::core::mem::size_of::<[::core::ffi::c_char; 128]>(),
-            0 as size_t,
-        );
-    }
-    http_response_add_header(
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
+    go2rtc_media_policy_release_lease(&raw mut media_lease as *mut ::core::ffi::c_char);
+    sem_post(g_proxy_semaphore);
+    http_response_set_json_error(
         res,
-        b"Access-Control-Allow-Origin\0".as_ptr() as *const ::core::ffi::c_char,
-        b"*\0".as_ptr() as *const ::core::ffi::c_char,
-    );
-    http_response_add_header(
-        res,
-        b"Access-Control-Allow-Methods\0".as_ptr() as *const ::core::ffi::c_char,
-        b"GET, POST, PUT, DELETE, OPTIONS\0".as_ptr() as *const ::core::ffi::c_char,
-    );
-    http_response_add_header(
-        res,
-        b"Access-Control-Allow-Headers\0".as_ptr() as *const ::core::ffi::c_char,
-        b"Content-Type, Authorization\0".as_ptr() as *const ::core::ffi::c_char,
-    );
-    (*res).body = ctx.buffer as *mut ::core::ffi::c_void;
-    (*res).body_length = ctx.buffer_size;
-    (*res).body_allocated = r#true != 0;
-    if ctx.http_code == 200 as ::core::ffi::c_long {
-        go2rtc_proxy_capture_hls_sessions(
-            req,
-            ctx.buffer as *const ::core::ffi::c_void,
-            ctx.buffer_size,
-        );
-    }
-    _log_message_ctx(
-        log_level_t::LOG_LEVEL_DEBUG,
-        LOG_COMPONENT.as_ptr(),
-        _log_stream_name,
-        b"go2rtc proxy: %s %s -> %ld (%zu bytes, type: %s)\0".as_ptr()
-            as *const ::core::ffi::c_char,
-        &raw const (*req).method_str as *const ::core::ffi::c_char,
-        &raw const (*req).path as *const ::core::ffi::c_char,
-        ctx.http_code,
-        ctx.buffer_size,
-        if ctx.content_type[0usize] as ::core::ffi::c_int != 0 {
-            &raw mut ctx.content_type as *mut ::core::ffi::c_char
-        } else {
-            b"unknown\0".as_ptr() as *const ::core::ffi::c_char
-        },
+        503 as ::core::ffi::c_int,
+        b"Proxy error: failed to build upstream headers\0".as_ptr() as *const ::core::ffi::c_char,
     );
 }
 pub const LIGHTNVR_MAX_STREAMS: ::core::ffi::c_int = 1024 as ::core::ffi::c_int;
