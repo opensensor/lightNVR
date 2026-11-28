@@ -604,7 +604,7 @@ static int multipart_upload(const storage_target_t *target, const char *key, FIL
     for (uint64_t offset = (uint64_t)completed * chunk; !result && offset < bytes; offset += chunk) {
         uint64_t length = bytes - offset < chunk ? bytes - offset : chunk;
         char hash_hex[65];
-        char *query = upload_query(id, completed + 1);
+        char *query = upload_query(id, completed + 1, false);
         if (!query || file_section_hash(file, offset, length, hash_hex)) { free(query); result = -1; break; }
         s3_io_t io = {.limit = S3_REPLY_LIMIT, .control = control};
         result = request(target, key, query, "PUT", file, length, hash_hex, &io, NULL, error);
@@ -640,7 +640,7 @@ static int multipart_upload(const storage_target_t *target, const char *key, FIL
             fputs("</CompleteMultipartUpload>", manifest);
             off_t length = ftello(manifest);
             char hash_hex[65];
-            char *query = upload_query(id, 0);
+            char *query = upload_query(id, 0, false);
             memset(body, 0, S3_REPLY_LIMIT);
             s3_io_t io = {.body = body, .limit = S3_REPLY_LIMIT-1, .control = control};
             if (!result && query && length > 0 && !file_section_hash(manifest, 0, (uint64_t)length, hash_hex))
