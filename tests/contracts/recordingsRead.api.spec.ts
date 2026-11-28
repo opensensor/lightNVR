@@ -232,7 +232,19 @@ test('playback preparation and thumbnails retain their own JSON/media and permis
   const thumbnail=await server.request(`/api/recordings/thumbnail/${ids.playable}/0`,{principal:'viewer'});expect(thumbnail.status).toBe(200);expect(thumbnail.headers.get('content-type')).toBe('image/jpeg');expect(Buffer.from(await thumbnail.arrayBuffer())).toEqual(readFileSync(fixture.thumbnail));
   for(const [route,identity,status] of [[`/api/recordings/thumbnail/${ids.hidden}/0`,viewer,403],[`/api/recordings/thumbnail/${ids.playable}/3`,viewer,400],[`/api/recordings/thumbnail/${ids.playable}/0`,anonymous,401]] as const) {const result=await wire(server,route,identity);expect(result.response.status).toBe(status);safeDenied(result.body,server,fixture);}
   await ok(server,'/api/settings',admin,'POST',{thumbnails_per_recording:1});expect((await wire(server,`/api/recordings/thumbnail/${ids.playable}/1`,viewer)).response.status).toBe(403);
-  expect(validateRecordingPlaybackPreparing({status:'preparing',source:'archive',error:'Preparing archived recording'})).toBe(true);
+  const hevc=path.join(fixture.directory,`${ids.sibling}.mp4`);
+  execFileSync('ffmpeg',['-nostdin','-hide_banner','-loglevel','error','-i',fixture.source,'-an','-c:v','libx265','-threads','1','-x265-params','log-level=error:pools=1:frame-threads=1','-tag:v','hvc1','-y',hevc],{timeout:20000});
+  database(server,'UPDATE recordings SET codec=?,size_bytes=? WHERE id=?',['hevc',readFileSync(hevc).length,ids.sibling]);
+  const prepareRoute='?prepare=1&transcode=1';
+  const preparing=await media(server,ids.sibling,viewer,{},prepareRoute);
+  expect(preparing.status).toBe(202);
+  expect(preparing.headers.get('retry-after')).toBe('2');
+  expect(validateRecordingPlaybackPreparing(await preparing.json())).toBe(true);
+  await expect.poll(async()=>{
+    const response=await media(server,ids.sibling,viewer,{},prepareRoute);
+    const body=await response.json();
+    return response.status===200 && validateRecordingPlaybackReady(body);
+  },{timeout:15000}).toBe(true);
   expect(validateRecordingPlaybackReady({status:'preparing'})).toBe(false);expect(validateRecordingPlaybackPreparing({status:'ready'})).toBe(false);
 });
 
