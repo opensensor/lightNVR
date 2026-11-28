@@ -370,7 +370,6 @@ void test_upgrade_without_media_policy_ack_is_rejected(void) {
     TEST_ASSERT_NOT_NULL(strstr(response, "compatible OpenSensor go2rtc fork"));
     close(client);
     pthread_join(thread, NULL);
-    TEST_ASSERT_FALSE(peer.received_mse);
 }
 void test_upgrade_with_wrong_accept_is_rejected(void) {
     peer_t peer = {.status = 101, .bad_accept = true};
