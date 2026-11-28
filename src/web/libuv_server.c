@@ -87,6 +87,15 @@ static void scan_server_handles_cb(uv_handle_t *handle, void *arg) {
         handle == (uv_handle_t *)&scan->server->stop_async) scan->present = true;
 }
 
+static void drain_server_handles(uv_loop_t *loop, const libuv_server_t *server) {
+    server_handle_scan_t scan = {.server = server, .present = false};
+    do {
+        uv_run(loop, UV_RUN_NOWAIT);
+        scan.present = false;
+        uv_walk(loop, scan_server_handles_cb, &scan);
+    } while (scan.present);
+}
+
 static void shared_destroy_timer_closed(uv_handle_t *handle) {
     safe_free(handle);
 }
@@ -321,14 +330,9 @@ int libuv_server_start(http_server_handle_t handle) {
             /* Roll back partial reinitialization: listener was reinitialized above. */
             uv_close((uv_handle_t *)&server->listener, NULL);
 
-            /* On owned loops, no external runner exists yet; drain close completion now. */
-            if (server->owns_loop) {
-                int run_rc = uv_run(server->loop, UV_RUN_DEFAULT);
-                if (run_rc < 0) {
-                    log_error("libuv_server_start: Failed to drain listener close: %s",
-                              uv_strerror(run_rc));
-                }
-            }
+            /* Other subsystems may keep the loop alive; wait only for the
+             * embedded listener to finish closing. */
+            if (server->owns_loop) drain_server_handles(server->loop, server);
 
             return -1;
         }
@@ -356,14 +360,7 @@ int libuv_server_start(http_server_handle_t handle) {
         if (!uv_is_closing((uv_handle_t *)&server->stop_async)) {
             uv_close((uv_handle_t *)&server->stop_async, NULL);
         }
-        if (server->owns_loop) {
-            server_handle_scan_t scan = {.server = server, .present = false};
-            do {
-                uv_run(server->loop, UV_RUN_NOWAIT);
-                scan.present = false;
-                uv_walk(server->loop, scan_server_handles_cb, &scan);
-            } while (scan.present);
-        }
+        if (server->owns_loop) drain_server_handles(server->loop, server);
 
         return -1;
     }
@@ -379,14 +376,7 @@ int libuv_server_start(http_server_handle_t handle) {
         if (!uv_is_closing((uv_handle_t *)&server->stop_async)) {
             uv_close((uv_handle_t *)&server->stop_async, NULL);
         }
-        if (server->owns_loop) {
-            server_handle_scan_t scan = {.server = server, .present = false};
-            do {
-                uv_run(server->loop, UV_RUN_NOWAIT);
-                scan.present = false;
-                uv_walk(server->loop, scan_server_handles_cb, &scan);
-            } while (scan.present);
-        }
+        if (server->owns_loop) drain_server_handles(server->loop, server);
 
         return -1;
     }
