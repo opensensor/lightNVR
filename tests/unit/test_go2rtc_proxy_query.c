@@ -7,11 +7,28 @@
 /* Exercise the private cache invariants as well as the public query API. */
 #include "../../src/web/api_handlers_go2rtc_proxy.c"
 
+static bool g_test_db_initialized = false;
+static bool g_test_temp_path_active = false;
+static char g_test_temp_path[256];
+
 void setUp(void) {
     load_default_config(&g_config);
     memset(g_hls_sessions, 0, sizeof(g_hls_sessions));
+    g_test_db_initialized = false;
+    g_test_temp_path_active = false;
+    g_test_temp_path[0] = '\0';
 }
-void tearDown(void) {}
+void tearDown(void) {
+    if (g_test_db_initialized) {
+        shutdown_database();
+        g_test_db_initialized = false;
+    }
+    if (g_test_temp_path_active) {
+        unlink(g_test_temp_path);
+        g_test_temp_path_active = false;
+        g_test_temp_path[0] = '\0';
+    }
+}
 
 static void request_for(http_request_t *req, const char *path, const char *query) {
     http_request_init(req);
@@ -139,7 +156,10 @@ void test_expired_hls_substream_session_rechecks_the_parent_camera(void) {
     int fd = mkstemp(path);
     TEST_ASSERT_GREATER_OR_EQUAL_INT(0, fd);
     close(fd);
+    strcpy(g_test_temp_path, path);
+    g_test_temp_path_active = true;
     TEST_ASSERT_EQUAL_INT(0, init_database(path));
+    g_test_db_initialized = true;
     g_config.web_auth_enabled = false;
     stream_config_t camera = {0};
     strcpy(camera.name, "renew-camera");
@@ -176,8 +196,6 @@ void test_expired_hls_substream_session_rechecks_the_parent_camera(void) {
     TEST_ASSERT_FALSE(allowed);
     TEST_ASSERT_EQUAL_INT64(0, entry->authorized_until);
 
-    shutdown_database();
-    unlink(path);
 }
 
 int main(void) {
