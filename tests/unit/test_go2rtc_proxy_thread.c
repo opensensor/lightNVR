@@ -295,6 +295,7 @@ void test_slow_snapshot_releases_its_slot_after_ten_seconds(void) {
     pthread_cond_broadcast(&upstream_ready);
     pthread_mutex_unlock(&upstream_mutex);
     pump_responses(1 + accepted, 5000);
+    TEST_ASSERT_EQUAL_INT(1 + accepted, completed_responses);
     hold_upstream = false;
     TEST_ASSERT_EQUAL_INT(LIMIT, accepted);
     TEST_ASSERT_EQUAL_INT(1 + LIMIT, completed_responses);
