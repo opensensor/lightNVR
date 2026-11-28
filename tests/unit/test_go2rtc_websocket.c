@@ -2,6 +2,7 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include <pthread.h>
+#include <stdatomic.h>
 #include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -25,6 +26,7 @@
 static http_server_handle_t server;
 static int upstream = -1, web_port;
 static char db_path[80];
+static atomic_bool teardown_started = ATOMIC_VAR_INIT(false);
 static const char upgrade_headers[] =
     "Upgrade: websocket\r\nConnection: keep-alive, Upgrade\r\n"
     "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n";
@@ -211,11 +213,15 @@ static void *upstream_peer(void *arg) {
         send_all(peer->fd, media_response, sizeof(media_response));
     }
     // Keep the socket alive until its consumer or the server disconnects.
-    // Allow a few receive timeouts on slow test hosts, but keep teardown bounded.
+    // Start the bounded disconnect wait only once teardown begins.
     peer->observed_disconnect = false;
     char byte;
     struct timespec start, now;
     const long teardown_budget_ms = 5000;
+    while (!atomic_load(&teardown_started)) {
+        struct timespec pause = {.tv_sec = 0, .tv_nsec = 10 * 1000 * 1000}; // 10ms
+        nanosleep(&pause, NULL);
+    }
     if (clock_gettime(CLOCK_MONOTONIC, &start) != 0) goto done;
     for (;;) {
         if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) break;
@@ -251,6 +257,7 @@ done:
     return NULL;
 }
 void setUp(void) {
+    atomic_store(&teardown_started, false);
     for (int i = 0; i < 4; i++) {
         tracked_clients[i] = -1;
         tracked_thread_started[i] = false;
@@ -297,6 +304,7 @@ void setUp(void) {
     web_port = ntohs(address.sin_port);
 }
 void tearDown(void) {
+    atomic_store(&teardown_started, true);
     for (int i = 0; i < 5; i++) {
         if (tracked_clients[i] >= 0) {
             close(tracked_clients[i]);
@@ -369,6 +377,7 @@ void test_four_websockets_relay_media_on_the_web_port_and_close_cleanly(void) {
         TEST_ASSERT_EQUAL_MEMORY(media_response, media, sizeof(media));
     }
     // Two peer disconnects plus shutdown with two streams still active.
+    atomic_store(&teardown_started, true);
     close(tracked_clients[0]); tracked_clients[0] = -1;
     close(tracked_clients[1]); tracked_clients[1] = -1;
     http_server_stop(server);
