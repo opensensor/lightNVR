@@ -277,8 +277,11 @@ static int request(const storage_target_t *target, const char *key, const char *
                    const char *method, FILE *upload, uint64_t upload_size,
                    const char *checksum, s3_io_t *io, uint64_t *object_size,
                    char error[STORAGE_TARGET_ERROR_MAX]) {
-    if (!storage_s3_validate(target, error, STORAGE_TARGET_ERROR_MAX) ||
-        (key && !safe_key(key, false))) return STORAGE_S3_ERROR;
+    if (!storage_s3_validate(target, error, STORAGE_TARGET_ERROR_MAX)) return STORAGE_S3_ERROR;
+    if (key && !safe_key(key, false)) {
+        error_set(error, "Invalid object key: key contains unsafe or unsupported path characters");
+        return STORAGE_S3_ERROR;
+    }
     s3_credentials_t credentials = {0};
     if (!io->anonymous && credentials_read(target, &credentials)) {
         error_set(error, "Archive credential file is missing, invalid or has unsafe permissions");
