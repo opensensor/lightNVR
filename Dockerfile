@@ -440,8 +440,7 @@ COPY --from=builder /usr/lib/libuv.so* /usr/lib/
 COPY --from=builder /usr/lib/libllhttp.so* /usr/lib/
 
 # Copy latest upstream SQLite shared library built in the builder stage
-COPY --from=builder /usr/lib/libsqlite3.so* /usr/lib/x86_64-linux-gnu/
-RUN ldconfig
+COPY --from=builder /usr/lib/libsqlite3.so* /tmp/lightnvr-sqlite/
 RUN set -eu; \
     case "$(dpkg --print-architecture)" in \
       amd64) multiarch=x86_64-linux-gnu ;; \
@@ -451,7 +450,10 @@ RUN set -eu; \
     esac; \
     cp -a /tmp/lightnvr-sqlite/libsqlite3.so* "/usr/lib/$multiarch/"; \
     rm -rf /tmp/lightnvr-sqlite; \
-    ldconfig
+    ldconfig; \
+    expected_sqlite="$((SQLITE_AUTOCONF_VERSION / 1000000)).$(((SQLITE_AUTOCONF_VERSION / 10000) % 100)).$(((SQLITE_AUTOCONF_VERSION / 100) % 100))"; \
+    actual_sqlite="$(sqlite3 --version | cut -d' ' -f1)"; \
+    test "$actual_sqlite" = "$expected_sqlite"
 
 # Copy SOD libraries (use /usr/lib/ consistently; on usrmerge systems /lib → /usr/lib)
 COPY --from=builder /usr/lib/libsod.so* /usr/lib/
