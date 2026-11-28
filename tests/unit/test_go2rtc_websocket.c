@@ -440,7 +440,7 @@ void test_failed_upstream_handshake_returns_502(void) {
     send_upgrade(client, 0, origin, false);
     /* Send a masked client WebSocket frame so forwarding-after-reject regressions are detectable. */
     const unsigned char frame[] = {0x81, 0x81, 0x12, 0x34, 0x56, 0x78, (unsigned char)('x' ^ 0x12)};
-    TEST_ASSERT_TRUE(send_all(client, (const char *)frame, sizeof(frame)));
+    (void)send_all(client, frame, sizeof(frame));
     TEST_ASSERT_TRUE(read_headers(client, response, sizeof(response)));
     TEST_ASSERT_EQUAL_INT(1, sscanf(response, "HTTP/%*d.%*d %d", &status));
     TEST_ASSERT_EQUAL_INT(502, status);
@@ -465,7 +465,7 @@ void test_upgrade_without_media_policy_ack_is_rejected(void) {
     int header_len;
     snprintf(origin, sizeof(origin), "http://localhost:%d", web_port);
     header_len = snprintf((char *)request_with_frame, sizeof(request_with_frame),
-                          "GET /api/ws?src=test HTTP/1.1\r\n"
+                          "GET /go2rtc/api/ws?src=Camera%%200_sub HTTP/1.1\r\n"
                           "Host: localhost:%d\r\n"
                           "Origin: %s\r\n"
                           "%s"
