@@ -474,12 +474,17 @@ static void on_file_read(uv_fs_t *req) {
 
     if (req->result < 0) {
         log_error("on_file_read: Read error: %s", uv_strerror((int)req->result));
+        ctx->write_error = true;
         uv_fs_close(ctx->conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
         return;
     }
 
     if (req->result == 0) {
         // EOF
+        if (ctx->remaining > 0) {
+            // Unexpected EOF before advertised Content-Length fully sent.
+            ctx->write_error = true;
+        }
         uv_fs_close(ctx->conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
         return;
     }
@@ -490,6 +495,7 @@ static void on_file_read(uv_fs_t *req) {
     // Copy data to a new buffer for sending (async write needs its own buffer)
     char *send_buf = safe_malloc(bytes_read);
     if (!send_buf) {
+        ctx->write_error = true;
         uv_fs_close(ctx->conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
         return;
     }
@@ -503,6 +509,7 @@ static void on_file_read(uv_fs_t *req) {
     file_chunk_write_ctx_t *write_ctx = safe_malloc(sizeof(file_chunk_write_ctx_t));
     if (!write_ctx) {
         safe_free(send_buf);
+        ctx->write_error = true;
         uv_fs_close(ctx->conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
         return;
     }
@@ -527,6 +534,7 @@ static void on_file_read(uv_fs_t *req) {
         log_error("on_file_read: Write failed: %s", uv_strerror(r));
         safe_free(send_buf);
         safe_free(write_ctx);
+        ctx->write_error = true;
         uv_fs_close(ctx->conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
     }
     // Note: on_chunk_write_complete will call send_file_chunk() when write is done
