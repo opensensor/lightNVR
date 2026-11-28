@@ -126,6 +126,7 @@ class S3Handler(BaseHTTPRequestHandler):
                 self.uploads[upload_id] = {'identity': identity, 'parts': {}}
                 if bucket == 'multipart-retry':
                     response = (f'<s3:InitiateMultipartUploadResult xmlns:s3="urn:fixture:s3">'
+                                f'<s3:Bucket>{bucket}</s3:Bucket>'
                                 f'<s3:UploadId>{upload_id}</s3:UploadId>'
                                 '</s3:InitiateMultipartUploadResult>')
                     return self.respond(200, response.encode())

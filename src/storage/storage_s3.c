@@ -557,7 +557,7 @@ static const char *xml_local_name(ezxml_t node);
 
 static ezxml_t ezxml_child_local(ezxml_t node, const char *local) {
     if (!node || !local) return NULL;
-    for (ezxml_t child = node->child; child; child = child->next) {
+    for (ezxml_t child = node->child; child; child = child->ordered) {
         const char *name = xml_local_name(child);
         if (name && !strcmp(name, local)) return child;
     }
