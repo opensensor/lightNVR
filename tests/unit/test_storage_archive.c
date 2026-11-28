@@ -1236,8 +1236,11 @@ static void test_multipart_cancellation_aborts_owned_upload_and_preserves_source
     uint64_t bytes;
     char error[256];
     TEST_ASSERT_EQUAL_INT(STORAGE_S3_MISSING, storage_s3_stat(&target, job.destination_object_key, &bytes, error));
-    /* Best-effort fixture cleanup only; do not use abort success as proof that cancellation cleaned up multipart state. */
-    (void)storage_s3_abort_upload(&target, job.destination_object_key, original_upload_id, error);
+    /*
+     * Do not mask leaked multipart uploads with a fallback abort here.
+     * This test must fail if cancellation did not abort the original provider-side upload.
+     */
+    TEST_FAIL_MESSAGE("Missing provider-side multipart-upload existence assertion for original_upload_id; do not use fallback abort cleanup here.");
 }
 
 static void test_archive_credentials_require_private_regular_files(void) {
