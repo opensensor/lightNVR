@@ -1695,6 +1695,8 @@ static void test_batch_export_waits_for_verified_archive_source(void) {
     // Inspect the ZIP produced through the real handler's deferred-file contract.
     uv_loop_t loop;
     int loop_init_rc = uv_loop_init(&loop);
+    int loop_close_rc = -1;
+    libuv_server_t server = {.loop = &loop};
     bool conn_created = false;
     bool got_200 = false;
     bool deferred_file_serve = false;
@@ -1711,7 +1713,6 @@ static void test_batch_export_waits_for_verified_archive_source(void) {
     memset(content, 0, sizeof(content));
 
     if (loop_init_rc == 0) {
-        libuv_server_t server = {.loop = &loop};
         conn = libuv_connection_create(&server);
         conn_created = (conn != NULL);
         if (conn != NULL) {
@@ -1751,10 +1752,11 @@ static void test_batch_export_waits_for_verified_archive_source(void) {
     }
     if (loop_init_rc == 0) {
         uv_run(&loop, UV_RUN_DEFAULT);
-        (void)uv_loop_close(&loop);
+        loop_close_rc = uv_loop_close(&loop);
     }
 
     TEST_ASSERT_EQUAL_INT(0, loop_init_rc);
+    TEST_ASSERT_EQUAL_INT(0, loop_close_rc);
     TEST_ASSERT_TRUE(conn_created);
     TEST_ASSERT_TRUE(got_200);
     TEST_ASSERT_TRUE(deferred_file_serve);
@@ -1764,8 +1766,6 @@ static void test_batch_export_waits_for_verified_archive_source(void) {
     TEST_ASSERT_TRUE(fseek_ok);
     TEST_ASSERT_TRUE(payload_read_ok);
     TEST_ASSERT_TRUE(payload_match_ok);
-    uv_run(&loop, UV_RUN_DEFAULT);
-    TEST_ASSERT_EQUAL_INT(0, uv_loop_close(&loop));
 }
 
 static void test_expired_multipart_upload_restarts_from_source(void) {
