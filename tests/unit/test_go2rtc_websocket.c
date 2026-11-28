@@ -32,11 +32,12 @@ static const char upgrade_response[] =
     "Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\nX-LightNVR-Media-Policy: 1\r\n\r\n";
 
 static void test_websocket_origin_authority_validation(void) {
-    const struct { const char *host; const char *origin; bool allowed; } cases[] = {
+    const struct { const char *host; const char *origin; bool allowed; bool tls;
+                   const char *forwarded_proto; bool trusted_proxy; } cases[] = {
         {"camera", "http://CAMERA:80", true},
         {"camera:8080", "http://camera:8080", true},
-        {"camera:443", "https://camera", true},
-        {"camera:80", "https://camera:80", true},
+        {"camera:443", "https://camera", true, true},
+        {"camera:80", "https://camera:80", true, true},
         {"[::1]:8080", "http://[::1]:8080", true},
         {"camera:8080", "http://camera:8081", false},
         {"camera", "http://camera.evil", false},
@@ -44,10 +45,23 @@ static void test_websocket_origin_authority_validation(void) {
         {"camera", "http://user@camera", false},
         {"camera", "http://camera:0", false},
         {"[::1]:8080", "http://[::2]:8080", false},
+        {"camera", "https://camera", false},
+        {"camera", "http://camera", false, true},
+        {"camera", "https://camera", false, false, "https"},
+        {"camera", "https://camera", true, false, "https", true},
+        {"camera", "http://camera", false, false, "https", true},
+        {"camera", "http://camera", false, false, "invalid", true},
         {"camera", NULL, true},
     };
     for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
         http_request_t request = {0};
+        request.is_tls = cases[i].tls;
+        if (cases[i].trusted_proxy) {
+            snprintf(request.client_ip, sizeof(request.client_ip), "127.0.0.1");
+            snprintf(g_config.trusted_proxy_cidrs, sizeof(g_config.trusted_proxy_cidrs), "127.0.0.1/32");
+        } else {
+            g_config.trusted_proxy_cidrs[0] = '\0';
+        }
         http_response_t response;
         http_response_init(&response);
         const char *names[] = {"Host", "Origin", "Upgrade", "Connection",
@@ -60,11 +74,17 @@ static void test_websocket_origin_authority_validation(void) {
             snprintf(header->name, sizeof(header->name), "%s", names[j]);
             snprintf(header->value, sizeof(header->value), "%s", values[j]);
         }
+        if (cases[i].forwarded_proto) {
+            http_header_t *header = &request.headers[request.num_headers++];
+            snprintf(header->name, sizeof(header->name), "X-Forwarded-Proto");
+            snprintf(header->value, sizeof(header->value), "%s", cases[i].forwarded_proto);
+        }
         TEST_ASSERT_EQUAL_INT_MESSAGE(cases[i].allowed,
             go2rtc_websocket_validate(&request, &response),
             cases[i].origin ? cases[i].origin : "missing Origin");
         http_response_free(&response);
     }
+    g_config.trusted_proxy_cidrs[0] = '\0';
 }
 /* A masked text frame containing {"type":"mse"}. */
 static const unsigned char mse_request[] = {

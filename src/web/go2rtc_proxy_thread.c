@@ -37,6 +37,7 @@
 #include "web/api_handlers_go2rtc_proxy.h"
 #include "web/httpd_utils.h"
 #include "web/libuv_connection.h"
+#include "web/libuv_tls.h"
 #include "web/request_response.h"
 #include "core/config.h"
 #define LOG_COMPONENT "go2rtcProxy"
@@ -480,6 +481,7 @@ int go2rtc_proxy_thread_submit(libuv_connection_t *conn, write_complete_action_t
         return -1;
     }
     ctx->request = *req;
+    ctx->request.is_tls = libuv_connection_is_tls(conn);
     ctx->request.user_data = NULL;
     ctx->request.body = NULL;
     ctx->request.body_len = 0;
