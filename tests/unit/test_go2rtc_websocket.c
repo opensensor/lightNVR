@@ -440,7 +440,7 @@ void test_failed_upstream_handshake_returns_502(void) {
     tracked_clients[0] = -1;
     pthread_join(tracked_threads[0], NULL);
     tracked_thread_started[0] = false;
-    TEST_ASSERT_FALSE(tracked_peers[0].received_mse);
+    TEST_ASSERT_FALSE(tracked_peers[0].observed_client_ws_data_after_reject);
 }
 void test_upgrade_without_media_policy_ack_is_rejected(void) {
     tracked_peers[0] = (peer_t){.status = 101, .omit_media_ack = true};
@@ -450,8 +450,12 @@ void test_upgrade_without_media_policy_ack_is_rejected(void) {
     tracked_clients[0] = client;
     char origin[64], response[2048];
     int status = 0;
+    static const unsigned char masked_frame[] = {
+        0x81, 0x82, 0x01, 0x02, 0x03, 0x04, (unsigned char)('h' ^ 0x01), (unsigned char)('i' ^ 0x02)
+    };
     snprintf(origin, sizeof(origin), "http://localhost:%d", web_port);
     send_upgrade(client, 0, origin, true);
+    (void)send_all(client, masked_frame, sizeof(masked_frame));
     TEST_ASSERT_TRUE(read_headers(client, response, sizeof(response)));
     TEST_ASSERT_EQUAL_INT(1, sscanf(response, "HTTP/%*d.%*d %d", &status));
     TEST_ASSERT_EQUAL_INT(502, status);
@@ -477,8 +481,12 @@ void test_upgrade_with_wrong_accept_is_rejected(void) {
     tracked_clients[0] = client;
     char origin[64], response[2048];
     int status = 0;
+    static const unsigned char masked_frame[] = {
+        0x81, 0x82, 0x01, 0x02, 0x03, 0x04, (unsigned char)('h' ^ 0x01), (unsigned char)('i' ^ 0x02)
+    };
     snprintf(origin, sizeof(origin), "http://localhost:%d", web_port);
     send_upgrade(client, 0, origin, true);
+    (void)send_all(client, masked_frame, sizeof(masked_frame));
     TEST_ASSERT_TRUE(read_headers(client, response, sizeof(response)));
     TEST_ASSERT_EQUAL_INT(1, sscanf(response, "HTTP/%*d.%*d %d", &status));
     TEST_ASSERT_EQUAL_INT(502, status);
