@@ -40,6 +40,8 @@ static pthread_t slow_snapshot_thread;
 static bool slow_snapshot_thread_started;
 static libuv_connection_t slow_snapshot_connection;
 static bool slow_snapshot_connection_initialized;
+static libuv_connection_t *snapshot_capacity_connections;
+static int snapshot_capacity_count;
 
 bool __real_go2rtc_proxy_authorize_request(const http_request_t *request,
                                           http_response_t *response);
@@ -105,6 +107,8 @@ void setUp(void) {
     slow_snapshot_server = -1;
     slow_snapshot_thread_started = false;
     slow_snapshot_connection_initialized = false;
+    snapshot_capacity_connections = NULL;
+    snapshot_capacity_count = 0;
     load_default_config(&g_config);
     go2rtc_api_apply_base_path_override(NULL, 0);
     completed_responses = 0;
@@ -124,18 +128,23 @@ void tearDown(void) {
     go2rtc_api_apply_base_path_override(NULL, 0);
     go2rtc_proxy_thread_shutdown();
     uv_run(&loop, UV_RUN_DEFAULT);
-    if (slow_snapshot_server >= 0) {
-        close(slow_snapshot_server);
-        slow_snapshot_server = -1;
-    }
     if (slow_snapshot_thread_started) {
         pthread_join(slow_snapshot_thread, NULL);
         slow_snapshot_thread_started = false;
+    }
+    if (slow_snapshot_server >= 0) {
+        close(slow_snapshot_server);
+        slow_snapshot_server = -1;
     }
     if (slow_snapshot_connection_initialized) {
         http_response_free(&slow_snapshot_connection.response);
         slow_snapshot_connection_initialized = false;
     }
+    for (int i = 0; i < snapshot_capacity_count; i++)
+        http_response_free(&snapshot_capacity_connections[i].response);
+    free(snapshot_capacity_connections);
+    snapshot_capacity_connections = NULL;
+    snapshot_capacity_count = 0;
     TEST_ASSERT_EQUAL_INT(0, uv_loop_close(&loop));
     curl_global_cleanup();
 }
@@ -225,6 +234,28 @@ void test_slow_snapshot_releases_its_slot_after_ten_seconds(void) {
     TEST_ASSERT_EQUAL_INT(502, status);
     TEST_ASSERT_GREATER_OR_EQUAL_INT64(9000, elapsed);
     TEST_ASSERT_LESS_THAN_INT64(11000, elapsed);
+
+    /* A timed-out request must release its slot so all 32 slots can be used. */
+    enum { LIMIT = 32 };
+    snapshot_capacity_connections = calloc(LIMIT, sizeof(*snapshot_capacity_connections));
+    TEST_ASSERT_NOT_NULL(snapshot_capacity_connections);
+    snapshot_capacity_count = LIMIT;
+    hold_upstream = true;
+    release_upstream = false;
+    int accepted = 0;
+    for (int i = 0; i < LIMIT; i++) {
+        init_connection(&snapshot_capacity_connections[i]);
+        if (go2rtc_proxy_thread_submit(&snapshot_capacity_connections[i], WRITE_ACTION_CLOSE) == 0)
+            accepted++;
+    }
+    pthread_mutex_lock(&upstream_mutex);
+    release_upstream = true;
+    pthread_cond_broadcast(&upstream_ready);
+    pthread_mutex_unlock(&upstream_mutex);
+    pump_responses(1 + accepted, 5000);
+    hold_upstream = false;
+    TEST_ASSERT_EQUAL_INT(LIMIT, accepted);
+    TEST_ASSERT_EQUAL_INT(1 + LIMIT, completed_responses);
 }
 
 static int open_upstream_listener(void) {
