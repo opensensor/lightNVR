@@ -1218,6 +1218,32 @@ static void write_lifecycle_attestation(const storage_target_t *target, double c
 }
 
 static void test_scoped_credentials_use_fresh_operator_lifecycle_inspection(void) {
+    char isolated_template[512], *original_dir;
+    snprintf(isolated_template, sizeof(isolated_template), "%s/credentials-attestation-XXXXXX", root);
+    char *isolated_dir = mkdtemp(isolated_template);
+    TEST_ASSERT_NOT_NULL(isolated_dir);
+    original_dir = getenv("LIGHTNVR_ARCHIVE_CREDENTIALS_DIR");
+    TEST_ASSERT_NOT_NULL(original_dir);
+    /* Copy required fixture credential into isolated dir for this test. */
+    {
+        storage_target_t setup_target = archive_target("credentials-path", true);
+        char src[1024], dst[1024];
+        snprintf(src, sizeof(src), "%s/%s", original_dir, setup_target.credential_ref);
+        snprintf(dst, sizeof(dst), "%s/%s", isolated_dir, setup_target.credential_ref);
+        FILE *in = fopen(src, "r");
+        TEST_ASSERT_NOT_NULL(in);
+        FILE *out = fopen(dst, "w");
+        TEST_ASSERT_NOT_NULL(out);
+        char buf[4096];
+        size_t n;
+        while ((n = fread(buf, 1, sizeof(buf), in)) > 0) {
+            TEST_ASSERT_EQUAL_UINT64(n, fwrite(buf, 1, n, out));
+        }
+        fclose(in);
+        fclose(out);
+        TEST_ASSERT_EQUAL_INT(0, chmod(dst, 0600));
+    }
+    TEST_ASSERT_EQUAL_INT(0, setenv("LIGHTNVR_ARCHIVE_CREDENTIALS_DIR", isolated_dir, 1));
     storage_target_t target = archive_target("scoped-lifecycle", true);
     TEST_ASSERT_NOT_EQUAL_INT(0, storage_s3_probe(&target, true));
     TEST_ASSERT_NOT_NULL(strstr(target.last_error, "operator-verified"));
