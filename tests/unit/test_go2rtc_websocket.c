@@ -216,7 +216,7 @@ static void *upstream_peer(void *arg) {
         struct pollfd ready = {.fd = peer->fd, .events = POLLIN};
         if (poll(&ready, 1, 200) > 0 && (ready.revents & POLLIN)) {
             unsigned char byte;
-            peer->premature_client_ws_data = recv(peer->fd, &byte, 1, MSG_DONTWAIT) > 0;
+            peer->premature_client_ws_data = recv(peer->fd, &byte, 1, MSG_DONTWAIT | MSG_PEEK) > 0;
         }
         if (!send_all(peer->fd, upgrade_response + split_at, upgrade_len - split_at) ||
             !send_all(peer->fd, media_response, sizeof(media_response))) goto done;
