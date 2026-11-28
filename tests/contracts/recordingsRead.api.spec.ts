@@ -102,6 +102,10 @@ test('large timeline IDs remain exact through JSON, playback and ZIP export',asy
   for(const id of expected) expect(timeline.segments.some((row:{id:number|string})=>row.id===id)).toBe(true);
   const playback=await server.request(`/api/recordings/play/${exact[2]}`,{principal:'viewer'});
   expect(playback.status).toBe(200);expect(Buffer.from(await playback.arrayBuffer())).toEqual(fixture.bytes);
+  const forbiddenExport=await server.request('/api/recordings/batch-download',{principal:'cameraScope',method:'POST',body:{ids:[ids.playable,ids.hidden],filename:'forbidden.zip'}});
+  expect(forbiddenExport.status).toBe(403);
+  const forbiddenExportBody=await forbiddenExport.json().catch(()=>undefined);
+  expect(forbiddenExportBody?.token).toBeUndefined();
   const accepted=await ok(server,'/api/recordings/batch-download',admin,'POST',{ids:exact.slice(1,3),filename:'exact.zip'});
   await expect.poll(async()=> (await ok(server,`/api/recordings/batch-download/status/${accepted.token}`,admin)).status,
     {timeout:15000,intervals:[50,100,200]}).toBe('complete');
