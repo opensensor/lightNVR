@@ -2046,32 +2046,53 @@ static void test_storage_workers_do_not_rollback_an_unowned_transaction(void) {
 }
 
 static libuv_connection_t *stalled_archive_connection(libuv_server_t *server, int *client, uint64_t id) {
-    int listener = socket(AF_INET, SOCK_STREAM, 0);
-    TEST_ASSERT_GREATER_OR_EQUAL_INT(0, listener);
-    struct sockaddr_in address = {.sin_family=AF_INET, .sin_addr.s_addr=htonl(INADDR_LOOPBACK)};
-    TEST_ASSERT_EQUAL_INT(0, bind(listener, (struct sockaddr *)&address, sizeof(address)));
-    TEST_ASSERT_EQUAL_INT(0, listen(listener, 1));
-    socklen_t length = sizeof(address);
-    TEST_ASSERT_EQUAL_INT(0, getsockname(listener, (struct sockaddr *)&address, &length));
-    *client = socket(AF_INET, SOCK_STREAM, 0);
-    TEST_ASSERT_GREATER_OR_EQUAL_INT(0, *client);
+    int listener = -1;
+    int peer = -1;
+    libuv_connection_t *conn = NULL;
     int small = 4096;
+    struct sockaddr_in address = {.sin_family=AF_INET, .sin_addr.s_addr=htonl(INADDR_LOOPBACK)};
+    socklen_t length = sizeof(address);
+
+    *client = -1;
+
+    listener = socket(AF_INET, SOCK_STREAM, 0);
+    if (listener < 0) goto fail;
+    if (bind(listener, (struct sockaddr *)&address, sizeof(address)) != 0) goto fail;
+    if (listen(listener, 1) != 0) goto fail;
+    if (getsockname(listener, (struct sockaddr *)&address, &length) != 0) goto fail;
+
+    *client = socket(AF_INET, SOCK_STREAM, 0);
+    if (*client < 0) goto fail;
     // Keep the unread client's advertised window small so both archive
     // responses reliably remain queued while their leases are renewed.
-    TEST_ASSERT_EQUAL_INT(0, setsockopt(*client, SOL_SOCKET, SO_RCVBUF, &small, sizeof(small)));
-    TEST_ASSERT_EQUAL_INT(0, connect(*client, (struct sockaddr *)&address, length));
-    int peer = accept(listener, NULL, NULL);
+    if (setsockopt(*client, SOL_SOCKET, SO_RCVBUF, &small, sizeof(small)) != 0) goto fail;
+    if (connect(*client, (struct sockaddr *)&address, length) != 0) goto fail;
+
+    peer = accept(listener, NULL, NULL);
     close(listener);
-    TEST_ASSERT_GREATER_OR_EQUAL_INT(0, peer);
-    TEST_ASSERT_EQUAL_INT(0, setsockopt(peer, SOL_SOCKET, SO_SNDBUF, &small, sizeof(small)));
-    libuv_connection_t *conn = libuv_connection_create(server);
-    TEST_ASSERT_NOT_NULL(conn);
-    TEST_ASSERT_EQUAL_INT(0, uv_tcp_open(&conn->handle, peer));
+    listener = -1;
+    if (peer < 0) goto fail;
+    if (setsockopt(peer, SOL_SOCKET, SO_SNDBUF, &small, sizeof(small)) != 0) goto fail;
+
+    conn = libuv_connection_create(server);
+    if (conn == NULL) goto fail;
+    if (uv_tcp_open(&conn->handle, peer) != 0) goto fail;
+    peer = -1;
+
     conn->keep_alive = false;
     conn->request.user_data = conn;
     conn->request.method = HTTP_METHOD_GET;
-    TEST_ASSERT_TRUE(recording_archive_serve(&conn->request, &conn->response, id, false));
+    if (!recording_archive_serve(&conn->request, &conn->response, id, false)) goto fail;
     return conn;
+
+fail:
+    if (peer >= 0) close(peer);
+    if (listener >= 0) close(listener);
+    if (*client >= 0) {
+        close(*client);
+        *client = -1;
+    }
+    return NULL;
 }
 
 static void test_stalled_archive_writes_renew_lease_until_completion(void) {
