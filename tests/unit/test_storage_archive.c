@@ -2093,6 +2093,15 @@ static void test_stalled_archive_writes_renew_lease_until_completion(void) {
     libuv_connection_t *first = stalled_archive_connection(&server, &clients[0], id);
     libuv_connection_t *second = stalled_archive_connection(&server, &clients[1], id);
     capture_lease_timers = false;
+
+    if (first == NULL || second == NULL || clients[0] < 0 || clients[1] < 0) {
+        if (clients[0] >= 0) close(clients[0]);
+        if (clients[1] >= 0) close(clients[1]);
+        for (int i = 0; i < 100; i++) uv_run(&loop, UV_RUN_NOWAIT);
+        uv_loop_close(&loop);
+        TEST_FAIL_MESSAGE("Failed to establish stalled archive connections");
+    }
+
     bool stalled = false;
     if (captured_timer_count == 2) for (int i = 0; i < 5000; i++) {
         uv_run(&loop, UV_RUN_NOWAIT);
