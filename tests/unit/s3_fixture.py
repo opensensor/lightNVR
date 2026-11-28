@@ -42,7 +42,7 @@ class S3Handler(BaseHTTPRequestHandler):
         try:
             return self.respond(status, data, headers)
         finally:
-        if token != 'fixture-session-token':
+            self.lock.acquire()
 
     def authorized(self, body):
         match = re.fullmatch(r'AWS4-HMAC-SHA256 Credential=([^/]+)/([^,]+), SignedHeaders=([^,]+), Signature=([0-9a-f]+)',
@@ -65,6 +65,8 @@ class S3Handler(BaseHTTPRequestHandler):
         if amz_date[:8] != date:
             return False
         signed_headers = match[3].split(';')
+        if token is not None and 'x-amz-security-token' not in signed_headers:
+            return False
         if not signed_headers:
             return False
         if any(header != header.lower() for header in signed_headers):
