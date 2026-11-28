@@ -117,6 +117,10 @@ static void test_stop_and_destroy_from_shared_loop_callback(void) {
     TEST_ASSERT_TRUE(stopped_in_callback);
     TEST_ASSERT_FALSE(uv_is_closing((uv_handle_t *)&foreign_async));
     TEST_ASSERT_TRUE(uv_has_ref((const uv_handle_t *)&foreign_async));
+    foreign_cb_called = false;
+    TEST_ASSERT_EQUAL_INT(0, uv_async_send(&foreign_async));
+    uv_run(&loop, UV_RUN_NOWAIT);
+    TEST_ASSERT_TRUE(foreign_cb_called);
 }
 
 int main(void) {
