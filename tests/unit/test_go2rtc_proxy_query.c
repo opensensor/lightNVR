@@ -33,7 +33,9 @@ void test_encoded_sources_are_decoded_before_length_checks_and_canonicalized(voi
         TEST_ASSERT_TRUE(go2rtc_proxy_parse_source(&req, name, sizeof(name)));
         TEST_ASSERT_EQUAL_STRING(expected, name);
         TEST_ASSERT_TRUE(go2rtc_proxy_build_url(&req, url, sizeof(url)));
-        TEST_ASSERT_EQUAL_STRING(expected, strstr(url, "?src=") + 5);
+        const char *src_param = strstr(url, "?src=");
+        TEST_ASSERT_NOT_NULL(src_param);
+        TEST_ASSERT_EQUAL_STRING(expected, src_param + 5);
         strcat(req.query_string, "b");
         TEST_ASSERT_FALSE(go2rtc_proxy_parse_source(&req, name, sizeof(name)));
         TEST_ASSERT_FALSE(go2rtc_proxy_build_url(&req, url, sizeof(url)));
