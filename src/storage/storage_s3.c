@@ -682,7 +682,7 @@ static int multipart_upload(const storage_target_t *target, const char *key, FIL
 int storage_s3_upload(const storage_target_t *target, const char *key, const char *path,
                       const char *checksum, const storage_transfer_control_t *control,
                       char error[STORAGE_TARGET_ERROR_MAX]) {
-    int descriptor = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    int descriptor = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
     struct stat status;
     if (descriptor < 0 || fstat(descriptor, &status) || !S_ISREG(status.st_mode) || status.st_size < 0) {
         if (descriptor >= 0) close(descriptor);
