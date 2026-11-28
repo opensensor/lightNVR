@@ -801,10 +801,18 @@ static void test_archive_range_proxy_and_disconnect(void) {
             bool timed_out = false;
             struct timespec start_ts, now_ts;
             const long timeout_ms = 5000;
-            TEST_ASSERT_EQUAL_INT(0, fcntl(client, F_SETFL, fcntl(client, F_GETFL, 0) | O_NONBLOCK));
-            TEST_ASSERT_EQUAL_INT(0, clock_gettime(CLOCK_MONOTONIC, &start_ts));
+            int getfl_rc = fcntl(client, F_GETFL, 0);
+            int setfl_rc = -1;
+            int start_clock_rc = -1;
+            int now_clock_rc = 0;
+            if (getfl_rc >= 0) {
+                setfl_rc = fcntl(client, F_SETFL, getfl_rc | O_NONBLOCK);
+            }
+            if (setfl_rc == 0) {
+                start_clock_rc = clock_gettime(CLOCK_MONOTONIC, &start_ts);
+            }
 
-            while (1) {
+            while (setfl_rc == 0 && start_clock_rc == 0) {
                 (void)uv_run(&loop, UV_RUN_NOWAIT);
                 while ((count = recv(client, response + total, sizeof(response) - 1 - total, 0)) > 0) {
                     total += (size_t)count;
@@ -815,7 +823,10 @@ static void test_archive_range_proxy_and_disconnect(void) {
                     timed_out = true;
                     break;
                 }
-                TEST_ASSERT_EQUAL_INT(0, clock_gettime(CLOCK_MONOTONIC, &now_ts));
+                now_clock_rc = clock_gettime(CLOCK_MONOTONIC, &now_ts);
+                if (now_clock_rc != 0) {
+                    break;
+                }
                 long elapsed_ms = (now_ts.tv_sec - start_ts.tv_sec) * 1000L +
                                   (now_ts.tv_nsec - start_ts.tv_nsec) / 1000000L;
                 if (elapsed_ms >= timeout_ms) {
@@ -835,6 +846,10 @@ static void test_archive_range_proxy_and_disconnect(void) {
             close(client);
             uv_run(&loop, UV_RUN_DEFAULT);
             TEST_ASSERT_EQUAL_INT(0, uv_loop_close(&loop));
+            TEST_ASSERT_TRUE_MESSAGE(getfl_rc >= 0, "fcntl(F_GETFL) failed");
+            TEST_ASSERT_EQUAL_INT_MESSAGE(0, setfl_rc, "fcntl(F_SETFL) failed");
+            TEST_ASSERT_EQUAL_INT_MESSAGE(0, start_clock_rc, "clock_gettime(start_ts) failed");
+            TEST_ASSERT_EQUAL_INT_MESSAGE(0, now_clock_rc, "clock_gettime(now_ts) failed");
             char *body = strstr(response, "\r\n\r\n");
             TEST_ASSERT_NOT_NULL(body);
             if (unavailable) {
