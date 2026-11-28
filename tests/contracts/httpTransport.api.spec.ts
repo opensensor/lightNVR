@@ -190,3 +190,29 @@ test('HEAD serves static file headers without file bytes', async () => {
     rmSync(webRoot, {recursive: true, force: true});
   }
 });
+
+test('closing a client during file delivery leaves file callbacks safe', async () => {
+  const webRoot = mkdtempSync(path.join(tmpdir(), 'lightnvr-file-close-'));
+  writeFileSync(path.join(webRoot, 'large.bin'), Buffer.alloc(4 * 1024 * 1024, 0x61));
+  let server: Awaited<ReturnType<typeof startFixture>> | undefined;
+  try {
+    server = await startFixture({webRoot});
+    await Promise.all(Array.from({length: 8}, () => new Promise<void>((resolve, reject) => {
+      const socket = connect(server!.port, '127.0.0.1');
+      const timer = setTimeout(() => socket.destroy(new Error('File response timed out')), 10000);
+      socket.once('connect', () => socket.write(
+        'GET /large.bin HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n'));
+      socket.once('data', () => {
+        clearTimeout(timer);
+        socket.destroy();
+        resolve();
+      });
+      socket.once('error', reject);
+    })));
+    const health = await server.request('/api/health?liveness=true');
+    expect(health.status).toBe(200);
+  } finally {
+    if (server) await server.stop();
+    rmSync(webRoot, {recursive: true, force: true});
+  }
+});
