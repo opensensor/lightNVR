@@ -78,12 +78,22 @@ jobs:
         run: |
           docker run --rm --user "$(id -u):$(id -g)" --tmpfs /tmp:exec,size=4g,mode=1777 \
             -e HOME=/tmp -e CARGO_HOME=/tmp/cargo-home -e LIGHTNVR_GIT_COMMIT="${GITHUB_SHA::7}" \
+            -e LIGHTNVR_MEMORY_REPORT=/work/build/rust-transpile/memory-report.json \
+            -e LIGHTNVR_MAX_PEAK_RSS_KIB=98304 \
             -v "$GITHUB_WORKSPACE:/work" -w /work "$TRANSPILE_IMAGE" bash -euo pipefail -c '
               python3 tools/rust-transpile/generate.py --native --check
               (cd rust && cargo build --release --locked)
               python3 tools/rust-transpile/abi-audit.py
               npm ci --ignore-scripts
               node tools/rust-transpile/smoke.mjs rust/target/release/lightnvr-rs'
+
+      - name: Record Rust smoke memory
+        if: always()
+        run: |
+          report=build/rust-transpile/memory-report.json
+          if [ -s "$report" ]; then
+            jq -r '"Rust release smoke: binary \(.binaryBytes) bytes, RSS \(.rssKiB) KiB, peak RSS \(.peakRssKiB) KiB, PSS \(.pssKiB) KiB"' "$report" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Package tarball
         run: |
@@ -96,12 +106,14 @@ jobs:
           tar -C dist -czf "dist/$name.tar.gz" "$name"
           (cd dist && sha256sum "$name.tar.gz" > "$name.tar.gz.sha256")
           cp rust/target/release/lightnvr-rs dist/lightnvr-rs
+          cp build/rust-transpile/memory-report.json dist/lightnvr-rs-memory.json
 
       - uses: actions/upload-artifact@v7
         with:
           name: lightnvr-rs-bin
           path: |
             dist/lightnvr-rs
+            dist/lightnvr-rs-memory.json
             dist/*.tar.gz
             dist/*.tar.gz.sha256
           retention-days: 7

@@ -105,6 +105,8 @@ jobs:
         run: &in_image >-
           docker run --rm --user "$(id -u):$(id -g)" --tmpfs /tmp:exec,size=4g,mode=1777
           -e HOME=/tmp -e CARGO_HOME=/cargo-home -e npm_config_cache=/tmp/npm-cache
+          -e LIGHTNVR_MEMORY_REPORT=/work/build/rust-transpile/memory-report.json
+          -e LIGHTNVR_MAX_PEAK_RSS_KIB=98304
           -v "$GITHUB_WORKSPACE:/work" -v "$RUNNER_TEMP/cargo-home:/cargo-home" -w /work
           "$IMAGE" bash -euo pipefail -c "$STEP"
         env:
@@ -137,6 +139,23 @@ jobs:
             LIGHTNVR_CONTRACT_BIN=/work/rust/target/release/lightnvr-rs
             npx playwright test -c tests/contracts/playwright.config.ts --project=api
             --workers=4 --retries=0 --forbid-only --reporter=list
+
+      - name: Record Rust smoke memory
+        if: always()
+        run: |
+          report=build/rust-transpile/memory-report.json
+          if [ -s "$report" ]; then
+            jq -r '"Rust seeded API smoke: binary \(.binaryBytes) bytes, RSS \(.rssKiB) KiB, peak RSS \(.peakRssKiB) KiB, PSS \(.pssKiB) KiB"' "$report" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload Rust smoke memory
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: lightnvr-rs-memory
+          path: build/rust-transpile/memory-report.json
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Upload contract results and server logs
         if: failure()

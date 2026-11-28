@@ -32,6 +32,7 @@ TYPED_POINTER_INTRINSICS = {
 # C atomic_bool locations rewritten to typed AtomicBool operations.
 BOOLEAN_ATOMICS = {
     "src/core/main.c": ["shutdown_in_progress", "running", "restart_requested"],
+    "src/web/libuv_server.c": ["(*server).running", "(*server).thread_joinable"],
     "src/web/go2rtc_proxy_thread.c": ["g_proxy_state.shutting_down"],
     "src/video/onvif_detection.c": ["warned_missing_key"],
     "src/video/unified_detection_thread.c": ["(*ctx).fps_is_provisional"],
