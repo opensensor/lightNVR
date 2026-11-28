@@ -36,11 +36,9 @@ static int upstream_requests;
 static char upstream_request[2048];
 static pthread_mutex_t upstream_mutex = PTHREAD_MUTEX_INITIALIZER;
 static libuv_connection_t fixture_connection;
-static bool fixture_connection_in_use;
-static int fixture_server = -1;
-static pthread_t fixture_peer;
-static bool fixture_peer_started;
-static libuv_connection_t fixture_connection;
+static int redirect_server = -1;
+static pthread_t redirect_peer_thread;
+static bool redirect_peer_started;
 static bool fixture_connection_initialized;
 static int fixture_upstream_listener = -1;
 static pthread_t fixture_peer_thread;
@@ -116,6 +114,8 @@ static void init_connection(libuv_connection_t *connection) {
 }
 
 void setUp(void) {
+    redirect_server = -1;
+    redirect_peer_started = false;
     fixture_connection_initialized = false;
     fixture_upstream_listener = -1;
     fixture_peer_started = false;
@@ -146,6 +146,14 @@ void tearDown(void) {
     release_upstream = true;
     pthread_cond_broadcast(&upstream_ready);
     pthread_mutex_unlock(&upstream_mutex);
+    if (redirect_peer_started) {
+        pthread_join(redirect_peer_thread, NULL);
+        redirect_peer_started = false;
+    }
+    if (redirect_server >= 0) {
+        close(redirect_server);
+        redirect_server = -1;
+    }
     if (fixture_peer_started) {
         pthread_join(fixture_peer_thread, NULL);
         fixture_peer_started = false;
@@ -350,12 +358,11 @@ void test_both_proxy_handlers_never_follow_unauthorized_redirects(void) {
     real_authorization = true;
     for (int threaded = 0; threaded < 2; threaded++) {
         upstream_requests = 0;
-        fixture_server = open_upstream_listener();
-        fixture_peer_started = false;
-        TEST_ASSERT_EQUAL_INT(0, pthread_create(&fixture_peer, NULL, redirect_peer, &fixture_server));
-        fixture_peer_started = true;
-        fixture_connection_in_use = true;
+        redirect_server = open_upstream_listener();
+        TEST_ASSERT_EQUAL_INT(0, pthread_create(&redirect_peer_thread, NULL, redirect_peer, &redirect_server));
+        redirect_peer_started = true;
         init_connection(&fixture_connection);
+        fixture_connection_initialized = true;
         strcpy(fixture_connection.request.path, "/go2rtc/api/streams");
         fixture_connection.request.query_string[0] = '\0';
         fixture_connection.request.user_data = &fixture_connection;
@@ -366,13 +373,13 @@ void test_both_proxy_handlers_never_follow_unauthorized_redirects(void) {
         } else {
             handle_go2rtc_proxy(&fixture_connection.request, &fixture_connection.response);
         }
-        pthread_join(fixture_peer, NULL);
-        fixture_peer_started = false;
-        close(fixture_server);
-        fixture_server = -1;
+        pthread_join(redirect_peer_thread, NULL);
+        redirect_peer_started = false;
+        close(redirect_server);
+        redirect_server = -1;
         int status = fixture_connection.response.status_code;
         http_response_free(&fixture_connection.response);
-        fixture_connection_in_use = false;
+        fixture_connection_initialized = false;
         TEST_ASSERT_EQUAL_INT(1, upstream_requests);
         TEST_ASSERT_EQUAL_INT(502, status);
         TEST_ASSERT_NOT_NULL(strstr(upstream_request, yaml_validate_is_available()
