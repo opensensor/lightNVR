@@ -247,6 +247,17 @@ test('playback preparation and thumbnails retain their own JSON/media and permis
     const body=await response.json();
     return response.status===200 && validateRecordingPlaybackReady(body);
   },{timeout:15000}).toBe(true);
+  const preparedMedia=await media(server,ids.sibling,viewer,{},'?transcode=1');
+  expect(preparedMedia.status).toBe(200);
+  expect(preparedMedia.headers.get('content-type')).toBe('video/mp4');
+  const preparedBytes=Buffer.from(await preparedMedia.arrayBuffer());
+  expect(preparedBytes.length).toBeGreaterThan(0);
+  const preparedFile=path.join(fixture.directory,`${ids.sibling}.prepared.mp4`);
+  writeFileSync(preparedFile,preparedBytes);
+  const codec=execFileSync('ffprobe',['-v','error','-select_streams','v:0','-show_entries','stream=codec_name','-of','default=noprint_wrappers=1:nokey=1',preparedFile],{timeout:20000}).toString().trim();
+  expect(codec).toBe('h264');
+  execFileSync('ffmpeg',['-nostdin','-hide_banner','-loglevel','error','-i',preparedFile,'-f','null','-'],{timeout:20000});
+  unlinkSync(preparedFile);
   expect(validateRecordingPlaybackReady({status:'preparing'})).toBe(false);expect(validateRecordingPlaybackPreparing({status:'ready'})).toBe(false);
 });
 
