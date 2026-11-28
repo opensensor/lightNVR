@@ -231,7 +231,9 @@ test('closing a client during file delivery leaves file callbacks safe', async (
           done(new Error('File finished before the client could interrupt delivery'));
           return;
         }
-        if (bodyBytes > 0) {
+        // Require a meaningful partial body to reduce false positives caused by buffering.
+        // A single byte is not enough evidence that server-side file callbacks were still pending.
+        if (bodyBytes >= 64 * 1024 && bodyBytes < 4 * 1024 * 1024) {
           interruptionObserved = true;
           done();
         }
