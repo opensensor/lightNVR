@@ -128,6 +128,24 @@ static cJSON *api(void (*handler)(const http_request_t *, http_response_t *),
     return json;
 }
 
+/* Status polling must not abort while the detached export worker is active. */
+static cJSON *batch_status_noassert(const char *path, int *status_code) {
+    http_request_t request;
+    http_response_t response;
+    http_request_init(&request);
+    http_response_init(&response);
+    request.method = HTTP_METHOD_GET;
+    safe_strcpy(request.method_str, "GET", sizeof(request.method_str), 0);
+    safe_strcpy(request.path, path, sizeof(request.path), 0);
+    safe_strcpy(request.uri, path, sizeof(request.uri), 0);
+    safe_strcpy(request.client_ip, "127.0.0.1", sizeof(request.client_ip), 0);
+    handle_batch_download_status(&request, &response);
+    cJSON *json = response.body ? cJSON_Parse(response.body) : NULL;
+    *status_code = response.status_code;
+    http_response_free(&response);
+    return json;
+}
+
 static cJSON *field(cJSON *json, const char *name) {
     cJSON *value = cJSON_GetObjectItemCaseSensitive(json, name);
     TEST_ASSERT_NOT_NULL_MESSAGE(value, name);
@@ -1502,15 +1520,21 @@ static void test_batch_export_waits_for_verified_archive_source(void) {
     safe_strcpy(token, field(json, "token")->valuestring, sizeof(token), 0);
     cJSON_Delete(json);
     snprintf(path, sizeof(path), "/api/recordings/batch-download/status/%s", token);
-    bool completed = false, retrieved = false;
+    bool completed = false, retrieved = false, failed = false, poll_failed = false;
     for (int i = 0; i < 500; i++) {
         if (storage_source_process_one() == 1) retrieved = true;
-        json = api(handle_batch_download_status, HTTP_METHOD_GET, path, NULL, NULL, NULL, 200);
-        completed = !strcmp(field(json, "status")->valuestring, "complete");
-        bool failed = !strcmp(field(json, "status")->valuestring, "error");
+        int status_code = 0;
+        json = batch_status_noassert(path, &status_code);
+        cJSON *status = json ? cJSON_GetObjectItemCaseSensitive(json, "status") : NULL;
+        if (status_code != 200 || !cJSON_IsString(status)) {
+            poll_failed = true;
+            cJSON_Delete(json);
+            break;
+        }
+        completed = !strcmp(status->valuestring, "complete");
+        failed = !strcmp(status->valuestring, "error");
         cJSON_Delete(json);
-        TEST_ASSERT_FALSE(failed);
-        if (completed) break;
+        if (completed || failed) break;
         struct timespec delay = {.tv_nsec = 10000000};
         nanosleep(&delay, NULL);
     }
@@ -1518,30 +1542,20 @@ static void test_batch_export_waits_for_verified_archive_source(void) {
     if (timed_out) {
         // Do not abort immediately: first wait for a terminal worker state so
         // fixture teardown cannot race a detached export worker.
-        bool terminal = false;
-        for (int drain = 0; drain < 500; drain++) {
+        bool terminal = failed;
+        for (int drain = 0; drain < 1000 && !terminal; drain++) {
             (void)storage_source_process_one();
-            json = api(handle_batch_download_status, HTTP_METHOD_GET, path, NULL, NULL, NULL, 200);
-            terminal = strcmp(field(json, "status")->valuestring, "pending") != 0 &&
-                       strcmp(field(json, "status")->valuestring, "running") != 0;
+            int status_code = 0;
+            json = batch_status_noassert(path, &status_code);
+            cJSON *status = json ? cJSON_GetObjectItemCaseSensitive(json, "status") : NULL;
+            if (status_code == 200 && cJSON_IsString(status)) {
+                terminal = strcmp(status->valuestring, "pending") != 0 &&
+                           strcmp(status->valuestring, "running") != 0;
+            }
             cJSON_Delete(json);
             if (terminal) break;
             struct timespec delay = {.tv_nsec = 10000000};
             nanosleep(&delay, NULL);
-        }
-        if (!terminal) {
-            // Keep draining until terminal (or hard safety cap) before allowing
-            // teardown paths to run, to avoid races with detached worker activity.
-            for (int drain = 0; drain < 500; drain++) {
-                (void)storage_source_process_one();
-                json = api(handle_batch_download_status, HTTP_METHOD_GET, path, NULL, NULL, NULL, 200);
-                terminal = strcmp(field(json, "status")->valuestring, "pending") != 0 &&
-                           strcmp(field(json, "status")->valuestring, "running") != 0;
-                cJSON_Delete(json);
-                if (terminal) break;
-                struct timespec delay = {.tv_nsec = 10000000};
-                nanosleep(&delay, NULL);
-            }
         }
         if (!terminal) {
             fprintf(stderr,
@@ -1550,6 +1564,8 @@ static void test_batch_export_waits_for_verified_archive_source(void) {
             abort();
         }
     }
+    TEST_ASSERT_FALSE_MESSAGE(poll_failed, "batch export status was unavailable while polling");
+    TEST_ASSERT_FALSE_MESSAGE(failed, "batch export worker reported an error");
     TEST_ASSERT_FALSE_MESSAGE(timed_out, "batch export did not complete before polling deadline");
     TEST_ASSERT_TRUE(retrieved);
     // Inspect the ZIP produced through the real handler's deferred-file contract.
