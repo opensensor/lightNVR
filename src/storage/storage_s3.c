@@ -462,6 +462,17 @@ int storage_s3_abort_upload(const storage_target_t *target, const char *key,
     return result == STORAGE_S3_MISSING ? 0 : result;
 }
 
+int storage_s3_upload_status(const storage_target_t *target, const char *key,
+                             const char *id, char error[STORAGE_TARGET_ERROR_MAX]) {
+    if (!id || !*id) return STORAGE_S3_ERROR;
+    char *query = upload_query(id, 0);
+    if (!query) return STORAGE_S3_ERROR;
+    s3_io_t io = {.limit = S3_REPLY_LIMIT};
+    int result = request(target, key, query, "GET", NULL, 0, NULL, &io, NULL, error);
+    free(query);
+    return result;
+}
+
 static ezxml_t response_xml(char *body, const char *name) {
     if (!body || strstr(body, "<!")) return NULL;
     ezxml_t root = ezxml_parse_str(body, strlen(body));
@@ -846,6 +857,9 @@ int storage_s3_delete(const storage_target_t *t,const char *k,char e[256]) {
     (void)t;(void)k;return unsupported(e);
 }
 int storage_s3_abort_upload(const storage_target_t *t,const char *k,const char *id,char e[256]) {
+    (void)t;(void)k;(void)id;return unsupported(e);
+}
+int storage_s3_upload_status(const storage_target_t *t,const char *k,const char *id,char e[256]) {
     (void)t;(void)k;(void)id;return unsupported(e);
 }
 int storage_s3_read_range(const storage_target_t *t,const char *k,uint64_t o,size_t n,uint64_t total,void *b,const storage_transfer_control_t *c,char e[256]) {
