@@ -129,6 +129,7 @@ test('recording reads fail closed on policy lookup failure and recover without e
       '/api/recordings/protected','/api/recordings/protected?stream=A',
       `/api/recordings/${ids.playable}`,`/api/recordings/${ids.playable}/tags`,
       `/api/recordings/play/${ids.playable}`,
+      `/api/recordings/play/${ids.playable}?prepare=1`,
       `/api/timeline/segments?stream=A&${timelineQuery(fixture)}`,
       `/api/timeline/manifest?stream=A&${timelineQuery(fixture)}`,
       `/api/timeline/play?stream=A&start=${fixture.start}`,
@@ -250,6 +251,7 @@ test('playback preparation and thumbnails retain their own JSON/media and permis
 });
 
 test('durable recording IDs survive sorting, repeated polling and supported sibling deletion',async({server})=>{
+  // This populates the recording rows exercised by the ordering and deletion requests.
   seedRecordings(server);
   const ascIds:number[]=[ids.playable,ids.sibling,ids.interrupted,ids.progress].sort((a,b)=>a-b);
   const descIds=[...ascIds].reverse();
