@@ -242,17 +242,14 @@ test('playback preparation and thumbnails retain their own JSON/media and permis
   expect(preparing.status).toBe(202);
   expect(preparing.headers.get('retry-after')).toBe('2');
   expect(validateRecordingPlaybackPreparing(await preparing.json())).toBe(true);
-  const readyBody=await expect.poll(async()=>{
+  await expect.poll(async()=>{
     const response=await media(server,ids.sibling,viewer,{},prepareRoute);
     const body=await response.json();
-    return response.status===200 && validateRecordingPlaybackReady(body) ? body : null;
-  },{timeout:15000});
-  expect(readyBody).not.toBeNull();
-  expect(validateRecordingPlaybackReady(readyBody)).toBe(true);
-  const playbackPath=(readyBody as {url?:string;path?:string}).url ?? (readyBody as {url?:string;path?:string}).path;
-  expect(typeof playbackPath).toBe('string');
-  const preparedMedia=await server.request(playbackPath as string,{principal:'viewer'});
+    return response.status===200 && validateRecordingPlaybackReady(body);
+  },{timeout:15000}).toBe(true);
+  const preparedMedia=await media(server,ids.sibling,viewer,{},'?transcode=1');
   expect(preparedMedia.status).toBe(200);
+  expect(preparedMedia.headers.get('content-type')).toBe('video/mp4');
   const preparedBytes=Buffer.from(await preparedMedia.arrayBuffer());
   expect(preparedBytes.length).toBeGreaterThan(0);
   const preparedFile=path.join(fixture.directory,`${ids.sibling}.prepared.mp4`);
