@@ -1662,16 +1662,26 @@ static void test_missing_source_mount_defers_archive_and_filesystem_moves(void) 
 
 static void test_storage_workers_do_not_rollback_an_unowned_transaction(void) {
     create_history_policy();
+    create_recording();
+    db_recording_t rec;
+    TEST_ASSERT_EQUAL_INT(DB_RECORDING_OK, db_recording_get(source_uuid, 0, &rec));
+    db_storage_deletion_job_t job = {.recording_id=rec.id, .attempt_count=0, .next_attempt_at=0};
+    TEST_ASSERT_EQUAL_INT(DB_STORAGE_DELETION_JOB_OK, db_storage_deletion_job_create(&job));
     sql("UPDATE storage_targets SET health_status='unknown';");
-    sql("BEGIN IMMEDIATE;INSERT INTO storage_read_leases(recording_id,expires_at) SELECT id,0 FROM recordings;");
+    sql("BEGIN IMMEDIATE;");
+    sql("INSERT INTO storage_read_leases(recording_id,expires_at) VALUES(1,0);");
+    sql("UPDATE storage_migration_jobs SET attempt_count=attempt_count+1;");
+    int migration_attempt_count_before = sqlite3_column_int(sqlite3_prepare("SELECT attempt_count FROM storage_migration_jobs LIMIT 1;"), 0);
     int reconciled = db_storage_lifecycle_reconcile();
     bool reconcile_preserved = !sqlite3_get_autocommit(get_db_handle());
     storage_deletion_process_one();
     bool deletion_preserved = !sqlite3_get_autocommit(get_db_handle());
+    int migration_attempt_count_after = sqlite3_column_int(sqlite3_prepare("SELECT attempt_count FROM storage_migration_jobs LIMIT 1;"), 0);
     sql("ROLLBACK;");
     TEST_ASSERT_EQUAL_INT(-1, reconciled);
     TEST_ASSERT_TRUE(reconcile_preserved);
     TEST_ASSERT_TRUE(deletion_preserved);
+    TEST_ASSERT_EQUAL_INT(migration_attempt_count_before, migration_attempt_count_after);
 }
 
 static libuv_connection_t *stalled_archive_connection(libuv_server_t *server, int *client, uint64_t id) {
