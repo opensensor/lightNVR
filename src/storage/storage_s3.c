@@ -418,7 +418,8 @@ static int request(const storage_target_t *target, const char *key, const char *
         return STORAGE_S3_ERROR;
     }
     if (code != CURLE_OK) {
-        snprintf(error, STORAGE_TARGET_ERROR_MAX, "Archive transport failed (%d)", (int)code);
+        snprintf(error, STORAGE_TARGET_ERROR_MAX, "Archive transport failed (%d: %s)",
+                 (int)code, curl_easy_strerror(code));
         return STORAGE_S3_ERROR;
     }
     if (status == 404) return STORAGE_S3_MISSING;
