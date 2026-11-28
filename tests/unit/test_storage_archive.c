@@ -1634,11 +1634,14 @@ static libuv_connection_t *stalled_archive_connection(libuv_server_t *server, in
     TEST_ASSERT_EQUAL_INT(0, getsockname(listener, (struct sockaddr *)&address, &length));
     *client = socket(AF_INET, SOCK_STREAM, 0);
     TEST_ASSERT_GREATER_OR_EQUAL_INT(0, *client);
+    int small = 4096;
+    // Keep the unread client's advertised window small so both archive
+    // responses reliably remain queued while their leases are renewed.
+    TEST_ASSERT_EQUAL_INT(0, setsockopt(*client, SOL_SOCKET, SO_RCVBUF, &small, sizeof(small)));
     TEST_ASSERT_EQUAL_INT(0, connect(*client, (struct sockaddr *)&address, length));
     int peer = accept(listener, NULL, NULL);
     close(listener);
     TEST_ASSERT_GREATER_OR_EQUAL_INT(0, peer);
-    int small = 4096;
     TEST_ASSERT_EQUAL_INT(0, setsockopt(peer, SOL_SOCKET, SO_SNDBUF, &small, sizeof(small)));
     libuv_connection_t *conn = libuv_connection_create(server);
     TEST_ASSERT_NOT_NULL(conn);
