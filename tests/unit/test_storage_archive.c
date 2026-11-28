@@ -909,6 +909,7 @@ static void test_ambiguous_multipart_completion_recovers(void) {
     TEST_ASSERT_EQUAL_INT(1, storage_migration_process_one());
     TEST_ASSERT_EQUAL_INT(DB_STORAGE_MIGRATION_OK, db_storage_migration_get(job.uuid, &job));
     TEST_ASSERT_EQUAL_STRING("completed", job.state);
+    TEST_ASSERT_EQUAL_INT(0, storage_migration_process_one());
     TEST_ASSERT_NOT_EQUAL_INT(0, access(source_path, F_OK));
 
     char recovered_path[MAX_PATH_LENGTH], error[STORAGE_TARGET_ERROR_MAX] = {0};
