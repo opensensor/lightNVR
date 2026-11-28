@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <time.h>
@@ -34,6 +35,37 @@ static const char upgrade_headers[] =
 static const char upgrade_response[] =
     "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
     "Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\nX-LightNVR-Media-Policy: 1\r\n\r\n";
+
+static bool request_has_header_ci(const char *request, const char *header_name) {
+    if (!request || !header_name) return false;
+
+    const char *line = strstr(request, "\r\n");
+    if (!line) return false;
+    line += 2; // skip request line
+
+    size_t header_len = strlen(header_name);
+    while (*line) {
+        const char *next = strstr(line, "\r\n");
+        if (!next) break;
+        if (next == line) break; // end of headers
+
+        const char *colon = memchr(line, ':', (size_t)(next - line));
+        if (colon) {
+            const char *name_end = colon;
+            while (name_end > line && (name_end[-1] == ' ' || name_end[-1] == '\t')) {
+                name_end--;
+            }
+            size_t name_len = (size_t)(name_end - line);
+            if (name_len == header_len && strncasecmp(line, header_name, header_len) == 0) {
+                return true;
+            }
+        }
+
+        line = next + 2;
+    }
+
+    return false;
+}
 
 static void test_websocket_origin_authority_validation(void) {
     const struct { const char *host; const char *origin; bool allowed; bool tls;
@@ -435,9 +467,9 @@ void test_four_websockets_relay_media_on_the_web_port_and_close_cleanly(void) {
         char target[128];
         snprintf(target, sizeof(target), "GET %s/api/ws?src=Camera%%20%d_sub HTTP/1.1", go2rtc_api_get_base_path(), i);
         TEST_ASSERT_NOT_NULL(strstr(tracked_peers[i].request, target));
-        TEST_ASSERT_NULL(strstr(tracked_peers[i].request, "Origin:"));
-        TEST_ASSERT_NULL(strstr(tracked_peers[i].request, "Cookie:"));
-        TEST_ASSERT_NULL(strstr(tracked_peers[i].request, "Authorization:"));
+        TEST_ASSERT_FALSE(request_has_header_ci(tracked_peers[i].request, "Origin"));
+        TEST_ASSERT_FALSE(request_has_header_ci(tracked_peers[i].request, "Cookie"));
+        TEST_ASSERT_FALSE(request_has_header_ci(tracked_peers[i].request, "Authorization"));
     }
 
     // Then shutdown with two streams still active and verify shutdown disconnects them.
@@ -464,9 +496,9 @@ void test_four_websockets_relay_media_on_the_web_port_and_close_cleanly(void) {
         char target[128];
         snprintf(target, sizeof(target), "GET %s/api/ws?src=Camera%%20%d_sub HTTP/1.1", go2rtc_api_get_base_path(), i);
         TEST_ASSERT_NOT_NULL(strstr(tracked_peers[i].request, target));
-        TEST_ASSERT_NULL(strstr(tracked_peers[i].request, "Origin:"));
-        TEST_ASSERT_NULL(strstr(tracked_peers[i].request, "Cookie:"));
-        TEST_ASSERT_NULL(strstr(tracked_peers[i].request, "Authorization:"));
+        TEST_ASSERT_FALSE(request_has_header_ci(tracked_peers[i].request, "Origin"));
+        TEST_ASSERT_FALSE(request_has_header_ci(tracked_peers[i].request, "Cookie"));
+        TEST_ASSERT_FALSE(request_has_header_ci(tracked_peers[i].request, "Authorization"));
     }
 }
 
