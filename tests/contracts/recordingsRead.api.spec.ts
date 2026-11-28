@@ -122,11 +122,13 @@ test('large timeline IDs remain exact through JSON, playback and ZIP export',asy
   const zip=await server.request(`/api/recordings/batch-download/result/${accepted.token}`,{principal:'admin'});
   expect(zip.status).toBe(200);
   const archive=info.outputPath('exact.zip');writeFileSync(archive,Buffer.from(await zip.arrayBuffer()));
-  const members=JSON.parse(execFileSync('python3',['-c',
-    'import hashlib,json,sys,zipfile; z=zipfile.ZipFile(sys.argv[1]); assert z.testzip() is None; print(json.dumps({n:hashlib.sha256(z.read(n)).hexdigest() for n in z.namelist()}))',archive],{encoding:'utf8'}));
-  expect(Object.keys(members).sort()).toEqual(exact.slice(1,3).map(id=>`${id}.mp4`));
+  const zipInspect=JSON.parse(execFileSync('python3',['-c',
+    'import hashlib,json,sys,zipfile; z=zipfile.ZipFile(sys.argv[1]); assert z.testzip() is None; names=z.namelist(); print(json.dumps({"names":names,"digests":{n:hashlib.sha256(z.read(n)).hexdigest() for n in names}}))',archive],{encoding:'utf8'})) as {names:string[];digests:Record<string,string>};
+  const expectedNames=exact.slice(1,3).map(id=>`${id}.mp4`).sort();
+  expect([...zipInspect.names].sort()).toEqual(expectedNames);
+  expect(new Set(zipInspect.names).size).toBe(zipInspect.names.length);
   const expectedMembers=Object.fromEntries(exact.slice(1,3).map(id=>[`${id}.mp4`,expectedDigestById.get(id)!]));
-  expect(members).toEqual(expectedMembers);
+  expect(zipInspect.digests).toEqual(expectedMembers);
 });
 
 test('recording reads fail closed on policy lookup failure and recover without empty or partial success',async({server})=>{
@@ -321,7 +323,7 @@ test('related mutation boundaries reject historical and mixed unauthorized sets 
   const fixture=seedRecordings(server);const historical=seedHistoricalNameReuse(server,fixture);
   const actor=await createUser(server,'historical_writer');const actions=await role(server,'Capture-bound fixture writes',['evidence.protect','recording.delete','recordings.export']);await policy(server,actor,[{role_uuid:actions,scope:cameraScope(server.cameras.A.camera_uuid)}]);
   const db=new DatabaseSync(path.join(server.directory,'lightnvr.db'));
-  const state=()=>db.prepare('SELECT id,camera_uuid,protected,file_path FROM recordings WHERE id=?').get(historical.hidden);
+  const state=()=>db.prepare('SELECT id,camera_uuid,protected,file_path,deletion_pending FROM recordings WHERE id=?').get(historical.hidden) as {id:number;camera_uuid:string;protected:number;file_path:string;deletion_pending:number}|undefined;
   const rowById=(id:number)=>db.prepare('SELECT id,camera_uuid,protected,file_path,deletion_pending FROM recordings WHERE id=?').get(id) as {id:number;camera_uuid:string;protected:number;file_path:string;deletion_pending:number}|undefined;
   try {
     const before=state();
