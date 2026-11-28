@@ -20,6 +20,21 @@ function rawExchange(port: number, bytes: string): Promise<string> {
   });
 }
 
+function parseRawResponseHeaders(rawResponse: string): Map<string, string> {
+  const separator = rawResponse.indexOf('\r\n\r\n');
+  const head = separator >= 0 ? rawResponse.slice(0, separator) : rawResponse;
+  const lines = head.split('\r\n');
+  const headers = new Map<string, string>();
+  for (const line of lines.slice(1)) {
+    const idx = line.indexOf(':');
+    if (idx <= 0) continue;
+    const name = line.slice(0, idx).trim().toLowerCase();
+    const value = line.slice(idx + 1).trim();
+    headers.set(name, value);
+  }
+  return headers;
+}
+
 function stagedExchange(port: number, parts: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
     const socket = connect(port, '127.0.0.1');
@@ -166,10 +181,11 @@ test('HEAD reports the selected API representation without sending a body', asyn
         `Authorization: ${basic(server.credentials.admin)}\r\n` +
         'Accept-Encoding: gzip\r\nConnection: close\r\n\r\n');
       const separator = rawHead.indexOf('\r\n\r\n');
+      const rawHeadHeaders = parseRawResponseHeaders(rawHead);
       expect(get.status).toBe(200);
       expect(rawHead).toMatch(/^HTTP\/1\.1 200 /);
-      expect(rawHead).toContain('Content-Encoding: gzip');
-      expect(rawHead).toContain(`Content-Length: ${get.headers.get('content-length')}`);
+      expect(rawHeadHeaders.get('content-encoding')).toBe('gzip');
+      expect(rawHeadHeaders.get('content-length')).toBe(get.headers.get('content-length'));
       expect(separator).toBeGreaterThan(0);
       expect(rawHead.slice(separator + 4)).toBe('');
     } finally {
@@ -189,8 +205,9 @@ test('HEAD serves static file headers without file bytes', async () => {
     const raw = await rawExchange(server.port,
       'HEAD /head.txt HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n');
     const separator = raw.indexOf('\r\n\r\n');
+    const rawHeaders = parseRawResponseHeaders(raw);
     expect(raw).toMatch(/^HTTP\/1\.1 200 /);
-    expect(raw).toContain('Content-Length: 1500');
+    expect(rawHeaders.get('content-length')).toBe('1500');
     expect(separator).toBeGreaterThan(0);
     expect(raw.slice(separator + 4)).toBe('');
   } finally {
