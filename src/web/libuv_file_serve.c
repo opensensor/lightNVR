@@ -420,6 +420,9 @@ static void on_file_stat(uv_fs_t *req) {
 
     char *header_buf = safe_malloc(len);
     if (!header_buf) {
+        // Allocation failure means we cannot send any response; force connection close semantics.
+        ctx->manage_connection_on_close = false;
+        conn->async_response_pending = false;
         uv_fs_close(ctx->conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
         return;
     }
