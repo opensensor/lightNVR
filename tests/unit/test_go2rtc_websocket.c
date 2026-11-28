@@ -22,7 +22,7 @@
 #include "web/libuv_server.h"
 
 static http_server_handle_t server;
-static int upstream, web_port;
+static int upstream = -1, web_port;
 static char db_path[80];
 static const char upgrade_headers[] =
     "Upgrade: websocket\r\nConnection: keep-alive, Upgrade\r\n"
@@ -156,8 +156,8 @@ static int client_open(void) {
 static void *upstream_peer(void *arg) {
     peer_t *peer = arg;
     struct pollfd ready = {.fd = upstream, .events = POLLIN};
-    if (poll(&ready, 1, 3000) <= 0) return NULL;
-    peer->fd = accept(upstream, NULL, NULL);
+    if (poll(&ready, 1, 3000) <= 0 || !(ready.revents & POLLIN)) return NULL;
+    peer->fd = accept(ready.fd, NULL, NULL);
     if (peer->fd < 0) return NULL;
     socket_timeout(peer->fd);
     if (!read_headers(peer->fd, peer->request, sizeof(peer->request))) goto done;
@@ -253,12 +253,15 @@ void tearDown(void) {
         }
     }
     if (server) { http_server_stop(server); http_server_destroy(server); server = NULL; }
-    close(upstream);
     for (int i = 0; i < 4; i++) {
         if (tracked_thread_started[i]) {
             pthread_join(tracked_threads[i], NULL);
             tracked_thread_started[i] = false;
         }
+    }
+    if (upstream >= 0) {
+        close(upstream);
+        upstream = -1;
     }
     shutdown_database();
     unlink(db_path);
