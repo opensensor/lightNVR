@@ -486,10 +486,17 @@ void test_failed_upstream_handshake_returns_502(void) {
     char origin[64], response[2048];
     int status = 0;
     snprintf(origin, sizeof(origin), "http://localhost:%d", web_port);
-    send_upgrade(client, 0, origin, false);
-    /* Send a masked client WebSocket frame so forwarding-after-reject regressions are detectable. */
+    /* Send upgrade request and a masked client frame in one write to avoid races with early close. */
     const unsigned char frame[] = {0x81, 0x81, 0x12, 0x34, 0x56, 0x78, (unsigned char)('x' ^ 0x12)};
-    TEST_ASSERT_TRUE(send_all(client, frame, sizeof(frame)));
+    unsigned char request[2048];
+    int header_len = snprintf((char *)request, sizeof(request),
+        "GET /go2rtc/api/ws?src=Camera%%200 HTTP/1.1\r\n"
+        "Host: localhost:%d\r\nOrigin: %s\r\n%s\r\n",
+        web_port, origin, upgrade_headers);
+    TEST_ASSERT_TRUE(header_len > 0);
+    TEST_ASSERT_TRUE((size_t)header_len + sizeof(frame) <= sizeof(request));
+    memcpy(request + header_len, frame, sizeof(frame));
+    TEST_ASSERT_TRUE(send_all(client, request, (size_t)header_len + sizeof(frame)));
     TEST_ASSERT_TRUE(read_headers(client, response, sizeof(response)));
     TEST_ASSERT_EQUAL_INT(1, sscanf(response, "HTTP/%*d.%*d %d", &status));
     TEST_ASSERT_EQUAL_INT(502, status);
