@@ -41,9 +41,17 @@ class S3Handler(BaseHTTPRequestHandler):
                              self.headers.get('Authorization', ''))
         if not match or match[1] != 'fixture-access':
             return False
+        token = self.headers.get('x-amz-security-token')
+        if token is not None and token != 'fixture-session-token':
+            return False
         scope = match[2]
-        date, region, service, terminator = scope.split('/')
+        scope_parts = scope.split('/')
+        if len(scope_parts) != 4:
+            return False
+        date, region, service, terminator = scope_parts
         if service != 's3' or terminator != 'aws4_request':
+            return False
+        if not self.headers.get('x-amz-date'):
             return False
         payload_hash = self.headers.get('x-amz-content-sha256', hashlib.sha256(body).hexdigest())
         if payload_hash != 'UNSIGNED-PAYLOAD' and payload_hash != hashlib.sha256(body).hexdigest():
@@ -72,7 +80,9 @@ class S3Handler(BaseHTTPRequestHandler):
         # using encoded separators even though the decoded object key matches.
         if '%2F' in url.path.upper():
             return self.respond(403, b'<Error><Code>SignatureDoesNotMatch</Code></Error>')
-        path = unquote(url.path).strip('/')
+        path = unquote(url.path)
+        if path.startswith('/'):
+            path = path[1:]
         bucket, _, key = path.partition('/')
         anonymous_public = bucket == 'public' and self.command == 'GET' and not self.headers.get('Authorization')
         if not self.authorized(body) and not anonymous_public:
