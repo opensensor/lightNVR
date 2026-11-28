@@ -1621,6 +1621,12 @@ static void test_batch_export_waits_for_verified_archive_source(void) {
             cJSON_Delete(json);
             break;
         }
+    if (!submit_failed && !have_status_path) {
+        fprintf(stderr,
+                "FATAL: batch export may have started but no status token/path is available; "
+                "aborting to avoid teardown race with detached worker\n");
+        abort();
+    }
         completed = !strcmp(status->valuestring, "complete");
         failed = !strcmp(status->valuestring, "error");
         cJSON_Delete(json);
