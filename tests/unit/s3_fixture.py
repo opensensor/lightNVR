@@ -65,6 +65,8 @@ class S3Handler(BaseHTTPRequestHandler):
         if amz_date[:8] != date:
             return False
         signed_headers = match[3].split(';')
+        if token is not None and 'x-amz-security-token' not in signed_headers:
+            return False
         if not signed_headers:
             return False
         if any(header != header.lower() for header in signed_headers):
