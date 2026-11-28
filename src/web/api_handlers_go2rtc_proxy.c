@@ -641,8 +641,9 @@ bool go2rtc_proxy_authorize_request(const http_request_t *req,
     if (strcmp(req->method_str, "OPTIONS") == 0) {
         char allow_value[32];
         snprintf(allow_value, sizeof(allow_value), "%s, OPTIONS", allowed_method);
-        http_response_set_status(res, 204);
+        res->status_code = 204;
         http_response_add_header(res, "Allow", allow_value);
+        http_response_add_header(res, "Access-Control-Allow-Origin", "*");
         http_response_add_header(res, "Access-Control-Allow-Methods", allow_value);
         http_response_add_header(res, "Access-Control-Allow-Headers", "Authorization, Content-Type");
         return false;
