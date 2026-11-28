@@ -250,8 +250,7 @@ test('playback preparation and thumbnails retain their own JSON/media and permis
 
 test('durable recording IDs survive sorting, repeated polling and supported sibling deletion',async({server})=>{
   seedRecordings(server);
-  const original=await page(server,viewer,'limit=all&sort=id&order=asc');
-  const ascIds:number[]=original.recordings.map((row:{id:number})=>row.id);
+  const ascIds:number[]=[ids.playable,ids.sibling,ids.interrupted,ids.progress].sort((a,b)=>a-b);
   const descIds=[...ascIds].reverse();
   for(const order of ['desc','asc'] as const) {
     const next=await page(server,viewer,`limit=all&sort=id&order=${order}`);
