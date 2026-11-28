@@ -85,6 +85,26 @@ static void test_duplicate_start_is_rejected_without_disrupting_server(void) {
     TEST_ASSERT_NOT_NULL(fixture_server);
     TEST_ASSERT_EQUAL_INT(0, http_server_start(fixture_server));
     TEST_ASSERT_EQUAL_INT(-1, http_server_start(fixture_server));
+
+    int client_fd = socket(AF_INET, SOCK_STREAM, 0);
+    TEST_ASSERT_TRUE(client_fd >= 0);
+
+    struct sockaddr_in server_addr = {0};
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(g_config.port);
+    server_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+
+    TEST_ASSERT_EQUAL_INT(0, connect(client_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)));
+
+    const char request[] = "GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n";
+    ssize_t sent = send(client_fd, request, sizeof(request) - 1, 0);
+    TEST_ASSERT_TRUE(sent > 0);
+
+    char response[256];
+    ssize_t received = recv(client_fd, response, sizeof(response), 0);
+    TEST_ASSERT_TRUE(received > 0);
+
+    close(client_fd);
 }
 
 int main(void) {
