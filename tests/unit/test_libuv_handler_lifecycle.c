@@ -24,6 +24,9 @@ static libuv_server_t *server;
 static int client = -1;
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t changed = PTHREAD_COND_INITIALIZER;
+static pthread_mutex_t release_start_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t release_start_cond = PTHREAD_COND_INITIALIZER;
+static bool release_start_open;
 static bool entered, released, finished, expired, server_state_valid;
 static libuv_connection_t *connection;
 static uv_async_t close_request;
@@ -110,6 +113,7 @@ void setUp(void) {
     g_config.web_compression_enabled = false;
     g_config.web_thread_pool_size = 2;
     entered = released = finished = expired = server_state_valid = false;
+    release_start_open = false;
     connection = NULL;
     http_server_config_t config = {0};
     config.bind_ip = "127.0.0.1";
@@ -160,6 +164,10 @@ static void test_shutdown_waits_for_handler_beyond_three_second_warning(void) {
     TEST_ASSERT_EQUAL_INT(0, pthread_create(&release_thread, NULL, release_after_four_seconds, NULL));
     struct timespec before, after;
     clock_gettime(CLOCK_MONOTONIC, &before);
+    pthread_mutex_lock(&release_start_mutex);
+    release_start_open = true;
+    pthread_cond_broadcast(&release_start_cond);
+    pthread_mutex_unlock(&release_start_mutex);
     libuv_server_stop((http_server_handle_t)server);
     clock_gettime(CLOCK_MONOTONIC, &after);
     double elapsed = after.tv_sec - before.tv_sec + (after.tv_nsec - before.tv_nsec) / 1e9;
