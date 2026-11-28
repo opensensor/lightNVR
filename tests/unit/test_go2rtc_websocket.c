@@ -387,10 +387,14 @@ void test_four_websockets_relay_media_on_the_web_port_and_close_cleanly(void) {
                              "Authorization: Basic ZHVtbXk6ZHVtbXk=\r\n",
                              i, web_port, origin, upgrade_headers);
             TEST_ASSERT_TRUE(n > 0 && (size_t)n < sizeof(req));
-            TEST_ASSERT_TRUE((size_t)n + 2 + sizeof(mse_request) <= sizeof(req));
+            /* Distinct from the later MSE request, so forwarding it is detectable. */
+            const unsigned char early_frame[] = {
+                0x81, 0x81, 0x12, 0x34, 0x56, 0x78, (unsigned char)('x' ^ 0x12)
+            };
+            TEST_ASSERT_TRUE((size_t)n + 2 + sizeof(early_frame) <= sizeof(req));
             memcpy(req + n, "\r\n", 2);
-            memcpy(req + n + 2, mse_request, sizeof(mse_request));
-            TEST_ASSERT_TRUE(send_all(tracked_clients[i], req, (size_t)n + 2 + sizeof(mse_request)));
+            memcpy(req + n + 2, early_frame, sizeof(early_frame));
+            TEST_ASSERT_TRUE(send_all(tracked_clients[i], req, (size_t)n + 2 + sizeof(early_frame)));
         } else if (i == 1) {
             send_upgrade(tracked_clients[i], i, origin, true);
         } else {
