@@ -148,7 +148,9 @@ static int client_open(void) {
     socket_timeout(fd);
     struct sockaddr_in address = {.sin_family = AF_INET,
         .sin_addr.s_addr = htonl(INADDR_LOOPBACK), .sin_port = htons(web_port)};
-    TEST_ASSERT_EQUAL_INT(0, connect(fd, (struct sockaddr *)&address, sizeof(address)));
+    int rc = connect(fd, (struct sockaddr *)&address, sizeof(address));
+    if (rc != 0) close(fd);
+    TEST_ASSERT_EQUAL_INT(0, rc);
     return fd;
 }
 static void *upstream_peer(void *arg) {
@@ -303,6 +305,14 @@ void test_four_websockets_relay_media_on_the_web_port_and_close_cleanly(void) {
     http_server_stop(server);
     http_server_destroy(server);
     server = NULL;
+    // Verify shutdown disconnects still-active websocket clients.
+    {
+        unsigned char b;
+        ssize_t n2 = recv(tracked_clients[2], &b, 1, 0);
+        ssize_t n3 = recv(tracked_clients[3], &b, 1, 0);
+        TEST_ASSERT_TRUE(n2 == 0 || (n2 < 0 && (errno == ECONNRESET || errno == ENOTCONN || errno == EPIPE)));
+        TEST_ASSERT_TRUE(n3 == 0 || (n3 < 0 && (errno == ECONNRESET || errno == ENOTCONN || errno == EPIPE)));
+    }
     close(tracked_clients[2]); tracked_clients[2] = -1;
     close(tracked_clients[3]); tracked_clients[3] = -1;
     for (int i = 0; i < 4; i++) {
