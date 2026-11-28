@@ -1527,6 +1527,20 @@ static void test_s3_nested_keys_preserve_slashes_and_escape_literal_percent(void
     TEST_ASSERT_EQUAL_INT(0, storage_s3_delete(&target, key, error));
 }
 
+static void test_s3_single_put_rejects_oversized_source_without_job(void) {
+    storage_target_t target = archive_target("key-encoding", true);
+    char path[512], error[STORAGE_TARGET_ERROR_MAX] = {0};
+    snprintf(path, sizeof(path), "%s/oversized-source.bin", root);
+    int fd = open(path, O_WRONLY | O_CREAT | O_EXCL, 0600);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(0, fd);
+    TEST_ASSERT_EQUAL_INT(0, ftruncate(fd, (off_t)(5ULL * 1024 * 1024 * 1024 + 1)));
+    TEST_ASSERT_EQUAL_INT(0, close(fd));
+    TEST_ASSERT_EQUAL_INT(STORAGE_S3_ERROR,
+        storage_s3_upload(&target, "oversized-source", path, NULL, NULL, error));
+    TEST_ASSERT_NOT_NULL(strstr(error, "job UUID is required"));
+    TEST_ASSERT_EQUAL_INT(0, unlink(path));
+}
+
 static void test_lifecycle_attestation_cannot_override_provider_checks(void) {
     const char *buckets[] = {"versioned", "expiry", "lifecycle-unavailable", "public"};
     for (size_t i = 0; i < sizeof(buckets)/sizeof(buckets[0]); i++) {
@@ -2137,6 +2151,7 @@ int main(void) {
     RUN_TEST(test_lifecycle_attestation_rejects_stale_mismatched_and_unsafe_files);
     RUN_TEST(test_lifecycle_attestation_cannot_override_provider_checks);
     RUN_TEST(test_s3_nested_keys_preserve_slashes_and_escape_literal_percent);
+    RUN_TEST(test_s3_single_put_rejects_oversized_source_without_job);
     RUN_TEST(test_batch_export_waits_for_verified_archive_source);
     RUN_TEST(test_legacy_age_cleanup_honors_archive_retention_override);
     RUN_TEST(test_expired_multipart_upload_restarts_from_source);
