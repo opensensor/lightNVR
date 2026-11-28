@@ -173,6 +173,7 @@ class S3Handler(BaseHTTPRequestHandler):
                         return self.respond(200, b'<Error><Code>InvalidPart</Code></Error>')
 
                     values = []
+                    previous_part_number = 0
                     for part in parts:
                         part_number_text = child_text(part, 'PartNumber')
                         etag_text = child_text(part, 'ETag')
@@ -182,6 +183,9 @@ class S3Handler(BaseHTTPRequestHandler):
                             part_number = int(part_number_text)
                         except (TypeError, ValueError):
                             return self.respond(200, b'<Error><Code>InvalidPart</Code></Error>')
+                        if part_number <= previous_part_number:
+                            return self.respond(200, b'<Error><Code>InvalidPartOrder</Code></Error>')
+                        previous_part_number = part_number
                         stored = upload['parts'].get(part_number)
                         if stored is None or stored[0] != etag_text:
                             return self.respond(200, b'<Error><Code>InvalidPart</Code></Error>')
@@ -211,8 +215,9 @@ class S3Handler(BaseHTTPRequestHandler):
             if not match:
                 return self.respond(416)
             start, end = map(int, match.groups())
-            if start > end or end >= len(value):
+            if start > end or start >= len(value):
                 return self.respond(416)
+            end = min(end, len(value) - 1)
             return self.respond(206, value[start:end+1], {'Content-Range': f'bytes {start}-{end}/{len(value)}'})
         return self.respond(200, value)
 
