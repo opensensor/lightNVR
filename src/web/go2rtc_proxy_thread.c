@@ -330,7 +330,14 @@ static void *proxy_worker_thread(void *arg) {
         curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
     }
 
-    if (strcmp(ctx->method, "POST") == 0) {
+    if (strcmp(ctx->method, "GET") == 0) {
+        curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
+    } else if (strcmp(ctx->method, "HEAD") == 0) {
+        curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "HEAD");
+        curl_easy_setopt(curl, CURLOPT_NOBODY, 1L);
+    } else if (strcmp(ctx->method, "OPTIONS") == 0) {
+        curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "OPTIONS");
+    } else if (strcmp(ctx->method, "POST") == 0) {
         curl_easy_setopt(curl, CURLOPT_POST, 1L);
         if (ctx->body && ctx->body_len > 0) {
             curl_easy_setopt(curl, CURLOPT_POSTFIELDS, ctx->body);
@@ -347,6 +354,9 @@ static void *proxy_worker_thread(void *arg) {
         }
     } else if (strcmp(ctx->method, "DELETE") == 0) {
         curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "DELETE");
+    } else {
+        log_warn("go2rtc proxy thread: unsupported method: %s", ctx->method);
+        ctx->error = true;
     }
 
     if (ctx->content_type[0] != '\0') {
@@ -357,15 +367,18 @@ static void *proxy_worker_thread(void *arg) {
     }
 
     {
-        CURLcode cres = curl_easy_perform(curl);
-        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &ctx->http_code);
+        CURLcode cres = CURLE_OK;
+        if (!ctx->error) {
+            cres = curl_easy_perform(curl);
+            curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &ctx->http_code);
+        }
         if (headers) curl_slist_free_all(headers);
         curl_easy_cleanup(curl);
         if (cres != CURLE_OK) {
             log_warn("go2rtc proxy thread: curl failed: %s", curl_easy_strerror(cres));
             ctx->error = true;
         } else if (ctx->error) {
-            log_warn("go2rtc proxy thread: response buffering failed");
+            log_warn("go2rtc proxy thread: response buffering failed or request method unsupported");
         } else if (ctx->media_lease[0] && ctx->http_code >= 200 &&
                    ctx->http_code < 300 && !ctx->media_policy_ack) {
             log_warn("%s (HTTP %ld)", GO2RTC_MEDIA_POLICY_ERROR, ctx->http_code);
