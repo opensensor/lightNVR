@@ -818,9 +818,15 @@ static void test_archive_range_proxy_and_disconnect(void) {
 
             while (1) {
                 (void)uv_run(&loop, UV_RUN_NOWAIT);
-                while ((count = recv(client, response + total, sizeof(response) - 1 - total, 0)) > 0) {
+                while (1) {
+                    size_t remaining = (sizeof(response) - 1) - total;
+                    if (remaining == 0) {
+                        fprintf(stderr, "FATAL: archive response exceeded test buffer; aborting\n");
+                        abort();
+                    }
+                    count = recv(client, response + total, remaining, 0);
+                    if (count <= 0) break;
                     total += (size_t)count;
-                    if (total >= sizeof(response) - 1) break;
                 }
                 if (count == 0) break;
                 if (count < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
