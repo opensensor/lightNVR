@@ -171,15 +171,17 @@ static cJSON *private_json_read(const storage_target_t *target, const char *suff
     close(dir);
     if (descriptor < 0) return NULL;
     struct stat status;
-    char buffer[S3_SECRET_LIMIT + 1];
+    char buffer[S3_SECRET_LIMIT + 1] = {0};
     bool valid = fstat(descriptor, &status) == 0 && S_ISREG(status.st_mode) &&
         !(status.st_mode & 0077) && (status.st_uid == 0 || status.st_uid == geteuid()) &&
         status.st_size > 0 && status.st_size <= S3_SECRET_LIMIT;
     ssize_t count = valid ? read(descriptor, buffer, sizeof(buffer) - 1) : -1;
     close(descriptor);
-    if (count <= 0 || count != status.st_size) return NULL;
-    buffer[count] = 0;
-    cJSON *json = cJSON_Parse(buffer);
+    cJSON *json = NULL;
+    if (count > 0 && count == status.st_size) {
+        buffer[count] = 0;
+        json = cJSON_Parse(buffer);
+    }
     wipe(buffer, sizeof(buffer));
     return json;
 }
@@ -440,7 +442,22 @@ int storage_s3_read_range(const storage_target_t *target, const char *key,
                           uint64_t offset, size_t length, uint64_t total_size,
                           void *buffer, const storage_transfer_control_t *control,
                           char error[STORAGE_TARGET_ERROR_MAX]) {
-    if (!length || offset >= total_size || length > total_size - offset || length > 1024U*1024U) return -1;
+    if (!length) {
+        error_set(error, "Requested range length must be greater than zero");
+        return -1;
+    }
+    if (offset >= total_size) {
+        error_set(error, "Requested range starts beyond end of object");
+        return -1;
+    }
+    if (length > total_size - offset) {
+        error_set(error, "Requested range exceeds object size");
+        return -1;
+    }
+    if (length > 1024U * 1024U) {
+        error_set(error, "Requested range exceeds 1 MiB limit");
+        return -1;
+    }
     s3_io_t io = {.data = buffer, .limit = length, .control = control};
     snprintf(io.range, sizeof(io.range), "%llu-%llu", (unsigned long long)offset,
              (unsigned long long)(offset + length - 1));
