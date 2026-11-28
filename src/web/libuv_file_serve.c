@@ -192,6 +192,7 @@ int libuv_serve_file(libuv_connection_t *conn, const char *path,
                        UV_FS_O_RDONLY, 0, on_file_open);
     if (r != 0) {
         log_error("libuv_serve_file: Failed to start open: %s", uv_strerror(r));
+        conn->async_response_pending = false;
         file_serve_cleanup(ctx);
         return -1;
     }
