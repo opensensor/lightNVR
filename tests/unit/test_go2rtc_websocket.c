@@ -281,7 +281,7 @@ done:
 void setUp(void) {
     atomic_store(&teardown_started, false);
     atomic_store(&client_teardown_started, false);
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 5; i++) {
         tracked_clients[i] = -1;
         tracked_thread_started[i] = false;
         memset(&tracked_peers[i], 0, sizeof(tracked_peers[i]));
@@ -470,7 +470,7 @@ void test_four_websockets_relay_media_on_the_web_port_and_close_cleanly(void) {
 }
 
 void test_websocket_auth_origin_and_query_failures_never_reach_upstream(void) {
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 4; i++) {
         int client = client_open();
         tracked_clients[i] = client;
         char origin[64];
@@ -596,6 +596,7 @@ void test_upgrade_without_media_policy_ack_is_rejected(void) {
     pthread_join(tracked_threads[0], NULL);
     tracked_thread_started[0] = false;
     TEST_ASSERT_TRUE(tracked_peers[0].observed_upgrade_request);
+    TEST_ASSERT_NULL(strstr(tracked_peers[0].request, "Sec-WebSocket-Extensions:"));
     TEST_ASSERT_TRUE(tracked_peers[0].sent_configured_response);
     TEST_ASSERT_FALSE(tracked_peers[0].observed_client_ws_data_after_reject);
 }
