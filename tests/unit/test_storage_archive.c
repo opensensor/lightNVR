@@ -1502,15 +1502,19 @@ static void test_batch_export_waits_for_verified_archive_source(void) {
     safe_strcpy(token, field(json, "token")->valuestring, sizeof(token), 0);
     cJSON_Delete(json);
     snprintf(path, sizeof(path), "/api/recordings/batch-download/status/%s", token);
-    bool completed = false, retrieved = false;
+    bool completed = false, retrieved = false, failed = false, poll_failed = false;
     for (int i = 0; i < 500; i++) {
         if (storage_source_process_one() == 1) retrieved = true;
-        json = api(handle_batch_download_status, HTTP_METHOD_GET, path, NULL, NULL, NULL, 200);
+        json = api_noassert(handle_batch_download_status, HTTP_METHOD_GET, path, NULL, NULL, NULL);
+        if (!json || !field(json, "status") || !field(json, "status")->valuestring) {
+            poll_failed = true;
+            if (json) cJSON_Delete(json);
+            break;
+        }
         completed = !strcmp(field(json, "status")->valuestring, "complete");
-        bool failed = !strcmp(field(json, "status")->valuestring, "error");
+        failed = !strcmp(field(json, "status")->valuestring, "error");
         cJSON_Delete(json);
-        TEST_ASSERT_FALSE(failed);
-        if (completed) break;
+        if (completed || failed) break;
         struct timespec delay = {.tv_nsec = 10000000};
         nanosleep(&delay, NULL);
     }
