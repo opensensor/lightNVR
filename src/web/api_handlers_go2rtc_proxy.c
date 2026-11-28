@@ -763,15 +763,6 @@ void handle_go2rtc_proxy(const http_request_t *req, http_response_t *res) {
 
     log_debug("go2rtc proxy: %s %s -> %s", req->method_str, req->path, url);
 
-    // Get connection handle (libuv-specific)
-    libuv_connection_t *conn = (libuv_connection_t *)req->user_data;
-    if (!conn) {
-        log_error("go2rtc proxy: No connection handle available");
-        sem_post(g_proxy_semaphore);
-        http_response_set_json_error(res, 500, "Internal server error");
-        return;
-    }
-
     // Set up buffered context
     streaming_proxy_ctx_t ctx = {
         .buffer = NULL,
@@ -827,14 +818,6 @@ void handle_go2rtc_proxy(const http_request_t *req, http_response_t *res) {
             curl_easy_setopt(curl, CURLOPT_POSTFIELDS, "");
             curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, 0L);
         }
-    } else if (strcmp(req->method_str, "PUT") == 0) {
-        curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "PUT");
-        if (req->body && req->body_len > 0) {
-            curl_easy_setopt(curl, CURLOPT_POSTFIELDS, req->body);
-            curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)req->body_len);
-        }
-    } else if (strcmp(req->method_str, "DELETE") == 0) {
-        curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "DELETE");
     }
 
     // Forward Content-Type header if present
@@ -890,7 +873,7 @@ void handle_go2rtc_proxy(const http_request_t *req, http_response_t *res) {
 
     // Add CORS headers
     http_response_add_header(res, "Access-Control-Allow-Origin", "*");
-    http_response_add_header(res, "Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    http_response_add_header(res, "Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     http_response_add_header(res, "Access-Control-Allow-Headers", "Content-Type, Authorization");
 
     // Set body (transfer ownership)
