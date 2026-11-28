@@ -1252,14 +1252,45 @@ static void test_archive_credentials_reject_symlinked_directory_components(void)
     TEST_ASSERT_EQUAL_INT(STORAGE_S3_ERROR, final);
 }
 
+static void copy_fixture_credential_into_isolated_dir(const char *source_dir,
+                                                      const char *dest_dir,
+                                                      const char *credential_ref) {
+    char source_path_local[1024], dest_path_local[1024];
+    snprintf(source_path_local, sizeof(source_path_local), "%s/%s", source_dir, credential_ref);
+    snprintf(dest_path_local, sizeof(dest_path_local), "%s/%s", dest_dir, credential_ref);
+
+    FILE *src = fopen(source_path_local, "r");
+    TEST_ASSERT_NOT_NULL_MESSAGE(src, "failed to open source credential fixture");
+    FILE *dst = fopen(dest_path_local, "w");
+    TEST_ASSERT_NOT_NULL_MESSAGE(dst, "failed to create isolated credential fixture");
+
+    char buffer[4096];
+    size_t nread;
+    while ((nread = fread(buffer, 1, sizeof(buffer), src)) > 0) {
+        TEST_ASSERT_EQUAL_UINT64(nread, fwrite(buffer, 1, nread, dst));
+    }
+
+    fclose(dst);
+    fclose(src);
+    TEST_ASSERT_EQUAL_INT(0, chmod(dest_path_local, 0600));
+}
+
 static void write_lifecycle_attestation(const storage_target_t *target, double checked_at,
                                         const char *xml, char path[1024]) {
-    const char *credentials_dir =
-        isolated_attestation_dir[0] ? isolated_attestation_dir
-                                    : getenv("LIGHTNVR_ARCHIVE_CREDENTIALS_DIR");
-    TEST_ASSERT_NOT_NULL_MESSAGE(credentials_dir, "archive credentials directory is required");
-    TEST_ASSERT_TRUE_MESSAGE(credentials_dir[0] != '\0', "archive credentials directory is empty");
-    snprintf(path, 1024, "%s/%s.lifecycle.json", credentials_dir, target->credential_ref);
+    const char *original_credentials_dir = getenv("LIGHTNVR_ARCHIVE_CREDENTIALS_DIR");
+    TEST_ASSERT_NOT_NULL_MESSAGE(original_credentials_dir, "archive credentials directory is required");
+    TEST_ASSERT_TRUE_MESSAGE(original_credentials_dir[0] != '\0', "archive credentials directory is empty");
+
+    if (!isolated_attestation_dir[0]) {
+        char isolated_template[512];
+        snprintf(isolated_template, sizeof(isolated_template), "%s/attestation-creds-XXXXXX", root);
+        TEST_ASSERT_NOT_NULL(mkdtemp(isolated_template));
+        safe_strcpy(isolated_attestation_dir, isolated_template, sizeof(isolated_attestation_dir), 0);
+    }
+
+    copy_fixture_credential_into_isolated_dir(original_credentials_dir, isolated_attestation_dir,
+                                              target->credential_ref);
+    snprintf(path, 1024, "%s/%s.lifecycle.json", isolated_attestation_dir, target->credential_ref);
     cJSON *json = cJSON_CreateObject();
     cJSON_AddStringToObject(json, "endpoint", target->endpoint);
     cJSON_AddStringToObject(json, "region", target->region);
