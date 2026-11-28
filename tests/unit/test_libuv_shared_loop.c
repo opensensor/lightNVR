@@ -76,13 +76,13 @@ static void test_stop_preserves_foreign_handle(void) {
     TEST_ASSERT_TRUE(foreign_cb_called);
 
     http_server_destroy((http_server_handle_t)callback_server);
+    callback_server = NULL;
     TEST_ASSERT_FALSE(uv_is_closing((uv_handle_t *)&foreign_async));
     TEST_ASSERT_TRUE(uv_has_ref((const uv_handle_t *)&foreign_async));
     foreign_cb_called = false;
     TEST_ASSERT_EQUAL_INT(0, uv_async_send(&foreign_async));
     uv_run(&loop, UV_RUN_NOWAIT);
     TEST_ASSERT_TRUE(foreign_cb_called);
-    callback_server = NULL;
 }
 
 static void stop_in_callback(uv_timer_t *handle) {
