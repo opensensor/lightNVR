@@ -364,7 +364,9 @@ static int request(const storage_target_t *target, const char *key, const char *
         }
 
         if (bw > 0 && expected_bytes > 0) {
-            long required = (long)((expected_bytes + bw - 1) / bw) + 15L;
+            uint64_t seconds = expected_bytes / bw + (expected_bytes % bw != 0);
+            long required = seconds > (uint64_t)LONG_MAX - 15
+                ? LONG_MAX : (long)seconds + 15L;
             if (required > timeout_s) {
                 timeout_s = required;
             }
