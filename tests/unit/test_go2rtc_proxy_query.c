@@ -156,9 +156,9 @@ void test_expired_hls_substream_session_rechecks_the_parent_camera(void) {
     int fd = mkstemp(path);
     TEST_ASSERT_GREATER_OR_EQUAL_INT(0, fd);
     close(fd);
-    TEST_ASSERT_EQUAL_INT(0, init_database(path));
     strcpy(g_test_temp_path, path);
     g_test_temp_path_active = true;
+    TEST_ASSERT_EQUAL_INT(0, init_database(path));
     g_test_db_initialized = true;
     g_config.web_auth_enabled = false;
     stream_config_t camera = {0};
