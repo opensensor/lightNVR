@@ -50,7 +50,7 @@ void test_playback_queries_reject_duplicates_aliases_and_malformed_encoding(void
     const char *queries[] = {"src=cam&src=other", "src=cam&%73rc=other", "s%72c=cam",
         "src=cam&dst=other", "src=cam&name=other", "src=cam;src=other", "src=cam#other",
         "src=cam%00other", "src=cam%0a", "src=cam%", "src=cam%2", "src=cam%GG",
-        "src=cam&", "src=cam&&video", "src=", ""};
+        "src=cam&", "src=cam&&video", "&src=cam", "src=cam&=value", "src=", ""};
     const char *paths[] = {"/go2rtc/api/ws", "/go2rtc/api/webrtc",
                           "/go2rtc/api/frame.jpeg", "/go2rtc/api/stream.m3u8"};
     http_request_t req;
