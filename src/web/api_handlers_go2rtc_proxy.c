@@ -430,6 +430,17 @@ static int lease_camera(const char *source, fleet_camera_t *camera) {
     return result;
 }
 
+static void go2rtc_proxy_cleanup_expired_media_leases_locked(time_t now) {
+    for (int i = 0; i < MEDIA_LEASE_CAPACITY; ++i) {
+        if (media_leases[i].request &&
+            now - media_leases[i].touched > MEDIA_LEASE_IDLE_SECONDS) {
+            memset(media_leases[i].request, 0, sizeof(*media_leases[i].request));
+            free(media_leases[i].request);
+            memset(&media_leases[i], 0, sizeof(media_leases[i]));
+        }
+    }
+}
+
 bool go2rtc_proxy_create_media_lease(const http_request_t *req,
                                     http_response_t *res, char token[37]) {
     token[0] = 0;
@@ -472,13 +483,9 @@ bool go2rtc_proxy_create_media_lease(const http_request_t *req,
     }
     time_t now = time(NULL);
     pthread_mutex_lock(&media_lease_mutex);
+    go2rtc_proxy_cleanup_expired_media_leases_locked(now);
     int slot = -1;
     for (int i = 0; i < MEDIA_LEASE_CAPACITY; ++i) {
-        if (media_leases[i].request && now - media_leases[i].touched > MEDIA_LEASE_IDLE_SECONDS) {
-            memset(media_leases[i].request, 0, sizeof(*saved));
-            free(media_leases[i].request);
-            memset(&media_leases[i], 0, sizeof(media_leases[i]));
-        }
         if (!media_leases[i].request && slot < 0) slot = i;
     }
     if (slot >= 0) {
