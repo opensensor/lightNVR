@@ -35,6 +35,9 @@ static bool informational_media_ack;
 static int upstream_requests;
 static char upstream_request[2048];
 static pthread_mutex_t upstream_mutex = PTHREAD_MUTEX_INITIALIZER;
+static int fixture_upstream_listener = -1;
+static pthread_t fixture_peer_thread;
+static bool fixture_peer_started;
 static pthread_cond_t upstream_ready = PTHREAD_COND_INITIALIZER;
 static int slow_snapshot_server = -1;
 static pthread_t slow_snapshot_thread;
@@ -106,6 +109,8 @@ static void init_connection(libuv_connection_t *connection) {
 }
 
 void setUp(void) {
+    fixture_upstream_listener = -1;
+    fixture_peer_started = false;
     slow_snapshot_server = -1;
     slow_snapshot_thread_started = false;
     slow_snapshot_connection_initialized = false;
@@ -133,6 +138,14 @@ void tearDown(void) {
     release_upstream = true;
     pthread_cond_broadcast(&upstream_ready);
     pthread_mutex_unlock(&upstream_mutex);
+    if (fixture_peer_started) {
+        pthread_join(fixture_peer_thread, NULL);
+        fixture_peer_started = false;
+    }
+    if (fixture_upstream_listener >= 0) {
+        close(fixture_upstream_listener);
+        fixture_upstream_listener = -1;
+    }
     go2rtc_proxy_thread_shutdown();
     uv_run(&loop, UV_RUN_DEFAULT);
     http_response_free(&threaded_connection.response);
@@ -395,7 +408,7 @@ static const char sdp_answer[] = "v=0\r\ns=go2rtc-answer\r\n";
 
 static void *webrtc_peer(void *arg) {
     struct pollfd ready = { .fd = *(int *)arg, .events = POLLIN };
-    if (poll(&ready, 1, 2000) <= 0) return NULL;
+    if (poll(&ready, 1, 2000) <= 0 || !(ready.revents & POLLIN)) return NULL;
     int client = accept(ready.fd, NULL, NULL);
     if (client < 0) return NULL;
     struct timeval timeout = { .tv_sec = 2 };
@@ -447,9 +460,12 @@ static void check_both_webrtc_proxies(bool acknowledged, bool fail_issuance) {
     }
     for (int threaded = 0; threaded < 2; threaded++) {
         upstream_request[0] = '\0';
-        int server = open_upstream_listener();
-        pthread_t peer;
-        if (!fail_issuance) TEST_ASSERT_EQUAL_INT(0, pthread_create(&peer, NULL, webrtc_peer, &server));
+        fixture_upstream_listener = open_upstream_listener();
+        fixture_peer_started = false;
+        if (!fail_issuance) {
+            TEST_ASSERT_EQUAL_INT(0, pthread_create(&fixture_peer_thread, NULL, webrtc_peer, &fixture_upstream_listener));
+            fixture_peer_started = true;
+        }
         init_connection(&threaded_connection);
         strcpy(threaded_connection.request.path, "/go2rtc/api/webrtc");
         strcpy(threaded_connection.request.method_str, "POST");
@@ -467,12 +483,16 @@ static void check_both_webrtc_proxies(bool acknowledged, bool fail_issuance) {
             handle_go2rtc_proxy(&threaded_connection.request, &threaded_connection.response);
         }
         fail_lease_uuid = false;
-        if (!fail_issuance) pthread_join(peer, NULL);
         if (fail_issuance) {
-            struct pollfd ready = {.fd = server, .events = POLLIN};
+            struct pollfd ready = {.fd = fixture_upstream_listener, .events = POLLIN};
             TEST_ASSERT_EQUAL_INT(0, poll(&ready, 1, 0));
         }
-        close(server);
+        if (fixture_peer_started) {
+            pthread_join(fixture_peer_thread, NULL);
+            fixture_peer_started = false;
+        }
+        close(fixture_upstream_listener);
+        fixture_upstream_listener = -1;
         if (!acknowledged || fail_issuance) {
             TEST_ASSERT_EQUAL_INT(fail_issuance ? 503 : 502, threaded_connection.response.status_code);
             TEST_ASSERT_NULL(strstr((char *)threaded_connection.response.body, sdp_answer));
@@ -531,8 +551,15 @@ void test_shutdown_waits_for_a_worker_beyond_the_old_ten_second_timeout(void) {
     hold_upstream = true;
     TEST_ASSERT_EQUAL_INT(0, go2rtc_proxy_thread_submit(&connection, WRITE_ACTION_CLOSE));
     pthread_mutex_lock(&upstream_mutex);
-    while (!worker_in_curl) pthread_cond_wait(&upstream_ready, &upstream_mutex);
+    struct timespec deadline;
+    TEST_ASSERT_EQUAL_INT(0, clock_gettime(CLOCK_REALTIME, &deadline));
+    deadline.tv_sec += 5;
+    int wait_rc = 0;
+    while (!worker_in_curl && wait_rc == 0) {
+        wait_rc = pthread_cond_timedwait(&upstream_ready, &upstream_mutex, &deadline);
+    }
     pthread_mutex_unlock(&upstream_mutex);
+    TEST_ASSERT_TRUE_MESSAGE(worker_in_curl, "Timed out waiting for worker to enter curl");
     pthread_t releaser;
     TEST_ASSERT_EQUAL_INT(0, pthread_create(&releaser, NULL, release_delayed_worker, NULL));
     long started = monotonic_ms();
