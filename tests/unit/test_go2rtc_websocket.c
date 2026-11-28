@@ -596,6 +596,8 @@ void test_upgrade_without_media_policy_ack_is_rejected(void) {
     pthread_join(tracked_threads[0], NULL);
     tracked_thread_started[0] = false;
     TEST_ASSERT_TRUE(tracked_peers[0].observed_upgrade_request);
+    TEST_ASSERT_NOT_NULL(tracked_peers[0].captured_upgrade_request);
+    TEST_ASSERT_NULL(strstr(tracked_peers[0].captured_upgrade_request, "Sec-WebSocket-Extensions:"));
     TEST_ASSERT_TRUE(tracked_peers[0].sent_configured_response);
     TEST_ASSERT_FALSE(tracked_peers[0].observed_client_ws_data_after_reject);
 }
