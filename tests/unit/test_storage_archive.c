@@ -1416,7 +1416,8 @@ static void test_lifecycle_attestation_rejects_stale_mismatched_and_unsafe_files
     }
     const char *unsafe[] = {"garbage", "<WrongRoot/>",
         "<LifecycleConfiguration><Rule><Status>Enabled</Status><Expiration><Days>1</Days></Expiration></Rule></LifecycleConfiguration>",
-        "<LifecycleConfiguration><Rule><Status>Enabled</Status><AbortIncompleteMultipartUpload><DaysAfterInitiation>8</DaysAfterInitiation></AbortIncompleteMultipartUpload></Rule></LifecycleConfiguration>"};
+        "<LifecycleConfiguration><Rule><Status>Enabled</Status><AbortIncompleteMultipartUpload><DaysAfterInitiation>8</DaysAfterInitiation></AbortIncompleteMultipartUpload></Rule></LifecycleConfiguration>",
+        "<LifecycleConfiguration><Rule><Status>Enabled</Status><AbortIncompleteMultipartUpload><DaysAfterInitiation>0</DaysAfterInitiation></AbortIncompleteMultipartUpload></Rule></LifecycleConfiguration>"};
     for (size_t i = 0; i < sizeof(unsafe)/sizeof(unsafe[0]); i++) {
         write_lifecycle_attestation(&target, time(NULL), unsafe[i], path);
         int result = storage_s3_probe(&target, false);
