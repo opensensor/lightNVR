@@ -1056,8 +1056,17 @@ void test_go2rtc_proxy_enforces_registered_methods_even_for_admins(void) {
             http_response_t res;
             http_response_init(&res);
             TEST_ASSERT_FALSE(go2rtc_proxy_authorize_request(&req, &res));
-            TEST_ASSERT_EQUAL_INT(405, res.status_code);
-            TEST_ASSERT_EQUAL_STRING(allowed, find_response_header(&res, "Allow"));
+            if (strcmp(methods[j], "OPTIONS") == 0) {
+                char expected_allow[32];
+                snprintf(expected_allow, sizeof(expected_allow), "%s, OPTIONS", allowed);
+                TEST_ASSERT_EQUAL_INT(204, res.status_code);
+                TEST_ASSERT_EQUAL_STRING(expected_allow, find_response_header(&res, "Allow"));
+                TEST_ASSERT_EQUAL_STRING(expected_allow,
+                                         find_response_header(&res, "Access-Control-Allow-Methods"));
+            } else {
+                TEST_ASSERT_EQUAL_INT(405, res.status_code);
+                TEST_ASSERT_EQUAL_STRING(allowed, find_response_header(&res, "Allow"));
+            }
             http_response_free(&res);
         }
     }
