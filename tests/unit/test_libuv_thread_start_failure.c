@@ -53,8 +53,19 @@ void tearDown(void) {
 }
 
 static void test_failed_thread_start_closes_handles_before_retry(void) {
+    int reserve_fd = socket(AF_INET, SOCK_STREAM, 0);
+    TEST_ASSERT_TRUE(reserve_fd >= 0);
+    struct sockaddr_in reserved_address = {.sin_family = AF_INET,
+        .sin_addr.s_addr = htonl(INADDR_LOOPBACK)};
+    TEST_ASSERT_EQUAL_INT(0, bind(reserve_fd, (struct sockaddr *)&reserved_address, sizeof(reserved_address)));
+    socklen_t reserved_length = sizeof(reserved_address);
+    TEST_ASSERT_EQUAL_INT(0, getsockname(reserve_fd, (struct sockaddr *)&reserved_address, &reserved_length));
+    uint16_t reserved_port = ntohs(reserved_address.sin_port);
+    close(reserve_fd);
+
     http_server_config_t config = {0};
     config.bind_ip = "127.0.0.1";
+    config.port = reserved_port;
     config.web_root = "/nonexistent-thread-start-fixture";
     config.max_connections = 8;
     fixture_server = libuv_server_init(&config);
@@ -69,7 +80,7 @@ static void test_failed_thread_start_closes_handles_before_retry(void) {
     TEST_ASSERT_EQUAL_INT(0, uv_tcp_getsockname(
         &((libuv_server_t *)fixture_server)->listener,
         (struct sockaddr *)&assigned, &assigned_length));
-    TEST_ASSERT_TRUE(ntohs(assigned.sin_port) > 0);
+    TEST_ASSERT_EQUAL_INT(reserved_port, ntohs(assigned.sin_port));
 }
 
 static void test_failed_bind_can_retry_after_port_released(void) {
