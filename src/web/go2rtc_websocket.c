@@ -195,6 +195,7 @@ static void close_proxy(websocket_proxy_t *proxy) {
         libuv_connection_t *conn = proxy->conn;
         proxy->conn = NULL;
         conn->go2rtc_websocket = NULL;
+        conn->async_response_pending = false;
         libuv_connection_close(conn);
     }
     uv_read_stop((uv_stream_t *)&proxy->upstream);
@@ -391,6 +392,7 @@ void go2rtc_websocket_start(libuv_connection_t *conn, const char *url, const cha
     if (uv_timer_init(conn->server->loop, &proxy->timeout) < 0) {
         proxy->closing = true;
         uv_close((uv_handle_t *)&proxy->upstream, handle_closed);
+        conn->async_response_pending = false;
         libuv_connection_close(conn);
         return;
     }
@@ -410,6 +412,7 @@ void go2rtc_websocket_disconnected(libuv_connection_t *conn) {
     websocket_proxy_t *proxy = conn->go2rtc_websocket;
     if (!proxy) return;
     conn->go2rtc_websocket = NULL;
+    conn->async_response_pending = false;
     proxy->conn = NULL;
     close_proxy(proxy);
 }
