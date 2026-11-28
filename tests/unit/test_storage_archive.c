@@ -1945,6 +1945,7 @@ static void test_archive_replica_failover_and_local_status(void) {
     sql("UPDATE storage_targets SET health_status='unavailable' WHERE target_type='s3';");
     // A completed verified cache can serve playback even with both providers down.
     TEST_ASSERT_EQUAL_INT(STORAGE_SOURCE_MISSING, storage_source_remote(id, &remote));
+    TEST_ASSERT_EQUAL_INT(STORAGE_SOURCE_READY, storage_source_resolve(id, path, error));
     assert_storage_state(id, "archived", 2, true, "inherit");
     TEST_ASSERT_EQUAL_INT(0, unlink(path));
     sql("DELETE FROM storage_retrieval_jobs;");
