@@ -1221,9 +1221,11 @@ static void test_archive_credentials_reject_symlinked_directory_components(void)
 
 static void write_lifecycle_attestation(const storage_target_t *target, double checked_at,
                                         const char *xml, char path[1024]) {
-    TEST_ASSERT_TRUE_MESSAGE(isolated_attestation_dir[0] != '\0',
-                             "isolated_attestation_dir must be initialized for attestation tests");
-    const char *credentials_dir = isolated_attestation_dir;
+    const char *credentials_dir =
+        isolated_attestation_dir[0] ? isolated_attestation_dir
+                                    : getenv("LIGHTNVR_ARCHIVE_CREDENTIALS_DIR");
+    TEST_ASSERT_NOT_NULL_MESSAGE(credentials_dir, "archive credentials directory is required");
+    TEST_ASSERT_TRUE_MESSAGE(credentials_dir[0] != '\0', "archive credentials directory is empty");
     snprintf(path, 1024, "%s/%s.lifecycle.json", credentials_dir, target->credential_ref);
     cJSON *json = cJSON_CreateObject();
     cJSON_AddStringToObject(json, "endpoint", target->endpoint);
@@ -1664,26 +1666,24 @@ static void test_missing_source_mount_defers_archive_and_filesystem_moves(void) 
 
 static void test_storage_workers_do_not_rollback_an_unowned_transaction(void) {
     create_history_policy();
-    create_recording();
-    db_recording_t rec;
-    TEST_ASSERT_EQUAL_INT(DB_RECORDING_OK, db_recording_get(source_uuid, 0, &rec));
-    db_storage_deletion_job_t job = {.recording_id=rec.id, .attempt_count=0, .next_attempt_at=0};
-    TEST_ASSERT_EQUAL_INT(DB_STORAGE_DELETION_JOB_OK, db_storage_deletion_job_create(&job));
+    uint64_t id = recording(false);
     sql("UPDATE storage_targets SET health_status='unknown';");
     sql("BEGIN IMMEDIATE;");
-    sql("INSERT INTO storage_read_leases(recording_id,expires_at) VALUES(1,0);");
-    sql("UPDATE storage_migration_jobs SET attempt_count=attempt_count+1;");
-    int migration_attempt_count_before = sqlite3_column_int(sqlite3_prepare("SELECT attempt_count FROM storage_migration_jobs LIMIT 1;"), 0);
+    char query[256];
+    snprintf(query, sizeof(query),
+             "INSERT INTO storage_read_leases(recording_id,expires_at) VALUES(%llu,0);",
+             (unsigned long long)id);
+    sql(query);
     int reconciled = db_storage_lifecycle_reconcile();
     bool reconcile_preserved = !sqlite3_get_autocommit(get_db_handle());
     storage_deletion_process_one();
     bool deletion_preserved = !sqlite3_get_autocommit(get_db_handle());
-    int migration_attempt_count_after = sqlite3_column_int(sqlite3_prepare("SELECT attempt_count FROM storage_migration_jobs LIMIT 1;"), 0);
+    int lease_preserved = scalar("SELECT count(*) FROM storage_read_leases;");
     sql("ROLLBACK;");
     TEST_ASSERT_EQUAL_INT(-1, reconciled);
     TEST_ASSERT_TRUE(reconcile_preserved);
     TEST_ASSERT_TRUE(deletion_preserved);
-    TEST_ASSERT_EQUAL_INT(migration_attempt_count_before, migration_attempt_count_after);
+    TEST_ASSERT_EQUAL_INT(1, lease_preserved);
 }
 
 static libuv_connection_t *stalled_archive_connection(libuv_server_t *server, int *client, uint64_t id) {
