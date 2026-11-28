@@ -264,6 +264,7 @@ test('HEAD ignores Range while GET serves the requested byte range', async () =>
     const get = await rawExchange(server.port, request('GET'));
     expect(head).toMatch(/^HTTP\/1\.1 200 /);
     expect(head).toContain('Content-Length: 1500');
+    expect(head).not.toContain('Content-Range:');
     expect(head.slice(head.indexOf('\r\n\r\n') + 4)).toBe('');
     expect(get).toMatch(/^HTTP\/1\.1 206 /);
     expect(get).toContain('Content-Length: 100');
