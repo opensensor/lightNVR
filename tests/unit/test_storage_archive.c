@@ -2048,12 +2048,10 @@ static void test_stalled_archive_writes_renew_lease_until_completion(void) {
     libuv_connection_t *first = stalled_archive_connection(&server, &clients[0], id);
     libuv_connection_t *second = stalled_archive_connection(&server, &clients[1], id);
     capture_lease_timers = false;
-    bool first_alive = first != NULL;
-    bool second_alive = second != NULL;
     bool stalled = false;
     if (captured_timer_count == 2) for (int i = 0; i < 5000; i++) {
         uv_run(&loop, UV_RUN_NOWAIT);
-        if (!first_alive || !second_alive) {
+        if (first == NULL || second == NULL) {
             stalled = false;
             break;
         }
@@ -2064,8 +2062,8 @@ static void test_stalled_archive_writes_renew_lease_until_completion(void) {
     }
     if (captured_timer_count != 2 || !stalled) {
         for (int i = 0; i < 2; i++) close(clients[i]);
-        if (first_alive) libuv_connection_close(first);
-        if (second_alive) libuv_connection_close(second);
+        if (first != NULL) libuv_connection_close(first);
+        if (second != NULL) libuv_connection_close(second);
         uv_run(&loop, UV_RUN_DEFAULT);
         TEST_ASSERT_EQUAL_INT(0, uv_loop_close(&loop));
         TEST_FAIL_MESSAGE(captured_timer_count != 2
