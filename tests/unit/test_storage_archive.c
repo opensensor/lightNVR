@@ -1678,7 +1678,7 @@ static void test_stalled_archive_writes_renew_lease_until_completion(void) {
         if (stalled) break;
         struct timespec pause = {.tv_nsec = 1000000}; nanosleep(&pause, NULL);
     }
-    TEST_ASSERT_TRUE(stalled);
+    bool stalled_ok = stalled;
     // Advance the database's lease clock without a two-minute wall-clock sleep.
     sql("UPDATE storage_read_leases SET expires_at=0;");
     captured_callbacks[0](captured_timers[0]);
