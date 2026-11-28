@@ -20,6 +20,7 @@
 #include <string.h>
 #include <strings.h>
 #include <errno.h>
+#include <stdint.h>
 #include <llhttp.h>
 #include <uv.h>
 
@@ -92,7 +93,8 @@ const char *libuv_get_mime_type(const char *path) {
  */
 bool libuv_parse_range_header(const char *range_header, size_t file_size,
                                size_t *start, size_t *end) {
-    if (!range_header || strncmp(range_header, "bytes=", 6) != 0) {
+    if (!range_header || !start || !end || file_size == 0 ||
+        strncmp(range_header, "bytes=", 6) != 0) {
         return false;
     }
 
@@ -106,7 +108,9 @@ bool libuv_parse_range_header(const char *range_header, size_t file_size,
         char *endptr = NULL;
         errno = 0;
         unsigned long long suffix_ull = strtoull(range + 1, &endptr, 10);
-        if (endptr == range + 1 || *endptr != '\0' || errno == ERANGE) {
+        if (range[1] < '0' || range[1] > '9' ||
+            endptr == range + 1 || *endptr != '\0' || errno == ERANGE ||
+            suffix_ull == 0 || suffix_ull > SIZE_MAX) {
             return false;
         }
 
@@ -119,7 +123,8 @@ bool libuv_parse_range_header(const char *range_header, size_t file_size,
         char *start_endptr = NULL;
         errno = 0;
         unsigned long long start_ull = strtoull(range, &start_endptr, 10);
-        if (start_endptr == range || *start_endptr != '-' || errno == ERANGE) {
+        if (*range < '0' || *range > '9' || start_endptr == range ||
+            *start_endptr != '-' || errno == ERANGE || start_ull > SIZE_MAX) {
             return false;
         }
 
@@ -132,7 +137,8 @@ bool libuv_parse_range_header(const char *range_header, size_t file_size,
             char *end_endptr = NULL;
             errno = 0;
             unsigned long long end_ull = strtoull(end_part, &end_endptr, 10);
-            if (end_endptr == end_part || *end_endptr != '\0' || errno == ERANGE) {
+            if (*end_part < '0' || *end_part > '9' || end_endptr == end_part ||
+                *end_endptr != '\0' || errno == ERANGE || end_ull > SIZE_MAX) {
                 return false;
             }
             *end = (size_t)end_ull;
@@ -303,6 +309,9 @@ static void on_file_open(uv_fs_t *req) {
                 ? WRITE_ACTION_KEEP_ALIVE
                 : WRITE_ACTION_CLOSE;
         libuv_send_response_ex(conn, &conn->response, action);
+
+        ctx->manage_connection_on_close = false;
+        conn->async_response_pending = false;
 
         uv_fs_close(ctx->conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
         return;
