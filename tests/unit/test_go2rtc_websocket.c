@@ -25,6 +25,7 @@
 static http_server_handle_t server;
 static int upstream = -1, web_port;
 static char db_path[80];
+static volatile bool teardown_started = false;
 static const char upgrade_headers[] =
     "Upgrade: websocket\r\nConnection: keep-alive, Upgrade\r\n"
     "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n";
@@ -211,11 +212,15 @@ static void *upstream_peer(void *arg) {
         send_all(peer->fd, media_response, sizeof(media_response));
     }
     // Keep the socket alive until its consumer or the server disconnects.
-    // Allow a few receive timeouts on slow test hosts, but keep teardown bounded.
+    // Start the bounded disconnect wait only once teardown begins.
     peer->observed_disconnect = false;
     char byte;
     struct timespec start, now;
     const long teardown_budget_ms = 5000;
+    while (!teardown_started) {
+        struct timespec pause = {.tv_sec = 0, .tv_nsec = 10 * 1000 * 1000}; // 10ms
+        nanosleep(&pause, NULL);
+    }
     if (clock_gettime(CLOCK_MONOTONIC, &start) != 0) goto done;
     for (;;) {
         if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) break;
