@@ -126,6 +126,10 @@ void setUp(void) {
 
 void tearDown(void) {
     go2rtc_api_apply_base_path_override(NULL, 0);
+    pthread_mutex_lock(&upstream_mutex);
+    release_upstream = true;
+    pthread_cond_broadcast(&upstream_ready);
+    pthread_mutex_unlock(&upstream_mutex);
     go2rtc_proxy_thread_shutdown();
     uv_run(&loop, UV_RUN_DEFAULT);
     if (slow_snapshot_thread_started) {
