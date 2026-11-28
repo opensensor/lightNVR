@@ -2252,6 +2252,7 @@ static void test_stalled_archive_writes_renew_lease_until_completion(void) {
     char *response = calloc(1, capacity);
     bool response_alloc_ok = (response != NULL);
     int recv_unexpected_errno = 0;
+    bool response_buffer_full = false;
     size_t total = 0;
     bool ended = false;
     if (response_alloc_ok && set_nonblock_result == 0) {
@@ -2259,7 +2260,7 @@ static void test_stalled_archive_writes_renew_lease_until_completion(void) {
             uv_run(&loop, UV_RUN_NOWAIT);
             size_t remaining = capacity - total - 1;
             if (remaining == 0) {
-                recv_unexpected_errno = ENOBUFS;
+                response_buffer_full = true;
                 break;
             }
             ssize_t count = recv(clients[1], response + total, remaining, 0);
@@ -2286,6 +2287,7 @@ static void test_stalled_archive_writes_renew_lease_until_completion(void) {
     TEST_ASSERT_EQUAL_INT(0, set_nonblock_result);
     TEST_ASSERT_TRUE(response_alloc_ok);
     TEST_ASSERT_EQUAL_INT(0, recv_unexpected_errno);
+    TEST_ASSERT_FALSE_MESSAGE(response_buffer_full, "archive response exceeded test buffer");
     TEST_ASSERT_TRUE(has_lease_after_first);
     TEST_ASSERT_EQUAL_INT(1, delete_result);
     TEST_ASSERT_EQUAL_INT(0, deletion_first);
