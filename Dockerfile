@@ -22,7 +22,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Keep ARMv7 development packages in a native target sysroot. Installing them
 # into the amd64 builder through Debian multiarch makes sid builds fail whenever
 # the two architectures publish a Multi-Arch: same package at different times.
-RUN if [ "$TARGETARCH/$TARGETVARIANT" = "arm/v7" ]; then \
+RUN mkdir -p /opt/sysroot-export && \
+    if [ "$TARGETARCH/$TARGETVARIANT" = "arm/v7" ]; then \
       apt-get update && \
       apt-get install -y --no-install-recommends \
         systemd-standalone-sysusers ca-certificates && \
@@ -38,6 +39,9 @@ RUN if [ "$TARGETARCH/$TARGETVARIANT" = "arm/v7" ]; then \
         apt-get install -y --no-install-recommends \
           libuv1-dev libsqlite3-dev libllhttp-dev sqlite3; \
       fi && \
+      for d in usr lib lib32 lib64 etc; do \
+        if [ -e "/$d" ]; then cp -a "/$d" /opt/sysroot-export/; fi; \
+      done && \
       rm -rf /var/lib/apt/lists/*; \
     fi
 
@@ -60,7 +64,7 @@ ARG TARGETVARIANT
 # Set non-interactive mode
 ENV DEBIAN_FRONTEND=noninteractive
 
-COPY --from=target-sysroot / /opt/target-sysroot/
+COPY --from=target-sysroot /opt/sysroot-export/ /opt/target-sysroot/
 
 # Install build dependencies including Node.js and target FFmpeg dev libraries.
 # Node.js comes from NodeSource so every Debian suite uses the Node 26 LTS
