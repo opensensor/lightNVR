@@ -21,6 +21,7 @@
 #include "web/go2rtc_proxy_thread.h"
 #include "web/api_handlers_go2rtc_proxy.h"
 #include "web/libuv_server.h"
+#include "web/httpd_utils.h"
 #include "web/request_response.h"
 
 static uv_loop_t loop;
@@ -563,6 +564,27 @@ static void check_both_webrtc_proxies(bool acknowledged, bool fail_issuance) {
             ? "POST /custom/api/webrtc?src=Front%20Gate HTTP/1.1"
             : "POST /go2rtc/api/webrtc?src=Front%20Gate HTTP/1.1"));
         TEST_ASSERT_NOT_NULL(strstr(upstream_request, "Content-Type: application/sdp\r\n"));
+        {
+            const char *lease_hdr = strstr(upstream_request, "X-LightNVR-Media-Lease: ");
+            TEST_ASSERT_NOT_NULL(lease_hdr);
+            lease_hdr += strlen("X-LightNVR-Media-Lease: ");
+            const char *lease_end = strstr(lease_hdr, "\r\n");
+            TEST_ASSERT_NOT_NULL(lease_end);
+            TEST_ASSERT_EQUAL_UINT(36, (unsigned int)(lease_end - lease_hdr));
+            for (int i = 0; i < 36; i++) {
+                char c = lease_hdr[i];
+                bool is_hex = ((c >= '0' && c <= '9') ||
+                               (c >= 'a' && c <= 'f') ||
+                               (c >= 'A' && c <= 'F'));
+                if (i == 8 || i == 13 || i == 18 || i == 23) {
+                    TEST_ASSERT_EQUAL_CHAR('-', c);
+                } else {
+                    TEST_ASSERT_TRUE(is_hex);
+                }
+            }
+        }
+        TEST_ASSERT_NOT_NULL(strstr(upstream_request, httpd_secure_cookies()
+            ? "X-LightNVR-Media-TLS: 1\r\n" : "X-LightNVR-Media-TLS: 0\r\n"));
         TEST_ASSERT_NOT_NULL(strstr(upstream_request, sdp_offer));
         http_response_free(&threaded_connection.response);
     }
