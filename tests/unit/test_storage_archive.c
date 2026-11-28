@@ -819,8 +819,9 @@ static void test_archive_range_proxy_and_disconnect(void) {
                 }
                 if (count == 0) break;
                 if (count < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
-                    timed_out = true;
-                    break;
+                    /* The async stream may still own this stack loop and connection. */
+                    perror("FATAL: recv() failed while waiting for archive response");
+                    abort();
                 }
                 if (clock_gettime(CLOCK_MONOTONIC, &now_ts) != 0) {
                     perror("FATAL: reading archive response timer");
