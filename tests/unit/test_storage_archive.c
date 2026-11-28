@@ -1585,8 +1585,18 @@ static void test_expired_multipart_upload_restarts_from_source(void) {
         uint64_t id = recording(false);
         FILE *file = fopen(source_path, "wb");
         TEST_ASSERT_NOT_NULL(file);
-        unsigned char block[65536] = {0};
-        for (int i = 0; i < 144; i++) TEST_ASSERT_EQUAL_UINT(sizeof(block), fwrite(block, 1, sizeof(block), file));
+        unsigned char block[65536];
+        unsigned char expected_hash[32];
+        mbedtls_sha256_context expected_ctx;
+        mbedtls_sha256_init(&expected_ctx);
+        mbedtls_sha256_starts_ret(&expected_ctx, 0);
+        for (int i = 0; i < 144; i++) {
+            for (size_t j = 0; j < sizeof(block); j++) block[j] = (unsigned char)((i + j) & 0xff);
+            TEST_ASSERT_EQUAL_UINT(sizeof(block), fwrite(block, 1, sizeof(block), file));
+            mbedtls_sha256_update_ret(&expected_ctx, block, sizeof(block));
+        }
+        mbedtls_sha256_finish_ret(&expected_ctx, expected_hash);
+        mbedtls_sha256_free(&expected_ctx);
         fclose(file);
         char query[128];
         snprintf(query, sizeof(query), "UPDATE recordings SET size_bytes=9437184 WHERE id=%llu;", (unsigned long long)id);
