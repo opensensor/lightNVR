@@ -60,9 +60,23 @@ static void test_failed_bind_can_retry_after_port_released(void) {
     http_server_destroy(server);
 }
 
+static void test_duplicate_start_is_rejected_without_disrupting_server(void) {
+    http_server_config_t config = {0};
+    config.bind_ip = "127.0.0.1";
+    config.web_root = "/nonexistent-thread-start-fixture";
+    config.max_connections = 8;
+    http_server_handle_t server = libuv_server_init(&config);
+    TEST_ASSERT_NOT_NULL(server);
+    TEST_ASSERT_EQUAL_INT(0, http_server_start(server));
+    TEST_ASSERT_EQUAL_INT(-1, http_server_start(server));
+    http_server_stop(server);
+    http_server_destroy(server);
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_failed_thread_start_closes_handles_before_retry);
     RUN_TEST(test_failed_bind_can_retry_after_port_released);
+    RUN_TEST(test_duplicate_start_is_rejected_without_disrupting_server);
     return UNITY_END();
 }

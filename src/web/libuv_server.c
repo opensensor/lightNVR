@@ -297,6 +297,13 @@ int libuv_server_start(http_server_handle_t handle) {
         return -1;
     }
 
+    /* Reject duplicate start or restart before prior stop has fully completed. */
+    if (atomic_load(&server->running) || atomic_load(&server->thread_joinable) ||
+        server->destroy_pending) {
+        log_error("libuv_server_start: Server is already running or stop has not completed");
+        return -1;
+    }
+
     // CRITICAL: Reset shutdown flag so callbacks work properly after restart
     server->shutting_down = false;
 
@@ -483,16 +490,24 @@ static void server_thread_func(void *arg) {
  * @brief Walk callback to close all handles
  */
 static void close_walk_cb(uv_handle_t *handle, void *arg) {
-    (void)arg;
+    libuv_server_t *server = (libuv_server_t *)arg;
     if (!uv_is_closing(handle)) {
         if (recording_archive_close_timer(handle)) return;
         log_debug("close_walk_cb: Closing handle type %d", handle->type);
-        // Use proper close callback for connection handles
-        if (handle->type == UV_TCP && handle->data) {
-            uv_close(handle, libuv_close_cb);
-        } else {
-            uv_close(handle, NULL);
+
+        /* Only tracked client connections use the connection destructor.
+         * Other TCP handles, including the listener, retain their own
+         * ownership and must not be cast to libuv_connection_t. */
+        if (server) {
+            for (libuv_connection_t *conn = server->connections; conn;
+                 conn = conn->server_next) {
+                if (handle == (uv_handle_t *)&conn->handle) {
+                    uv_close(handle, libuv_close_cb);
+                    return;
+                }
+            }
         }
+        uv_close(handle, NULL);
     }
 }
 
@@ -573,7 +588,7 @@ void libuv_server_stop(http_server_handle_t handle) {
     // unrelated handles belonging to other subsystems.
     if (server->owns_loop) {
         log_info("libuv_server_stop: Closing all active handles");
-        uv_walk(server->loop, close_walk_cb, NULL);
+        uv_walk(server->loop, close_walk_cb, server);
     } else {
         /* The caller owns this loop and stops this server on its loop thread.
          * Close only handles owned by this server. */
