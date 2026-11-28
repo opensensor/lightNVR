@@ -35,6 +35,9 @@ static bool informational_media_ack;
 static int upstream_requests;
 static char upstream_request[2048];
 static pthread_mutex_t upstream_mutex = PTHREAD_MUTEX_INITIALIZER;
+static int fixture_upstream_listener = -1;
+static pthread_t fixture_peer_thread;
+static bool fixture_peer_started;
 static pthread_cond_t upstream_ready = PTHREAD_COND_INITIALIZER;
 static int slow_snapshot_server = -1;
 static pthread_t slow_snapshot_thread;
@@ -447,9 +450,12 @@ static void check_both_webrtc_proxies(bool acknowledged, bool fail_issuance) {
     }
     for (int threaded = 0; threaded < 2; threaded++) {
         upstream_request[0] = '\0';
-        int server = open_upstream_listener();
-        pthread_t peer;
-        if (!fail_issuance) TEST_ASSERT_EQUAL_INT(0, pthread_create(&peer, NULL, webrtc_peer, &server));
+        fixture_upstream_listener = open_upstream_listener();
+        fixture_peer_started = false;
+        if (!fail_issuance) {
+            TEST_ASSERT_EQUAL_INT(0, pthread_create(&fixture_peer_thread, NULL, webrtc_peer, &fixture_upstream_listener));
+            fixture_peer_started = true;
+        }
         init_connection(&threaded_connection);
         strcpy(threaded_connection.request.path, "/go2rtc/api/webrtc");
         strcpy(threaded_connection.request.method_str, "POST");
@@ -467,12 +473,10 @@ static void check_both_webrtc_proxies(bool acknowledged, bool fail_issuance) {
             handle_go2rtc_proxy(&threaded_connection.request, &threaded_connection.response);
         }
         fail_lease_uuid = false;
-        if (!fail_issuance) pthread_join(peer, NULL);
         if (fail_issuance) {
-            struct pollfd ready = {.fd = server, .events = POLLIN};
+            struct pollfd ready = {.fd = fixture_upstream_listener, .events = POLLIN};
             TEST_ASSERT_EQUAL_INT(0, poll(&ready, 1, 0));
         }
-        close(server);
         if (!acknowledged || fail_issuance) {
             TEST_ASSERT_EQUAL_INT(fail_issuance ? 503 : 502, threaded_connection.response.status_code);
             TEST_ASSERT_NULL(strstr((char *)threaded_connection.response.body, sdp_answer));
