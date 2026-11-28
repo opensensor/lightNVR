@@ -1,8 +1,9 @@
-#define _POSIX_C_SOURCE 200809L
+#define _XOPEN_SOURCE 700
 #include <sqlite3.h>
 #include <stdatomic.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <ftw.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -47,6 +48,14 @@ static char *saved_archive_cache_mb;
 static char *saved_archive_credentials_dir;
 static char *saved_storage_read_only;
 static char isolated_attestation_dir[512];
+
+static int remove_fixture_entry(const char *path, const struct stat *statbuf,
+                                int typeflag, struct FTW *ftwbuf) {
+    (void)statbuf;
+    (void)typeflag;
+    (void)ftwbuf;
+    return remove(path);
+}
 
 /* Instrument private background readers, including instruction budgets and
  * a deterministic pause while a SELECT is in progress. */
@@ -1210,8 +1219,10 @@ static void test_archive_credentials_reject_symlinked_directory_components(void)
 
 static void write_lifecycle_attestation(const storage_target_t *target, double checked_at,
                                         const char *xml, char path[1024]) {
-    snprintf(path, 1024, "%s/%s.lifecycle.json",
-             getenv("LIGHTNVR_ARCHIVE_CREDENTIALS_DIR"), target->credential_ref);
+    const char *credentials_dir =
+        isolated_attestation_dir[0] ? isolated_attestation_dir
+                                    : getenv("LIGHTNVR_ARCHIVE_CREDENTIALS_DIR");
+    snprintf(path, 1024, "%s/%s.lifecycle.json", credentials_dir, target->credential_ref);
     cJSON *json = cJSON_CreateObject();
     cJSON_AddStringToObject(json, "endpoint", target->endpoint);
     cJSON_AddStringToObject(json, "region", target->region);
@@ -1706,21 +1717,29 @@ static void test_stalled_archive_writes_renew_lease_until_completion(void) {
     uv_loop_t loop;
     TEST_ASSERT_EQUAL_INT(0, uv_loop_init(&loop));
     libuv_server_t server = {.loop = &loop};
-    int clients[2];
+    int clients[2] = {-1, -1};
     capture_lease_timers = true;
     libuv_connection_t *first = stalled_archive_connection(&server, &clients[0], id);
     libuv_connection_t *second = stalled_archive_connection(&server, &clients[1], id);
     capture_lease_timers = false;
-    TEST_ASSERT_EQUAL_INT(2, captured_timer_count);
     bool stalled = false;
-    for (int i = 0; i < 5000; i++) {
+    if (captured_timer_count == 2) for (int i = 0; i < 5000; i++) {
         uv_run(&loop, UV_RUN_NOWAIT);
         stalled = uv_stream_get_write_queue_size((uv_stream_t *)&first->handle) > 0 &&
                   uv_stream_get_write_queue_size((uv_stream_t *)&second->handle) > 0;
         if (stalled) break;
         struct timespec pause = {.tv_nsec = 1000000}; nanosleep(&pause, NULL);
     }
-    TEST_ASSERT_TRUE(stalled);
+    if (captured_timer_count != 2 || !stalled) {
+        for (int i = 0; i < 2; i++) close(clients[i]);
+        libuv_connection_close(first);
+        libuv_connection_close(second);
+        uv_run(&loop, UV_RUN_DEFAULT);
+        TEST_ASSERT_EQUAL_INT(0, uv_loop_close(&loop));
+        TEST_FAIL_MESSAGE(captured_timer_count != 2
+            ? "expected two captured lease timers"
+            : "expected both archive streams to stall with queued writes");
+    }
     // Advance the database's lease clock without a two-minute wall-clock sleep.
     sql("UPDATE storage_read_leases SET expires_at=0;");
     captured_callbacks[0](captured_timers[0]);
@@ -1833,5 +1852,9 @@ int main(void) {
     RUN_TEST(test_stalled_archive_writes_renew_lease_until_completion);
     int result = UNITY_END();
     shutdown_database();
+    if (nftw(root, remove_fixture_entry, 16, FTW_DEPTH | FTW_PHYS) != 0) {
+        fprintf(stderr, "failed to remove archive test fixture: %s\n", root);
+        return 1;
+    }
     return result;
 }
