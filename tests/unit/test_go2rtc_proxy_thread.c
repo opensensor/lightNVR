@@ -31,6 +31,7 @@ static bool worker_in_curl;
 static bool real_authorization;
 static bool fail_lease_uuid;
 static bool acknowledge_media_policy;
+static bool informational_media_ack;
 static int upstream_requests;
 static char upstream_request[2048];
 static pthread_mutex_t upstream_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -114,6 +115,7 @@ void setUp(void) {
     real_authorization = false;
     fail_lease_uuid = false;
     acknowledge_media_policy = true;
+    informational_media_ack = false;
     upstream_requests = 0;
     TEST_ASSERT_EQUAL_INT(CURLE_OK, curl_global_init(CURL_GLOBAL_ALL));
     TEST_ASSERT_EQUAL_INT(0, uv_loop_init(&loop));
@@ -362,6 +364,11 @@ static void *webrtc_peer(void *arg) {
         if (body && strlen(body + 4) >= strlen(sdp_offer)) break;
     }
     upstream_requests++;
+    if (informational_media_ack) {
+        const char interim[] = "HTTP/1.1 100 Continue\r\n"
+            "X-LightNVR-Media-Policy: 1\r\n\r\n";
+        (void)send(client, interim, sizeof(interim) - 1, MSG_NOSIGNAL);
+    }
     char response[512];
     int length = snprintf(response, sizeof(response),
         "HTTP/1.1 201 Created\r\n%sContent-Type: application/sdp\r\n"
@@ -451,6 +458,10 @@ void test_both_proxy_handlers_forward_authorized_webrtc_sdp(void) {
 void test_both_proxy_handlers_reject_missing_media_ack(void) {
     check_both_webrtc_proxies(false, false);
 }
+void test_interim_ack_does_not_authorize_final_response(void) {
+    informational_media_ack = true;
+    check_both_webrtc_proxies(false, false);
+}
 void test_both_proxy_handlers_reject_lease_failure_without_upstream_contact(void) {
     check_both_webrtc_proxies(true, true);
 }
@@ -495,6 +506,7 @@ int main(void) {
     RUN_TEST(test_shutdown_waits_for_a_worker_beyond_the_old_ten_second_timeout);
     RUN_TEST(test_both_proxy_handlers_forward_authorized_webrtc_sdp);
     RUN_TEST(test_both_proxy_handlers_reject_missing_media_ack);
+    RUN_TEST(test_interim_ack_does_not_authorize_final_response);
     RUN_TEST(test_both_proxy_handlers_reject_lease_failure_without_upstream_contact);
     RUN_TEST(test_proxy_rejects_overflow_and_recovers_slots_after_completion);
     RUN_TEST(test_slow_snapshot_releases_its_slot_after_ten_seconds);
