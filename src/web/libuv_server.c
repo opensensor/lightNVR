@@ -320,6 +320,16 @@ int libuv_server_start(http_server_handle_t handle) {
             log_error("libuv_server_start: Failed to reinitialize async handle");
             /* Roll back partial reinitialization: listener was reinitialized above. */
             uv_close((uv_handle_t *)&server->listener, NULL);
+
+            /* On owned loops, no external runner exists yet; drain close completion now. */
+            if (server->owns_loop) {
+                int run_rc = uv_run(server->loop, UV_RUN_DEFAULT);
+                if (run_rc < 0) {
+                    log_error("libuv_server_start: Failed to drain listener close: %s",
+                              uv_strerror(run_rc));
+                }
+            }
+
             return -1;
         }
         server->stop_async.data = server;
