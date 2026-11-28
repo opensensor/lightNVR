@@ -1089,40 +1089,80 @@ static void test_archive_http_rejects_invalid_ranges_and_bounds_concurrency(void
     storage_migration_job_t job = move_recording(id, &target);
     TEST_ASSERT_EQUAL_STRING("completed", job.state);
     uv_loop_t loop;
-    TEST_ASSERT_EQUAL_INT(0, uv_loop_init(&loop));
+    int loop_init_rc = uv_loop_init(&loop);
+    TEST_ASSERT_EQUAL_INT(0, loop_init_rc);
     libuv_server_t server = {.loop = &loop};
     const char *invalid[] = {"bytes=5-2", "bytes=0-1,2-3", "bytes=99999-", "bytes=-", "items=0-1"};
+    int invalid_conn_created[sizeof(invalid) / sizeof(invalid[0])];
+    int invalid_serve_ok[sizeof(invalid) / sizeof(invalid[0])];
+    int invalid_status[sizeof(invalid) / sizeof(invalid[0])];
+    int invalid_stream_null[sizeof(invalid) / sizeof(invalid[0])];
     for (size_t i = 0; i < sizeof(invalid) / sizeof(invalid[0]); i++) {
         libuv_connection_t *conn = libuv_connection_create(&server);
-        TEST_ASSERT_NOT_NULL(conn);
-        conn->request.user_data = conn;
-        safe_strcpy(conn->request.headers[0].name, "Range", sizeof(conn->request.headers[0].name), 0);
-        safe_strcpy(conn->request.headers[0].value, invalid[i], sizeof(conn->request.headers[0].value), 0);
-        conn->request.num_headers = 1;
-        TEST_ASSERT_TRUE(recording_archive_serve(&conn->request, &conn->response, id, false));
-        TEST_ASSERT_EQUAL_INT(416, conn->response.status_code);
-        TEST_ASSERT_NULL(conn->archive_stream);
-        libuv_connection_close(conn);
+        invalid_conn_created[i] = (conn != NULL);
+        invalid_serve_ok[i] = 0;
+        invalid_status[i] = -1;
+        invalid_stream_null[i] = 0;
+        if (conn) {
+            conn->request.user_data = conn;
+            safe_strcpy(conn->request.headers[0].name, "Range", sizeof(conn->request.headers[0].name), 0);
+            safe_strcpy(conn->request.headers[0].value, invalid[i], sizeof(conn->request.headers[0].value), 0);
+            conn->request.num_headers = 1;
+            invalid_serve_ok[i] = recording_archive_serve(&conn->request, &conn->response, id, false);
+            invalid_status[i] = conn->response.status_code;
+            invalid_stream_null[i] = (conn->archive_stream == NULL);
+            libuv_connection_close(conn);
+        }
         uv_run(&loop, UV_RUN_DEFAULT);
     }
     // Repeat after cancellation to verify that closed streams release capacity.
+    int pass_conn_created[2][3] = {{0}};
+    int pass_serve_ok[2][3] = {{0}};
+    int pass_async_pending[2][3] = {{0}};
+    int pass_status[2][3] = {{0}};
+    int pass_stream_null[2][3] = {{0}};
     for (int pass = 0; pass < 2; pass++) {
-        libuv_connection_t *connections[3];
+        libuv_connection_t *connections[3] = {0};
         for (int i = 0; i < 3; i++) {
             connections[i] = libuv_connection_create(&server);
-            TEST_ASSERT_NOT_NULL(connections[i]);
-            connections[i]->request.user_data = connections[i];
-            TEST_ASSERT_TRUE(recording_archive_serve(&connections[i]->request, &connections[i]->response, id, false));
-            if (i < 2) TEST_ASSERT_TRUE(connections[i]->async_response_pending);
-            else {
-                TEST_ASSERT_EQUAL_INT(503, connections[i]->response.status_code);
-                TEST_ASSERT_NULL(connections[i]->archive_stream);
+            pass_conn_created[pass][i] = (connections[i] != NULL);
+            pass_serve_ok[pass][i] = 0;
+            pass_async_pending[pass][i] = 0;
+            pass_status[pass][i] = -1;
+            pass_stream_null[pass][i] = 0;
+            if (connections[i]) {
+                connections[i]->request.user_data = connections[i];
+                pass_serve_ok[pass][i] =
+                    recording_archive_serve(&connections[i]->request, &connections[i]->response, id, false);
+                pass_async_pending[pass][i] = connections[i]->async_response_pending;
+                pass_status[pass][i] = connections[i]->response.status_code;
+                pass_stream_null[pass][i] = (connections[i]->archive_stream == NULL);
             }
         }
-        for (int i = 0; i < 3; i++) libuv_connection_close(connections[i]);
+        for (int i = 0; i < 3; i++) {
+            if (connections[i]) libuv_connection_close(connections[i]);
+        }
         uv_run(&loop, UV_RUN_DEFAULT);
     }
     TEST_ASSERT_EQUAL_INT(0, uv_loop_close(&loop));
+    for (size_t i = 0; i < sizeof(invalid) / sizeof(invalid[0]); i++) {
+        TEST_ASSERT_TRUE(invalid_conn_created[i]);
+        TEST_ASSERT_TRUE(invalid_serve_ok[i]);
+        TEST_ASSERT_EQUAL_INT(416, invalid_status[i]);
+        TEST_ASSERT_TRUE(invalid_stream_null[i]);
+    }
+    for (int pass = 0; pass < 2; pass++) {
+        for (int i = 0; i < 3; i++) {
+            TEST_ASSERT_TRUE(pass_conn_created[pass][i]);
+            TEST_ASSERT_TRUE(pass_serve_ok[pass][i]);
+            if (i < 2) {
+                TEST_ASSERT_TRUE(pass_async_pending[pass][i]);
+            } else {
+                TEST_ASSERT_EQUAL_INT(503, pass_status[pass][i]);
+                TEST_ASSERT_TRUE(pass_stream_null[pass][i]);
+            }
+        }
+    }
     TEST_ASSERT_EQUAL_INT(0, scalar("SELECT count(*) FROM storage_retrieval_jobs;"));
 }
 
