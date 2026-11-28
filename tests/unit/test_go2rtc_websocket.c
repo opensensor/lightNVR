@@ -283,10 +283,11 @@ void setUp(void) {
     atomic_store(&client_teardown_started, false);
     for (int i = 0; i < 5; i++) {
         tracked_clients[i] = -1;
+    }
+    for (int i = 0; i < 4; i++) {
         tracked_thread_started[i] = false;
         memset(&tracked_peers[i], 0, sizeof(tracked_peers[i]));
     }
-    tracked_clients[4] = -1;
     load_default_config(&g_config);
     g_config.web_auth_enabled = false;
     g_config.demo_mode = false;
