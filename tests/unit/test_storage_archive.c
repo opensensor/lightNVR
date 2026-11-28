@@ -2095,10 +2095,12 @@ static void test_stalled_archive_writes_renew_lease_until_completion(void) {
     capture_lease_timers = false;
 
     if (first == NULL || second == NULL || clients[0] < 0 || clients[1] < 0) {
+        if (first != NULL) libuv_connection_close(first);
+        if (second != NULL) libuv_connection_close(second);
         if (clients[0] >= 0) close(clients[0]);
         if (clients[1] >= 0) close(clients[1]);
-        for (int i = 0; i < 100; i++) uv_run(&loop, UV_RUN_NOWAIT);
-        uv_loop_close(&loop);
+        uv_run(&loop, UV_RUN_DEFAULT);
+        TEST_ASSERT_EQUAL_INT(0, uv_loop_close(&loop));
         TEST_FAIL_MESSAGE("Failed to establish stalled archive connections");
     }
 
