@@ -118,7 +118,9 @@ test('large timeline IDs remain exact through JSON, playback and ZIP export',asy
   const members=JSON.parse(execFileSync('python3',['-c',
     'import hashlib,json,sys,zipfile; z=zipfile.ZipFile(sys.argv[1]); assert z.testzip() is None; print(json.dumps({n:hashlib.sha256(z.read(n)).hexdigest() for n in z.namelist()}))',archive],{encoding:'utf8'}));
   expect(Object.keys(members).sort()).toEqual(exact.slice(1,3).map(id=>`${id}.mp4`));
-  for(const digest of Object.values(members)) expect(digest).toBe(createHash('sha256').update(fixture.bytes).digest('hex'));
+  const expectedDigest=createHash('sha256').update(fixture.bytes).digest('hex');
+  const expectedMembers=Object.fromEntries(exact.slice(1,3).map(id=>[`${id}.mp4`,expectedDigest]));
+  expect(members).toEqual(expectedMembers);
 });
 
 test('recording reads fail closed on policy lookup failure and recover without empty or partial success',async({server})=>{
