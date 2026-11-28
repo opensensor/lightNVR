@@ -7,6 +7,7 @@ static uv_async_t foreign_async;
 static uv_timer_t stop_timer;
 static libuv_server_t *callback_server;
 static bool stopped_in_callback;
+static bool foreign_cb_called;
 static bool loop_initialized;
 static bool foreign_async_initialized;
 static bool stop_timer_initialized;
@@ -44,7 +45,10 @@ void tearDown(void) {
     stopped_in_callback = false;
 }
 
-static void foreign_cb(uv_async_t *handle) { (void)handle; }
+static void foreign_cb(uv_async_t *handle) {
+    (void)handle;
+    foreign_cb_called = true;
+}
 
 static void test_stop_preserves_foreign_handle(void) {
     TEST_ASSERT_EQUAL_INT(0, uv_loop_init(&loop));
@@ -52,6 +56,7 @@ static void test_stop_preserves_foreign_handle(void) {
     TEST_ASSERT_EQUAL_INT(0, uv_async_init(&loop, &foreign_async, foreign_cb));
     foreign_async_initialized = true;
     foreign_async_closed = false;
+    foreign_cb_called = false;
     http_server_config_t config = {0};
     config.bind_ip = "127.0.0.1";
     config.web_root = "/nonexistent-shared-loop-fixture";
@@ -59,12 +64,24 @@ static void test_stop_preserves_foreign_handle(void) {
     callback_server = (libuv_server_t *)libuv_server_init_with_loop(&config, &loop);
     TEST_ASSERT_NOT_NULL(callback_server);
     TEST_ASSERT_EQUAL_INT(0, http_server_start((http_server_handle_t)callback_server));
+    TEST_ASSERT_TRUE(uv_has_ref((const uv_handle_t *)&foreign_async));
 
     http_server_stop((http_server_handle_t)callback_server);
     TEST_ASSERT_FALSE(uv_is_closing((uv_handle_t *)&foreign_async));
+    TEST_ASSERT_TRUE(uv_has_ref((const uv_handle_t *)&foreign_async));
     TEST_ASSERT_TRUE(uv_loop_alive(&loop));
+    foreign_cb_called = false;
+    TEST_ASSERT_EQUAL_INT(0, uv_async_send(&foreign_async));
+    uv_run(&loop, UV_RUN_NOWAIT);
+    TEST_ASSERT_TRUE(foreign_cb_called);
+
     http_server_destroy((http_server_handle_t)callback_server);
     TEST_ASSERT_FALSE(uv_is_closing((uv_handle_t *)&foreign_async));
+    TEST_ASSERT_TRUE(uv_has_ref((const uv_handle_t *)&foreign_async));
+    foreign_cb_called = false;
+    TEST_ASSERT_EQUAL_INT(0, uv_async_send(&foreign_async));
+    uv_run(&loop, UV_RUN_NOWAIT);
+    TEST_ASSERT_TRUE(foreign_cb_called);
     callback_server = NULL;
 }
 
@@ -83,6 +100,7 @@ static void test_stop_and_destroy_from_shared_loop_callback(void) {
     TEST_ASSERT_EQUAL_INT(0, uv_async_init(&loop, &foreign_async, foreign_cb));
     foreign_async_initialized = true;
     foreign_async_closed = false;
+    foreign_cb_called = false;
     http_server_config_t config = {0};
     config.bind_ip = "127.0.0.1";
     config.web_root = "/nonexistent-shared-loop-fixture";
@@ -98,6 +116,7 @@ static void test_stop_and_destroy_from_shared_loop_callback(void) {
     uv_run(&loop, UV_RUN_NOWAIT);
     TEST_ASSERT_TRUE(stopped_in_callback);
     TEST_ASSERT_FALSE(uv_is_closing((uv_handle_t *)&foreign_async));
+    TEST_ASSERT_TRUE(uv_has_ref((const uv_handle_t *)&foreign_async));
 }
 
 int main(void) {
