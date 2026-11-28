@@ -1834,6 +1834,12 @@ static void test_stalled_archive_writes_renew_lease_until_completion(void) {
         struct timespec pause = {.tv_nsec = 1000000}; nanosleep(&pause, NULL);
     }
     close(clients[1]);
+    if (!ended) {
+        // Timeout/stall path: ensure the server-side second stream and its
+        // archive renewal resources are explicitly closed before draining.
+        // Do not do this on success path; it may already be freed.
+        archive_test_close_second_stream();
+    }
     uv_run(&loop, UV_RUN_DEFAULT);
     TEST_ASSERT_EQUAL_INT(0, uv_loop_close(&loop));
     TEST_ASSERT_TRUE(ended);
