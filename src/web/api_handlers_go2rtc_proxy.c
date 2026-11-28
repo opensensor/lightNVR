@@ -892,6 +892,11 @@ void handle_go2rtc_proxy(const http_request_t *req, http_response_t *res) {
         safe_strcpy(res->content_type, ctx.content_type, sizeof(res->content_type), 0);
     }
 
+    // Prevent authenticated media from being cached/replayed after authorization changes
+    http_response_add_header(res, "Cache-Control", "private, no-store");
+    http_response_add_header(res, "Pragma", "no-cache");
+    http_response_add_header(res, "Expires", "0");
+
     // Add CORS headers
     http_response_add_header(res, "Access-Control-Allow-Origin", "*");
     http_response_add_header(res, "Access-Control-Allow-Methods", "GET, POST, OPTIONS");
