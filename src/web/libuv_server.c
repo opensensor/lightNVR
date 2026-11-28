@@ -87,6 +87,26 @@ static void scan_server_handles_cb(uv_handle_t *handle, void *arg) {
         handle == (uv_handle_t *)&scan->server->stop_async) scan->present = true;
 }
 
+static void shared_destroy_timer_closed(uv_handle_t *handle) {
+    safe_free(handle);
+}
+
+static void shared_destroy_check_cb(uv_timer_t *handle) {
+    libuv_server_t *server = handle->data;
+    server_handle_scan_t scan = {.server = server, .present = false};
+    uv_walk(server->loop, scan_server_handles_cb, &scan);
+    if (scan.present || server->connections) return;
+
+    uv_timer_stop(handle);
+    uv_close((uv_handle_t *)handle, shared_destroy_timer_closed);
+    safe_free(server->handlers);
+    if (server->tls_ctx) {
+        libuv_tls_context_free(server->tls_ctx);
+        httpd_set_secure_cookies(false);
+    }
+    safe_free(server);
+}
+
 /**
  * @brief Async callback to wake up the event loop for shutdown
  * This is called when uv_async_send() is invoked from another thread
@@ -298,6 +318,8 @@ int libuv_server_start(http_server_handle_t handle) {
         // Reinitialize the async handle for stop signaling
         if (uv_async_init(server->loop, &server->stop_async, stop_async_cb) != 0) {
             log_error("libuv_server_start: Failed to reinitialize async handle");
+            /* Roll back partial reinitialization: listener was reinitialized above. */
+            uv_close((uv_handle_t *)&server->listener, NULL);
             return -1;
         }
         server->stop_async.data = server;
@@ -514,35 +536,39 @@ void libuv_server_stop(http_server_handle_t handle) {
     // Warn after the diagnostic deadline; work cannot safely be abandoned.
     log_info("libuv_server_stop: Processing close callbacks");
 
-    const int max_wait_ms = 3000;  // Diagnostic warning threshold
-    const int check_interval_ms = 50;  // Check every 50ms
+    const int max_wait_ms = 3000;
+    const int check_interval_ms = 50;
     int elapsed_ms = 0;
+    if (server->owns_loop) {
 
-    while (elapsed_ms < max_wait_ms) {
-        // Run one iteration of the event loop
-        int active = uv_run(server->loop, UV_RUN_NOWAIT);
+        while (elapsed_ms < max_wait_ms) {
+            // Run one iteration of the event loop
+            int active = uv_run(server->loop, UV_RUN_NOWAIT);
 
-        server_handle_scan_t scan = {.server = server, .present = false};
-        if (!server->owns_loop) uv_walk(server->loop, scan_server_handles_cb, &scan);
-        // A shared loop may retain unrelated active handles.
-        if (server->owns_loop ? active == 0 : (!scan.present && !server->connections)) {
-            log_info("libuv_server_stop: All handles closed after %d ms", elapsed_ms);
-            break;
+            if (active == 0) {
+                log_info("libuv_server_stop: All handles closed after %d ms", elapsed_ms);
+                break;
+            }
+
+            // Count remaining active handles for logging
+            if (elapsed_ms > 0 && elapsed_ms % 1000 == 0) {
+                int handle_count = 0;
+                uv_walk(server->loop, count_handles_cb, &handle_count);
+                log_info("libuv_server_stop: Still waiting for %d handles after %d ms",
+                         handle_count, elapsed_ms);
+            }
+
+            usleep(check_interval_ms * 1000);
+            elapsed_ms += check_interval_ms;
         }
-
-        // Count remaining active handles for logging
-        if (elapsed_ms > 0 && elapsed_ms % 1000 == 0) {
-            int handle_count = 0;
-            uv_walk(server->loop, count_handles_cb, &handle_count);
-            log_info("libuv_server_stop: Still waiting for %d handles after %d ms",
-                     handle_count, elapsed_ms);
-        }
-
-        usleep(check_interval_ms * 1000);
-        elapsed_ms += check_interval_ms;
+    } else {
+        /* Shared loop: do not call uv_run() here. stop() may be invoked from
+         * within a loop callback, and uv_run is not reentrant on the same loop.
+         * Close callbacks will be processed asynchronously by the loop owner. */
+        log_info("libuv_server_stop: Shared loop shutdown initiated asynchronously");
     }
 
-    if (elapsed_ms >= max_wait_ms) {
+    if (server->owns_loop && elapsed_ms >= max_wait_ms) {
         int handle_count = 0;
         uv_walk(server->loop, count_handles_cb, &handle_count);
         if (handle_count == 0) {
@@ -585,6 +611,7 @@ void libuv_server_destroy(http_server_handle_t handle) {
     if (!server) {
         return;
     }
+    if (server->destroy_pending) return;
 
     // Ensure server is stopped
     if (!server->shutting_down) {
@@ -596,6 +623,23 @@ void libuv_server_destroy(http_server_handle_t handle) {
 
     // Shutdown go2rtc proxy thread subsystem
     go2rtc_proxy_thread_shutdown();
+
+    if (!server->owns_loop) {
+        uv_timer_t *cleanup = safe_malloc(sizeof(*cleanup));
+        if (!cleanup || uv_timer_init(server->loop, cleanup) != 0) {
+            log_error("libuv_server_destroy: Could not schedule shared-loop cleanup");
+            safe_free(cleanup);
+            return;
+        }
+        server->destroy_pending = true;
+        cleanup->data = server;
+        if (uv_timer_start(cleanup, shared_destroy_check_cb, 0, 10) != 0) {
+            server->destroy_pending = false;
+            uv_close((uv_handle_t *)cleanup, shared_destroy_timer_closed);
+            log_error("libuv_server_destroy: Could not start shared-loop cleanup");
+        }
+        return;
+    }
 
     if (server->owns_loop && server->loop) {
         int closed = uv_loop_close(server->loop);
