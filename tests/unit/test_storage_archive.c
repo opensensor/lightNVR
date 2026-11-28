@@ -2098,6 +2098,20 @@ fail:
     return NULL;
 }
 
+typedef struct {
+    uv_handle_t *first;
+    uv_handle_t *second;
+    bool first_open;
+    bool second_open;
+} stalled_archive_handles_t;
+
+static void find_stalled_archive_handles(uv_handle_t *handle, void *context) {
+    stalled_archive_handles_t *state = context;
+    if (uv_is_closing(handle)) return;
+    if (handle == state->first) state->first_open = true;
+    if (handle == state->second) state->second_open = true;
+}
+
 static void test_stalled_archive_writes_renew_lease_until_completion(void) {
     uint64_t id = recording(false);
     FILE *file = fopen(source_path, "wb");
@@ -2116,8 +2130,10 @@ static void test_stalled_archive_writes_renew_lease_until_completion(void) {
     capture_lease_timers = true;
     libuv_connection_t *first = stalled_archive_connection(&server, &clients[0], id);
     libuv_connection_t *second = stalled_archive_connection(&server, &clients[1], id);
-    bool first_alive = (first != NULL && clients[0] >= 0);
-    bool second_alive = (second != NULL && clients[1] >= 0);
+    stalled_archive_handles_t handles = {
+        .first = first ? (uv_handle_t *)&first->handle : NULL,
+        .second = second ? (uv_handle_t *)&second->handle : NULL
+    };
     capture_lease_timers = false;
 
     if (first == NULL || second == NULL || clients[0] < 0 || clients[1] < 0) {
@@ -2133,35 +2149,26 @@ static void test_stalled_archive_writes_renew_lease_until_completion(void) {
     bool stalled = false;
     if (captured_timer_count == 2) for (int i = 0; i < 5000; i++) {
         uv_run(&loop, UV_RUN_NOWAIT);
-        if (!first_alive || clients[0] < 0) {
-            first = NULL;
-            first_alive = false;
-        }
-        if (!second_alive || clients[1] < 0) {
-            second = NULL;
-            second_alive = false;
-        }
-        if (!first_alive || !second_alive || first == NULL || second == NULL) {
+        handles.first_open = handles.second_open = false;
+        uv_walk(&loop, find_stalled_archive_handles, &handles);
+        if (!handles.first_open || !handles.second_open || clients[0] < 0 || clients[1] < 0) {
             stalled = false;
             break;
         }
-        stalled = uv_stream_get_write_queue_size((uv_stream_t *)&first->handle) > 0 &&
-                  uv_stream_get_write_queue_size((uv_stream_t *)&second->handle) > 0;
+        stalled = uv_stream_get_write_queue_size((uv_stream_t *)handles.first) > 0 &&
+                  uv_stream_get_write_queue_size((uv_stream_t *)handles.second) > 0;
         if (stalled) break;
         struct timespec pause = {.tv_nsec = 1000000}; nanosleep(&pause, NULL);
     }
     if (captured_timer_count != 2 || !stalled) {
-        if (first_alive && first != NULL) {
+        handles.first_open = handles.second_open = false;
+        uv_walk(&loop, find_stalled_archive_handles, &handles);
+        if (handles.first_open) {
             libuv_connection_close(first);
         }
-        first = NULL;
-        first_alive = false;
-        if (second_alive && second != NULL) {
+        if (handles.second_open) {
             libuv_connection_close(second);
         }
-        second = NULL;
-        second_alive = false;
-
         for (int i = 0; i < 2; i++) {
             if (clients[i] >= 0) {
                 close(clients[i]);
