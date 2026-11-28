@@ -405,6 +405,19 @@ static struct {
 } media_leases[MEDIA_LEASE_CAPACITY];
 static pthread_mutex_t media_lease_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+static void go2rtc_media_policy_release_lease(const char *token) {
+    if (!token || !token[0]) return;
+    pthread_mutex_lock(&media_lease_mutex);
+    for (int i = 0; i < MEDIA_LEASE_CAPACITY; i++) {
+        if (!media_leases[i].request || strcmp(media_leases[i].token, token)) continue;
+        memset(media_leases[i].request, 0, sizeof(*media_leases[i].request));
+        free(media_leases[i].request);
+        memset(&media_leases[i], 0, sizeof(media_leases[i]));
+        break;
+    }
+    pthread_mutex_unlock(&media_lease_mutex);
+}
+
 static int lease_camera(const char *source, fleet_camera_t *camera) {
     int result = db_fleet_camera_find_by_name_readonly(source, camera);
     size_t length = strlen(source);
@@ -776,6 +789,7 @@ void handle_go2rtc_proxy(const http_request_t *req, http_response_t *res) {
     CURL *curl = curl_easy_init();
     if (!curl) {
         log_error("go2rtc proxy: curl_easy_init failed");
+        go2rtc_media_policy_release_lease(media_lease);
         sem_post(g_proxy_semaphore);
         http_response_set_json_error(res, 502, "Proxy error: failed to initialize HTTP client");
         return;
@@ -788,6 +802,8 @@ void handle_go2rtc_proxy(const http_request_t *req, http_response_t *res) {
     // was never authorized. Disabling redirect following below is what
     // actually closes it.
     curl_easy_setopt(curl, CURLOPT_URL, url);
+    // Loopback-only upstream: never inherit environment-configured proxies.
+    curl_easy_setopt(curl, CURLOPT_PROXY, "");
     curl_easy_setopt(curl, CURLOPT_PATH_AS_IS, 1L);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, buffered_write_cb);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &ctx);
@@ -848,6 +864,8 @@ void handle_go2rtc_proxy(const http_request_t *req, http_response_t *res) {
         else
             log_warn("go2rtc proxy: response buffering failed");
         if (ctx.buffer) free(ctx.buffer);
+        if (media_lease[0])
+            go2rtc_media_policy_release_lease(media_lease);
         http_response_set_json_error(res, 502, "Proxy error: go2rtc is not responding");
         return;
     }
@@ -855,11 +873,14 @@ void handle_go2rtc_proxy(const http_request_t *req, http_response_t *res) {
         ctx.http_code < 300 && !ctx.media_policy_ack) {
         log_warn("%s (HTTP %ld)", GO2RTC_MEDIA_POLICY_ERROR, ctx.http_code);
         if (ctx.buffer) free(ctx.buffer);
+        go2rtc_media_policy_release_lease(media_lease);
         http_response_set_json_error(res, 502, GO2RTC_MEDIA_POLICY_ERROR);
         return;
     }
     if (ctx.http_code >= 300 && ctx.http_code < 400) {
         free(ctx.buffer);
+        if (media_lease[0])
+            go2rtc_media_policy_release_lease(media_lease);
         http_response_set_json_error(res, 502,
             "Proxy error: upstream redirect is not supported");
         return;
