@@ -280,10 +280,20 @@ static void *redirect_peer(void *arg) {
         int client = accept(server, NULL, NULL);
         if (client < 0) break;
         char request[2048];
-        ssize_t received = read(client, request, sizeof(request));
-        if (received > 0) {
-            size_t n = (size_t)received < sizeof(upstream_request) - 1
-                ? (size_t)received : sizeof(upstream_request) - 1;
+        size_t received_total = 0;
+        struct pollfd client_ready = { .fd = client, .events = POLLIN };
+        while (received_total < sizeof(request) - 1) {
+            int pr = poll(&client_ready, 1, 1000);
+            if (pr <= 0) break;
+            ssize_t chunk = read(client, request + received_total, sizeof(request) - 1 - received_total);
+            if (chunk <= 0) break;
+            received_total += (size_t)chunk;
+            request[received_total] = '\0';
+            if (strstr(request, "\r\n\r\n") != NULL) break;
+        }
+        if (received_total > 0) {
+            size_t n = received_total < sizeof(upstream_request) - 1
+                ? received_total : sizeof(upstream_request) - 1;
             memcpy(upstream_request, request, n);
             upstream_request[n] = '\0';
             upstream_requests++;
