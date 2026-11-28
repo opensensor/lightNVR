@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <errno.h>
 #include <llhttp.h>
 #include <uv.h>
 
@@ -94,26 +95,50 @@ bool libuv_parse_range_header(const char *range_header, size_t file_size,
     if (!range_header || strncmp(range_header, "bytes=", 6) != 0) {
         return false;
     }
-    
+
     const char *range = range_header + 6;
-    
+    if (*range == '\0') {
+        return false;
+    }
+
     if (*range == '-') {
         // Suffix range: bytes=-500 means last 500 bytes
-        size_t suffix_len = strtoull(range + 1, NULL, 10);
+        char *endptr = NULL;
+        errno = 0;
+        unsigned long long suffix_ull = strtoull(range + 1, &endptr, 10);
+        if (endptr == range + 1 || *endptr != '\0' || errno == ERANGE) {
+            return false;
+        }
+
+        size_t suffix_len = (size_t)suffix_ull;
         if (suffix_len > file_size) suffix_len = file_size;
         *start = file_size - suffix_len;
         *end = file_size - 1;
     } else {
         // Normal range: bytes=0-499 or bytes=500-
-        *start = strtoull(range, NULL, 10);
-        const char *dash = strchr(range, '-');
-        if (dash && dash[1] != '\0') {
-            *end = strtoull(dash + 1, NULL, 10);
-        } else {
+        char *start_endptr = NULL;
+        errno = 0;
+        unsigned long long start_ull = strtoull(range, &start_endptr, 10);
+        if (start_endptr == range || *start_endptr != '-' || errno == ERANGE) {
+            return false;
+        }
+
+        *start = (size_t)start_ull;
+
+        const char *end_part = start_endptr + 1;
+        if (*end_part == '\0') {
             *end = file_size - 1;
+        } else {
+            char *end_endptr = NULL;
+            errno = 0;
+            unsigned long long end_ull = strtoull(end_part, &end_endptr, 10);
+            if (end_endptr == end_part || *end_endptr != '\0' || errno == ERANGE) {
+                return false;
+            }
+            *end = (size_t)end_ull;
         }
     }
-    
+
     // Validate range
     if (*start >= file_size) {
         return false;
@@ -124,7 +149,7 @@ bool libuv_parse_range_header(const char *range_header, size_t file_size,
     if (*start > *end) {
         return false;
     }
-    
+
     return true;
 }
 
