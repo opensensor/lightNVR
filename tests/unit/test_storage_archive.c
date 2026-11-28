@@ -1236,7 +1236,8 @@ static void test_multipart_cancellation_aborts_owned_upload_and_preserves_source
     uint64_t bytes;
     char error[256];
     TEST_ASSERT_EQUAL_INT(STORAGE_S3_MISSING, storage_s3_stat(&target, job.destination_object_key, &bytes, error));
-    TEST_ASSERT_EQUAL_INT(0, storage_s3_abort_upload(&target, job.destination_object_key, original_upload_id, error));
+    /* Best-effort fixture cleanup only; do not use abort success as proof that cancellation cleaned up multipart state. */
+    (void)storage_s3_abort_upload(&target, job.destination_object_key, original_upload_id, error);
 }
 
 static void test_archive_credentials_require_private_regular_files(void) {
@@ -1369,22 +1370,9 @@ static void test_scoped_credentials_use_fresh_operator_lifecycle_inspection(void
     /* Copy required fixture credential into isolated dir for this test. */
     {
         storage_target_t setup_target = archive_target("credentials-path", true);
-        char src[1024], dst[1024];
-        snprintf(src, sizeof(src), "%s/%s", original_dir, setup_target.credential_ref);
-        snprintf(dst, sizeof(dst), "%s/%s", isolated_dir, setup_target.credential_ref);
-        FILE *in = fopen(src, "r");
-        TEST_ASSERT_NOT_NULL(in);
-        FILE *out = fopen(dst, "w");
-        TEST_ASSERT_NOT_NULL(out);
-        char buf[4096];
-        size_t n;
-        while ((n = fread(buf, 1, sizeof(buf), in)) > 0) {
-            TEST_ASSERT_EQUAL_UINT64(n, fwrite(buf, 1, n, out));
-        }
-        TEST_ASSERT_EQUAL_INT(0, ferror(in));
-        fclose(in);
-        fclose(out);
-        TEST_ASSERT_EQUAL_INT(0, chmod(dst, 0600));
+        copy_fixture_credential_into_isolated_dir(original_dir,
+                                                  isolated_dir,
+                                                  setup_target.credential_ref);
     }
     TEST_ASSERT_EQUAL_INT(0, setenv("LIGHTNVR_ARCHIVE_CREDENTIALS_DIR", isolated_dir, 1));
     storage_target_t target = archive_target("scoped-lifecycle", true);
