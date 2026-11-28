@@ -226,15 +226,15 @@ test('real playable bytes support prefix, suffix, open and clamped ranges; inval
 
 test('playback preparation and thumbnails retain their own JSON/media and permission boundaries',async({server})=>{
   const fixture=seedRecordings(server);
-  const historical=seedHistoricalNameReuse(server);
+  const historical=seedHistoricalNameReuse(server,fixture);
   for(const suffix of ['?prepare=1&transcode=0','?prepare=1&transcode=1','?prepare=1','?prepare=1&archive=1&transcode=0']) {
     const ready=await media(server,ids.playable,viewer,{},suffix);expect(ready.status).toBe(200);expect(ready.headers.get('content-type')).toMatch(/^application\/json/);expect(validateRecordingPlaybackReady(await ready.json())).toBe(true);
   }
   for(const [id,status] of [[ids.progress,409],[ids.interrupted,422],[ids.hidden,403]] as const) {const response=await media(server,id,viewer,{},'?prepare=1');expect(response.status).toBe(status);safeDenied(await response.json(),server,fixture);}
   await ok(server,'/api/settings',admin,'POST',{generate_thumbnails:true,thumbnails_per_recording:3});
   const thumbnail=await server.request(`/api/recordings/thumbnail/${ids.playable}/0`,{principal:'viewer'});expect(thumbnail.status).toBe(200);expect(thumbnail.headers.get('content-type')).toBe('image/jpeg');expect(Buffer.from(await thumbnail.arrayBuffer())).toEqual(readFileSync(fixture.thumbnail));
-  const historicalThumbnail=path.join(fixture.directory,`${historical.hidden}.jpg`);
-  if(!existsSync(historicalThumbnail))copyFileSync(fixture.thumbnail,historicalThumbnail);
+  const historicalThumbnail=path.join(fixture.directory,'thumbnails',`${historical.hidden}_0.jpg`);
+  copyFileSync(fixture.thumbnail,historicalThumbnail);
   for(const [route,identity,status] of [[`/api/recordings/thumbnail/${ids.hidden}/0`,viewer,403],[`/api/recordings/thumbnail/${historical.hidden}/0`,viewer,403],[`/api/recordings/thumbnail/${ids.playable}/3`,viewer,400],[`/api/recordings/thumbnail/${ids.playable}/0`,anonymous,401]] as const) {const result=await wire(server,route,identity);expect(result.response.status).toBe(status);safeDenied(result.body,server,fixture);}
   await ok(server,'/api/settings',admin,'POST',{thumbnails_per_recording:1});expect((await wire(server,`/api/recordings/thumbnail/${ids.playable}/1`,viewer)).response.status).toBe(403);
   const hevc=path.join(fixture.directory,`${ids.sibling}.mp4`);
