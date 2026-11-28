@@ -150,6 +150,7 @@ int libuv_serve_file(libuv_connection_t *conn, const char *path,
 
     ctx->conn = conn;
     ctx->fd = -1;
+    ctx->manage_connection_on_close = true;
     
     // Set content type
     if (content_type) {
@@ -164,9 +165,9 @@ int libuv_serve_file(libuv_connection_t *conn, const char *path,
         safe_strcpy(ctx->extra_headers, extra_headers, sizeof(ctx->extra_headers), 0);
     }
     
-    // Check for Range header
+    // Check for Range header (HTTP: only GET supports Range processing)
     const char *range_header = http_request_get_header(&conn->request, "Range");
-    if (range_header) {
+    if (range_header && conn->request.method == HTTP_METHOD_GET) {
         ctx->has_range = true;
         // Range will be parsed after we know the file size
     }
@@ -192,6 +193,7 @@ int libuv_serve_file(libuv_connection_t *conn, const char *path,
                        UV_FS_O_RDONLY, 0, on_file_open);
     if (r != 0) {
         log_error("libuv_serve_file: Failed to start open: %s", uv_strerror(r));
+        conn->async_response_pending = false;
         file_serve_cleanup(ctx);
         return -1;
     }
@@ -299,6 +301,7 @@ static void on_file_stat(uv_fs_t *req) {
         libuv_send_response_ex(conn, &conn->response, action);
 
         // Clear async flag before closing file
+        ctx->manage_connection_on_close = false;
         conn->async_response_pending = false;
 
         // Close the file descriptor
@@ -327,6 +330,7 @@ static void on_file_stat(uv_fs_t *req) {
             libuv_send_response_ex(conn, &conn->response, action);
 
             // Clear async flag before closing file
+            ctx->manage_connection_on_close = false;
             conn->async_response_pending = false;
 
             // Close the file descriptor
@@ -384,6 +388,7 @@ static void on_file_stat(uv_fs_t *req) {
             (conn->keep_alive && llhttp_should_keep_alive(&conn->parser))
                 ? WRITE_ACTION_KEEP_ALIVE : WRITE_ACTION_CLOSE;
         ctx->head_response_managed = true;
+        ctx->manage_connection_on_close = false;
         conn->async_response_pending = false;
         (void)libuv_connection_send_ex(conn, header_buf, len, true, action);
         uv_fs_close(conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
@@ -393,6 +398,7 @@ static void on_file_stat(uv_fs_t *req) {
     if (libuv_connection_send(ctx->conn, header_buf, len, true) != 0) {
         // Send failed; libuv_connection_send already closed the connection.
         // Clear the pending flag so on_file_close won't try to manage it again.
+        ctx->manage_connection_on_close = false;
         conn->async_response_pending = false;
         uv_fs_close(conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
         return;
@@ -474,12 +480,17 @@ static void on_file_read(uv_fs_t *req) {
 
     if (req->result < 0) {
         log_error("on_file_read: Read error: %s", uv_strerror((int)req->result));
+        ctx->write_error = true;
         uv_fs_close(ctx->conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
         return;
     }
 
     if (req->result == 0) {
         // EOF
+        if (ctx->remaining > 0) {
+            // Unexpected EOF before advertised Content-Length fully sent.
+            ctx->write_error = true;
+        }
         uv_fs_close(ctx->conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
         return;
     }
@@ -490,6 +501,7 @@ static void on_file_read(uv_fs_t *req) {
     // Copy data to a new buffer for sending (async write needs its own buffer)
     char *send_buf = safe_malloc(bytes_read);
     if (!send_buf) {
+        ctx->write_error = true;
         uv_fs_close(ctx->conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
         return;
     }
@@ -503,6 +515,7 @@ static void on_file_read(uv_fs_t *req) {
     file_chunk_write_ctx_t *write_ctx = safe_malloc(sizeof(file_chunk_write_ctx_t));
     if (!write_ctx) {
         safe_free(send_buf);
+        ctx->write_error = true;
         uv_fs_close(ctx->conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
         return;
     }
@@ -527,6 +540,7 @@ static void on_file_read(uv_fs_t *req) {
         log_error("on_file_read: Write failed: %s", uv_strerror(r));
         safe_free(send_buf);
         safe_free(write_ctx);
+        ctx->write_error = true;
         uv_fs_close(ctx->conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
     }
     // Note: on_chunk_write_complete will call send_file_chunk() when write is done
@@ -547,9 +561,9 @@ static void on_file_close(uv_fs_t *req) {
     }
     libuv_connection_t *conn = ctx->conn;
 
-    // Check if this is a successful file serve or an error case
-    // If async_response_pending is false, the error handler already managed the connection
-    bool should_manage_connection = conn->async_response_pending;
+    // Determine ownership from request-local context, not connection-global state.
+    // This callback may run after the connection has started a subsequent request.
+    bool should_manage_connection = ctx->manage_connection_on_close;
 
     // Read write_error before file_serve_cleanup frees ctx
     bool write_error = ctx->write_error;
@@ -558,8 +572,9 @@ static void on_file_close(uv_fs_t *req) {
     file_serve_cleanup(ctx);
     conn->file_serve_refs--;
 
-    // Clear async response flag
-    conn->async_response_pending = false;
+    // Only clear async_response_pending when this context owns response management.
+    if (should_manage_connection)
+        conn->async_response_pending = false;
 
     if (conn->close_completed) {
         if (conn->file_serve_refs == 0 && !conn->handler_on_worker)

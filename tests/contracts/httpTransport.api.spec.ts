@@ -216,3 +216,24 @@ test('closing a client during file delivery leaves file callbacks safe', async (
     rmSync(webRoot, {recursive: true, force: true});
   }
 });
+
+test('HEAD ignores Range while GET serves the requested byte range', async () => {
+  const webRoot = mkdtempSync(path.join(tmpdir(), 'lightnvr-head-range-'));
+  writeFileSync(path.join(webRoot, 'range.txt'), 'x'.repeat(1500));
+  let server: Awaited<ReturnType<typeof startFixture>> | undefined;
+  try {
+    server = await startFixture({webRoot});
+    const request = (method: string) =>
+      `${method} /range.txt HTTP/1.1\r\nHost: localhost\r\nRange: bytes=0-99\r\nConnection: close\r\n\r\n`;
+    const head = await rawExchange(server.port, request('HEAD'));
+    const get = await rawExchange(server.port, request('GET'));
+    expect(head).toMatch(/^HTTP\/1\.1 200 /);
+    expect(head).toContain('Content-Length: 1500');
+    expect(head.slice(head.indexOf('\r\n\r\n') + 4)).toBe('');
+    expect(get).toMatch(/^HTTP\/1\.1 206 /);
+    expect(get).toContain('Content-Length: 100');
+  } finally {
+    if (server) await server.stop();
+    rmSync(webRoot, {recursive: true, force: true});
+  }
+});
