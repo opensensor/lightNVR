@@ -522,8 +522,8 @@ jobs:
       - name: Build go2rtc from vendored submodule
         run: |
           cd go2rtc
-          go test -race ./internal/http ./internal/mediaauth ./internal/api/ws ./internal/webrtc ./internal/mp4 ./internal/hls -count=1 -timeout=180s
-          CGO_ENABLED=0 go build -buildvcs=false -ldflags "-s -w" -trimpath -o go2rtc
+          GOTOOLCHAIN=auto go test -race ./internal/http ./internal/mediaauth ./internal/api/ws ./internal/webrtc ./internal/mp4 ./internal/hls -count=1 -timeout=180s
+          GOTOOLCHAIN=auto CGO_ENABLED=0 go build -buildvcs=false -ldflags "-s -w" -trimpath -o go2rtc
           chmod +x go2rtc
           ./go2rtc --version
           echo "GO2RTC_TEST_BINARY=$GITHUB_WORKSPACE/go2rtc/go2rtc" >> "$GITHUB_ENV"
@@ -686,7 +686,7 @@ jobs:
           # Build go2rtc from the opensensor fork submodule
           cd go2rtc
           echo "Building go2rtc from source..."
-          CGO_ENABLED=0 go build -buildvcs=false -ldflags "-s -w" -trimpath -o go2rtc
+          GOTOOLCHAIN=auto CGO_ENABLED=0 go build -buildvcs=false -ldflags "-s -w" -trimpath -o go2rtc
           chmod +x go2rtc
           ./go2rtc --version || echo "go2rtc built successfully"
           echo "go2rtc binary size: $(stat -c%s go2rtc) bytes"

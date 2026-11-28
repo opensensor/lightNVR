@@ -87,7 +87,7 @@ GO2RTC_INSTALL_TEMP=""
 trap 'rm -rf "$GO2RTC_BUILD_DIR"; if [ -n "$GO2RTC_INSTALL_TEMP" ]; then rm -f "$GO2RTC_INSTALL_TEMP"; fi' EXIT
 (
     cd "$GO2RTC_SOURCE_DIR"
-    GOOS=linux GOARCH="$GO2RTC_GOARCH" GOARM="${GO2RTC_GOARM:-}" CGO_ENABLED=0 \
+    GOTOOLCHAIN=auto GOOS=linux GOARCH="$GO2RTC_GOARCH" GOARM="${GO2RTC_GOARM:-}" CGO_ENABLED=0 \
         go build -trimpath -ldflags="-s -w" -o "$GO2RTC_BUILD_DIR/go2rtc" .
 )
 mkdir -p "$INSTALL_DIR" "$CONFIG_DIR"
