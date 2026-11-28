@@ -94,7 +94,7 @@ const char *libuv_get_mime_type(const char *path) {
 bool libuv_parse_range_header(const char *range_header, size_t file_size,
                                size_t *start, size_t *end) {
     if (!range_header || !start || !end || file_size == 0 ||
-        strncmp(range_header, "bytes=", 6) != 0) {
+        strncasecmp(range_header, "bytes=", 6) != 0) {
         return false;
     }
 
