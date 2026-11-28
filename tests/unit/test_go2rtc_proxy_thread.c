@@ -34,6 +34,8 @@ static bool acknowledge_media_policy;
 static bool informational_media_ack;
 static int upstream_requests;
 static char upstream_request[2048];
+static bool test_db_initialized;
+static char test_db_path[sizeof("/tmp/lightnvr-webrtc-proxy-XXXXXX")];
 static pthread_mutex_t upstream_mutex = PTHREAD_MUTEX_INITIALIZER;
 static libuv_connection_t *overflow_test_connections;
 static int overflow_test_connections_initialized;
@@ -477,11 +479,12 @@ static void *webrtc_peer(void *arg) {
 
 static void check_both_webrtc_proxies(bool acknowledged, bool fail_issuance) {
     acknowledge_media_policy = acknowledged;
-    char db_path[] = "/tmp/lightnvr-webrtc-proxy-XXXXXX";
-    int db_file = mkstemp(db_path);
+    strcpy(test_db_path, "/tmp/lightnvr-webrtc-proxy-XXXXXX");
+    int db_file = mkstemp(test_db_path);
     TEST_ASSERT_GREATER_OR_EQUAL_INT(0, db_file);
     close(db_file);
-    TEST_ASSERT_EQUAL_INT(0, init_database(db_path));
+    TEST_ASSERT_EQUAL_INT(0, init_database(test_db_path));
+    test_db_initialized = true;
     stream_config_t stream = {0};
     strcpy(stream.name, "Front Gate");
     strcpy(stream.url, "rtsp://camera/live");
@@ -549,8 +552,6 @@ static void check_both_webrtc_proxies(bool acknowledged, bool fail_issuance) {
         TEST_ASSERT_NOT_NULL(strstr(upstream_request, sdp_offer));
         http_response_free(&threaded_connection.response);
     }
-    shutdown_database();
-    unlink(db_path);
 }
 
 void test_both_proxy_handlers_forward_authorized_webrtc_sdp(void) {
