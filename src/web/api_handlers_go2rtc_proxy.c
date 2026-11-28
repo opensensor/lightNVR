@@ -7,10 +7,10 @@
 
 /**
  * @file api_handlers_go2rtc_proxy.c
- * @brief Streaming reverse proxy handler for forwarding requests to go2rtc
+ * @brief Buffered reverse proxy handler for forwarding requests to go2rtc
  *
  * Proxies HLS, snapshots and WebRTC signaling to the local go2rtc instance with:
- * - Streaming pass-through (no buffering)
+ * - Buffered upstream forwarding (response body accumulated before return)
  * - Concurrency limiting (semaphore-based)
  * - Scoped to explicitly authorized endpoints only
  */
@@ -72,6 +72,7 @@ typedef struct {
     char content_type[256];
     long http_code;
     bool media_policy_ack;
+    bool header_block_is_informational;
     bool error_occurred;
 } streaming_proxy_ctx_t;
 
@@ -127,15 +128,32 @@ static size_t buffered_header_cb(char *buffer, size_t size, size_t nitems, void 
     size_t total = size * nitems;
     streaming_proxy_ctx_t *ctx = (streaming_proxy_ctx_t *)userp;
 
-    if (total == sizeof("X-LightNVR-Media-Policy: 1\r\n") - 1 &&
+    if (total >= 12 && strncasecmp(buffer, "HTTP/", 5) == 0) {
+        const char *space = memchr(buffer, ' ', total);
+        int code = 0;
+        if (space && (size_t)(buffer + total - space) >= 4 &&
+            space[1] >= '0' && space[1] <= '9' &&
+            space[2] >= '0' && space[2] <= '9' &&
+            space[3] >= '0' && space[3] <= '9')
+            code = (space[1] - '0') * 100 + (space[2] - '0') * 10 + space[3] - '0';
+        ctx->header_block_is_informational = code >= 100 && code < 200;
+        ctx->media_policy_ack = false;
+        ctx->content_type[0] = '\0';
+        return total;
+    }
+
+    if (!ctx->header_block_is_informational &&
+        total == sizeof("X-LightNVR-Media-Policy: 1\r\n") - 1 &&
         strncasecmp(buffer, "X-LightNVR-Media-Policy: 1\r\n", total) == 0) ctx->media_policy_ack = true;
     // Parse Content-Type header
-    if (total > 14 && strncasecmp(buffer, "Content-Type:", 13) == 0) {
+    if (!ctx->header_block_is_informational &&
+        total > 14 && strncasecmp(buffer, "Content-Type:", 13) == 0) {
         const char *val = buffer + 13;
-        while (*val == ' ' || *val == '\t') val++;
-        size_t len = total - (val - buffer);
-        // Trim trailing \r\n
-        while (len > 0 && (val[len - 1] == '\r' || val[len - 1] == '\n')) len--;
+        const char *end = buffer + total;
+        while (val < end && (*val == ' ' || *val == '\t')) val++;
+        size_t len = (size_t)(end - val);
+        while (len > 0 && (val[len - 1] == '\r' || val[len - 1] == '\n' ||
+                           val[len - 1] == ' ' || val[len - 1] == '\t')) len--;
         if (len >= sizeof(ctx->content_type)) len = sizeof(ctx->content_type) - 1;
         memcpy(ctx->content_type, val, len);
         ctx->content_type[len] = '\0';
