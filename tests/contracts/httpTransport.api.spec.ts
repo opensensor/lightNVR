@@ -226,7 +226,12 @@ test('closing a client during file delivery leaves file callbacks safe', async (
           done(new Error(`Unexpected response while testing interrupted delivery: ${headerText.split('\r\n', 1)[0] ?? headerText}`));
           return;
         }
-        if (buffer.length > separator + 4) {
+        const bodyBytes = buffer.length - separator - 4;
+        if (bodyBytes >= 4 * 1024 * 1024) {
+          done(new Error('File finished before the client could interrupt delivery'));
+          return;
+        }
+        if (bodyBytes > 0) {
           interruptionObserved = true;
           done();
         }
