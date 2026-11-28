@@ -488,13 +488,14 @@ static int upload_checkpoint(const char *uuid, char id[1024], cJSON **parts, boo
     return result;
 }
 
-static char *upload_query(const char *id, int part) {
+static char *upload_query(const char *id, int part, bool max_parts_one) {
     char *escaped = curl_easy_escape(NULL, id, 0);
     if (!escaped) return NULL;
-    size_t length = strlen(escaped) + 64;
+    size_t length = strlen(escaped) + 96;
     char *query = malloc(length);
     if (query) {
         if (part) snprintf(query, length, "partNumber=%d&uploadId=%s", part, escaped);
+        else if (max_parts_one) snprintf(query, length, "uploadId=%s&max-parts=1", escaped);
         else snprintf(query, length, "uploadId=%s", escaped);
     }
     curl_free(escaped);
@@ -504,7 +505,7 @@ static char *upload_query(const char *id, int part) {
 int storage_s3_abort_upload(const storage_target_t *target, const char *key,
                             const char *id, char error[STORAGE_TARGET_ERROR_MAX]) {
     if (!id || !*id) return 0;
-    char *query = upload_query(id, 0);
+    char *query = upload_query(id, 0, false);
     if (!query) return -1;
     s3_io_t io = {.limit = S3_REPLY_LIMIT};
     int result = request(target, key, query, "DELETE", NULL, 0, NULL, &io, NULL, error);
@@ -515,7 +516,7 @@ int storage_s3_abort_upload(const storage_target_t *target, const char *key,
 int storage_s3_upload_status(const storage_target_t *target, const char *key,
                              const char *id, char error[STORAGE_TARGET_ERROR_MAX]) {
     if (!id || !*id) return STORAGE_S3_ERROR;
-    char *query = upload_query(id, 0);
+    char *query = upload_query(id, 0, true);
     if (!query) return STORAGE_S3_ERROR;
     s3_io_t io = {.limit = S3_REPLY_LIMIT};
     int result = request(target, key, query, "GET", NULL, 0, NULL, &io, NULL, error);
@@ -586,11 +587,13 @@ static int multipart_upload(const storage_target_t *target, const char *key, FIL
         if (!parts) { free(body); cJSON_Delete(checkpoint); return -1; }
         s3_io_t io = {.body = body, .limit = S3_REPLY_LIMIT-1, .control = control};
         result = request(target, key, "uploads", "POST", NULL, 0, NULL, &io, NULL, error);
-        ezxml_t root = result == 0 ? response_xml(body, "InitiateMultipartUploadResult") : NULL;
-        const char *value = root ? ezxml_txt(ezxml_child(root, "UploadId")) : NULL;
-        if (!value || !*value || strlen(value) >= sizeof(id)) result = -1;
-        else safe_strcpy(id, value, sizeof(id), 0);
-        if (root) ezxml_free(root);
+        if (!result) {
+            ezxml_t root = response_xml(body, "InitiateMultipartUploadResult");
+            const char *value = root ? ezxml_txt(ezxml_child(root, "UploadId")) : NULL;
+            if (!value || !*value || strlen(value) >= sizeof(id)) result = -1;
+            else safe_strcpy(id, value, sizeof(id), 0);
+            if (root) ezxml_free(root);
+        }
         if (!result && upload_checkpoint(control->job_uuid, id, &checkpoint, true)) {
             // A journal failure cannot leave an upload running without ownership.
             storage_s3_abort_upload(target, key, id, error);
@@ -601,7 +604,7 @@ static int multipart_upload(const storage_target_t *target, const char *key, FIL
     for (uint64_t offset = (uint64_t)completed * chunk; !result && offset < bytes; offset += chunk) {
         uint64_t length = bytes - offset < chunk ? bytes - offset : chunk;
         char hash_hex[65];
-        char *query = upload_query(id, completed + 1);
+        char *query = upload_query(id, completed + 1, false);
         if (!query || file_section_hash(file, offset, length, hash_hex)) { free(query); result = -1; break; }
         s3_io_t io = {.limit = S3_REPLY_LIMIT, .control = control};
         result = request(target, key, query, "PUT", file, length, hash_hex, &io, NULL, error);
@@ -637,7 +640,7 @@ static int multipart_upload(const storage_target_t *target, const char *key, FIL
             fputs("</CompleteMultipartUpload>", manifest);
             off_t length = ftello(manifest);
             char hash_hex[65];
-            char *query = upload_query(id, 0);
+            char *query = upload_query(id, 0, false);
             memset(body, 0, S3_REPLY_LIMIT);
             s3_io_t io = {.body = body, .limit = S3_REPLY_LIMIT-1, .control = control};
             if (!result && query && length > 0 && !file_section_hash(manifest, 0, (uint64_t)length, hash_hex))
