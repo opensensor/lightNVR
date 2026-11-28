@@ -36,6 +36,7 @@ static int upstream_requests;
 static char upstream_request[2048];
 static pthread_mutex_t upstream_mutex = PTHREAD_MUTEX_INITIALIZER;
 static libuv_connection_t fixture_connection;
+static bool fixture_connection_initialized;
 static int fixture_upstream_listener = -1;
 static pthread_t fixture_peer_thread;
 static bool fixture_peer_started;
@@ -110,6 +111,7 @@ static void init_connection(libuv_connection_t *connection) {
 }
 
 void setUp(void) {
+    fixture_connection_initialized = false;
     fixture_upstream_listener = -1;
     fixture_peer_started = false;
     slow_snapshot_server = -1;
@@ -149,6 +151,10 @@ void tearDown(void) {
     }
     go2rtc_proxy_thread_shutdown();
     uv_run(&loop, UV_RUN_DEFAULT);
+    if (fixture_connection_initialized) {
+        http_response_free(&fixture_connection.response);
+        fixture_connection_initialized = false;
+    }
     http_response_free(&threaded_connection.response);
     if (slow_snapshot_thread_started) {
         pthread_join(slow_snapshot_thread, NULL);
@@ -381,6 +387,7 @@ void test_proxy_rejects_unsafe_requests_before_contacting_upstream(void) {
                 // Canonical GETs need valid credentials/session or reach upstream.
                 if (i >= 3 && j == 0) continue;
                 init_connection(&fixture_connection);
+                fixture_connection_initialized = true;
                 strcpy(fixture_connection.request.path, paths[i]);
                 strcpy(fixture_connection.request.method_str, methods[j]);
                 fixture_connection.request.user_data = &fixture_connection;
@@ -394,6 +401,7 @@ void test_proxy_rejects_unsafe_requests_before_contacting_upstream(void) {
                 }
                 int status = fixture_connection.response.status_code;
                 http_response_free(&fixture_connection.response);
+                fixture_connection_initialized = false;
                 TEST_ASSERT_EQUAL_INT(i < 3 ? 404 : 405, status);
             }
         }
