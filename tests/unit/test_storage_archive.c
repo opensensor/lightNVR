@@ -1694,33 +1694,78 @@ static void test_batch_export_waits_for_verified_archive_source(void) {
     TEST_ASSERT_TRUE(retrieved);
     // Inspect the ZIP produced through the real handler's deferred-file contract.
     uv_loop_t loop;
-    TEST_ASSERT_EQUAL_INT(0, uv_loop_init(&loop));
+    int loop_init_rc = uv_loop_init(&loop);
+    int loop_close_rc = -1;
     libuv_server_t server = {.loop = &loop};
-    libuv_connection_t *conn = libuv_connection_create(&server);
-    TEST_ASSERT_NOT_NULL(conn);
-    conn->handler_on_worker = true;
-    conn->request.user_data = conn;
-    conn->request.method = HTTP_METHOD_GET;
-    snprintf(conn->request.path, sizeof(conn->request.path), "/api/recordings/batch-download/result/%s", token);
-    handle_batch_download_result(&conn->request, &conn->response);
-    TEST_ASSERT_EQUAL_INT(200, conn->response.status_code);
-    TEST_ASSERT_TRUE(conn->deferred_file_serve);
-    FILE *zip = fopen(conn->deferred_file_path, "rb");
-    TEST_ASSERT_NOT_NULL(zip);
+    bool conn_created = false;
+    bool got_200 = false;
+    bool deferred_file_serve = false;
+    bool zip_opened = false;
+    bool header_read_ok = false;
+    bool header_magic_ok = false;
+    bool fseek_ok = false;
+    bool payload_read_ok = false;
+    bool payload_match_ok = false;
+    FILE *zip = NULL;
+    libuv_connection_t *conn = NULL;
     unsigned char header[30], content[128];
-    TEST_ASSERT_EQUAL_UINT(sizeof(header), fread(header, 1, sizeof(header), zip));
-    TEST_ASSERT_EQUAL_MEMORY("PK\003\004", header, 4);
-    unsigned name_length = header[26] | (header[27] << 8);
-    unsigned extra_length = header[28] | (header[29] << 8);
-    TEST_ASSERT_EQUAL_INT(0, fseek(zip, name_length + extra_length, SEEK_CUR));
-    TEST_ASSERT_EQUAL_UINT(strlen(payload), fread(content, 1, strlen(payload), zip));
-    TEST_ASSERT_EQUAL_MEMORY(payload, content, strlen(payload));
-    fclose(zip);
-    unlink(conn->deferred_file_path);
-    conn->handler_on_worker = false;
-    libuv_connection_close(conn);
-    uv_run(&loop, UV_RUN_DEFAULT);
-    TEST_ASSERT_EQUAL_INT(0, uv_loop_close(&loop));
+    memset(header, 0, sizeof(header));
+    memset(content, 0, sizeof(content));
+
+    if (loop_init_rc == 0) {
+        conn = libuv_connection_create(&server);
+        conn_created = (conn != NULL);
+        if (conn != NULL) {
+            conn->handler_on_worker = true;
+            conn->request.user_data = conn;
+            conn->request.method = HTTP_METHOD_GET;
+            snprintf(conn->request.path, sizeof(conn->request.path), "/api/recordings/batch-download/result/%s", token);
+            handle_batch_download_result(&conn->request, &conn->response);
+            got_200 = (conn->response.status_code == 200);
+            deferred_file_serve = conn->deferred_file_serve;
+            if (deferred_file_serve) {
+                zip = fopen(conn->deferred_file_path, "rb");
+                zip_opened = (zip != NULL);
+                if (zip != NULL) {
+                    header_read_ok = (fread(header, 1, sizeof(header), zip) == sizeof(header));
+                    header_magic_ok = (memcmp(header, "PK\003\004", 4) == 0);
+                    if (header_read_ok) {
+                        unsigned name_length = header[26] | (header[27] << 8);
+                        unsigned extra_length = header[28] | (header[29] << 8);
+                        fseek_ok = (fseek(zip, name_length + extra_length, SEEK_CUR) == 0);
+                    }
+                    if (fseek_ok) {
+                        size_t payload_len = strlen(payload);
+                        payload_read_ok = (fread(content, 1, payload_len, zip) == payload_len);
+                        payload_match_ok = payload_read_ok && (memcmp(content, payload, payload_len) == 0);
+                    }
+                }
+            }
+        }
+    }
+
+    if (zip != NULL) fclose(zip);
+    if (conn != NULL) {
+        if (conn->deferred_file_serve) unlink(conn->deferred_file_path);
+        conn->handler_on_worker = false;
+        libuv_connection_close(conn);
+    }
+    if (loop_init_rc == 0) {
+        uv_run(&loop, UV_RUN_DEFAULT);
+        loop_close_rc = uv_loop_close(&loop);
+    }
+
+    TEST_ASSERT_EQUAL_INT(0, loop_init_rc);
+    TEST_ASSERT_EQUAL_INT(0, loop_close_rc);
+    TEST_ASSERT_TRUE(conn_created);
+    TEST_ASSERT_TRUE(got_200);
+    TEST_ASSERT_TRUE(deferred_file_serve);
+    TEST_ASSERT_TRUE(zip_opened);
+    TEST_ASSERT_TRUE(header_read_ok);
+    TEST_ASSERT_TRUE(header_magic_ok);
+    TEST_ASSERT_TRUE(fseek_ok);
+    TEST_ASSERT_TRUE(payload_read_ok);
+    TEST_ASSERT_TRUE(payload_match_ok);
 }
 
 static void test_expired_multipart_upload_restarts_from_source(void) {
@@ -2048,12 +2093,10 @@ static void test_stalled_archive_writes_renew_lease_until_completion(void) {
     libuv_connection_t *first = stalled_archive_connection(&server, &clients[0], id);
     libuv_connection_t *second = stalled_archive_connection(&server, &clients[1], id);
     capture_lease_timers = false;
-    bool first_alive = first != NULL;
-    bool second_alive = second != NULL;
     bool stalled = false;
     if (captured_timer_count == 2) for (int i = 0; i < 5000; i++) {
         uv_run(&loop, UV_RUN_NOWAIT);
-        if (!first_alive || !second_alive) {
+        if (first == NULL || second == NULL) {
             stalled = false;
             break;
         }
@@ -2064,8 +2107,8 @@ static void test_stalled_archive_writes_renew_lease_until_completion(void) {
     }
     if (captured_timer_count != 2 || !stalled) {
         for (int i = 0; i < 2; i++) close(clients[i]);
-        if (first_alive) libuv_connection_close(first);
-        if (second_alive) libuv_connection_close(second);
+        if (first != NULL) libuv_connection_close(first);
+        if (second != NULL) libuv_connection_close(second);
         uv_run(&loop, UV_RUN_DEFAULT);
         TEST_ASSERT_EQUAL_INT(0, uv_loop_close(&loop));
         TEST_FAIL_MESSAGE(captured_timer_count != 2
