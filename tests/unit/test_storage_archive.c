@@ -2116,6 +2116,8 @@ static void test_stalled_archive_writes_renew_lease_until_completion(void) {
     capture_lease_timers = true;
     libuv_connection_t *first = stalled_archive_connection(&server, &clients[0], id);
     libuv_connection_t *second = stalled_archive_connection(&server, &clients[1], id);
+    bool first_alive = (first != NULL && clients[0] >= 0);
+    bool second_alive = (second != NULL && clients[1] >= 0);
     capture_lease_timers = false;
 
     if (first == NULL || second == NULL || clients[0] < 0 || clients[1] < 0) {
@@ -2131,7 +2133,15 @@ static void test_stalled_archive_writes_renew_lease_until_completion(void) {
     bool stalled = false;
     if (captured_timer_count == 2) for (int i = 0; i < 5000; i++) {
         uv_run(&loop, UV_RUN_NOWAIT);
-        if (first == NULL || second == NULL || clients[0] < 0 || clients[1] < 0) {
+        if (!first_alive || clients[0] < 0) {
+            first = NULL;
+            first_alive = false;
+        }
+        if (!second_alive || clients[1] < 0) {
+            second = NULL;
+            second_alive = false;
+        }
+        if (!first_alive || !second_alive || first == NULL || second == NULL) {
             stalled = false;
             break;
         }
@@ -2141,14 +2151,17 @@ static void test_stalled_archive_writes_renew_lease_until_completion(void) {
         struct timespec pause = {.tv_nsec = 1000000}; nanosleep(&pause, NULL);
     }
     if (captured_timer_count != 2 || !stalled) {
-        if (first != NULL) {
+        if (first_alive && first != NULL) {
             libuv_connection_close(first);
-            first = NULL;
         }
-        if (second != NULL) {
+        first = NULL;
+        first_alive = false;
+        if (second_alive && second != NULL) {
             libuv_connection_close(second);
-            second = NULL;
         }
+        second = NULL;
+        second_alive = false;
+
         for (int i = 0; i < 2; i++) {
             if (clients[i] >= 0) {
                 close(clients[i]);
