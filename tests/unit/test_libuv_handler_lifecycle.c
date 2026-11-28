@@ -32,6 +32,7 @@ static pthread_mutex_t release_start_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t release_start_cond = PTHREAD_COND_INITIALIZER;
 static bool release_start_open;
 static bool entered, released, finished, expired, server_state_valid;
+static bool suppress_fixture_for_subprocess_parent;
 static libuv_connection_t *connection;
 static uv_async_t close_request;
 static uv_prepare_t next_iteration;
@@ -319,7 +320,9 @@ int main(int argc, char **argv) {
         return UNITY_END();
     }
     RUN_TEST(test_disconnect_close_keeps_worker_response_alive);
+    suppress_fixture_for_subprocess_parent = true;
     RUN_TEST(test_shutdown_waits_for_handler_beyond_three_second_warning);
+    suppress_fixture_for_subprocess_parent = false;
     RUN_TEST(test_destroy_initialized_server_without_start);
     RUN_TEST(test_tls_request_does_not_start_plain_http);
     RUN_TEST(test_clean_stop_can_restart_on_same_loop);
