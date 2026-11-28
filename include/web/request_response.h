@@ -56,6 +56,7 @@ typedef struct {
     http_header_t headers[MAX_HEADERS];    // Array of headers (inline, no alloc needed)
     int num_headers;                       // Number of headers
     char client_ip[64];                    // Client IP address
+    bool is_tls;                           // Transport of the original request
     char request_id[REQUEST_ID_MAX];       // Correlates logs/audit records for this request
     void *user_data;                       // User data pointer (e.g., http_server_t*)
 } http_request_t;

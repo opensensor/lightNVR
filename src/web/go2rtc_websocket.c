@@ -185,9 +185,11 @@ bool go2rtc_websocket_validate(const http_request_t *req, http_response_t *res) 
     // omit it. Reject duplicate Origin/Host headers and cross-site cookies.
     const char *origin = single_header(req, "Origin");
     const char *host = single_header(req, "Host");
-    const char *request_scheme = single_header(req, "X-Forwarded-Proto");
-    if (!request_scheme || (!strcasecmp(request_scheme, "http") && !strcasecmp(request_scheme, "https")))
-        request_scheme = req->is_tls ? "https" : "http";
+    const char *request_scheme = req->is_tls ? "https" : "http";
+    if (httpd_peer_is_trusted_proxy(req)) {
+        const char *forwarded_scheme = single_header(req, "X-Forwarded-Proto");
+        if (forwarded_scheme) request_scheme = forwarded_scheme;
+    }
     int origin_count = 0;
     for (int i = 0; i < req->num_headers; i++)
         if (strcasecmp(req->headers[i].name, "Origin") == 0) origin_count++;
