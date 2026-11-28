@@ -109,6 +109,8 @@ static void init_connection(libuv_connection_t *connection) {
 }
 
 void setUp(void) {
+    fixture_upstream_listener = -1;
+    fixture_peer_started = false;
     slow_snapshot_server = -1;
     slow_snapshot_thread_started = false;
     slow_snapshot_connection_initialized = false;
@@ -136,6 +138,14 @@ void tearDown(void) {
     release_upstream = true;
     pthread_cond_broadcast(&upstream_ready);
     pthread_mutex_unlock(&upstream_mutex);
+    if (fixture_peer_started) {
+        pthread_join(fixture_peer_thread, NULL);
+        fixture_peer_started = false;
+    }
+    if (fixture_upstream_listener >= 0) {
+        close(fixture_upstream_listener);
+        fixture_upstream_listener = -1;
+    }
     go2rtc_proxy_thread_shutdown();
     uv_run(&loop, UV_RUN_DEFAULT);
     http_response_free(&threaded_connection.response);
@@ -398,7 +408,7 @@ static const char sdp_answer[] = "v=0\r\ns=go2rtc-answer\r\n";
 
 static void *webrtc_peer(void *arg) {
     struct pollfd ready = { .fd = *(int *)arg, .events = POLLIN };
-    if (poll(&ready, 1, 2000) <= 0) return NULL;
+    if (poll(&ready, 1, 2000) <= 0 || !(ready.revents & POLLIN)) return NULL;
     int client = accept(ready.fd, NULL, NULL);
     if (client < 0) return NULL;
     struct timeval timeout = { .tv_sec = 2 };
@@ -477,6 +487,12 @@ static void check_both_webrtc_proxies(bool acknowledged, bool fail_issuance) {
             struct pollfd ready = {.fd = fixture_upstream_listener, .events = POLLIN};
             TEST_ASSERT_EQUAL_INT(0, poll(&ready, 1, 0));
         }
+        if (fixture_peer_started) {
+            pthread_join(fixture_peer_thread, NULL);
+            fixture_peer_started = false;
+        }
+        close(fixture_upstream_listener);
+        fixture_upstream_listener = -1;
         if (!acknowledged || fail_issuance) {
             TEST_ASSERT_EQUAL_INT(fail_issuance ? 503 : 502, threaded_connection.response.status_code);
             TEST_ASSERT_NULL(strstr((char *)threaded_connection.response.body, sdp_answer));
