@@ -127,7 +127,12 @@ class S3Handler(BaseHTTPRequestHandler):
                     )
                     return self.respond(200, f'<ListPartsResult>{parts_xml}</ListPartsResult>'.encode())
                 if self.command == 'PUT':
-                    part = int(query['partNumber'])
+                    try:
+                        part = int(query['partNumber'])
+                    except (KeyError, ValueError):
+                        return self.respond(400, b'<Error><Code>InvalidArgument</Code></Error>')
+                    if part < 1:
+                        return self.respond(400, b'<Error><Code>InvalidArgument</Code></Error>')
                     if bucket == 'multipart-part-expired' and part == 2 and identity not in self.expired_parts:
                         self.expired_parts.add(identity)
                         del self.uploads[upload_id]
@@ -147,7 +152,10 @@ class S3Handler(BaseHTTPRequestHandler):
                         del self.uploads[upload_id]
                         return self.respond(404 if bucket == 'multipart-expired' else 200,
                                             b'<Error><Code>NoSuchUpload</Code></Error>')
-                    manifest = ET.fromstring(body)
+                    try:
+                        manifest = ET.fromstring(body)
+                    except ET.ParseError:
+                        return self.respond(200, b'<Error><Code>InvalidPart</Code></Error>')
 
                     def local_name(tag):
                         return tag.rsplit('}', 1)[-1]
@@ -158,6 +166,8 @@ class S3Handler(BaseHTTPRequestHandler):
                                 return child.text
                         return None
 
+                    if local_name(manifest.tag) != 'CompleteMultipartUpload':
+                        return self.respond(200, b'<Error><Code>InvalidPart</Code></Error>')
                     parts = [element for element in list(manifest) if local_name(element.tag) == 'Part']
                     if not parts:
                         return self.respond(200, b'<Error><Code>InvalidPart</Code></Error>')
