@@ -193,6 +193,8 @@ static void *upstream_peer(void *arg) {
         send_all(peer->fd, media_response, sizeof(media_response));
     }
     // Keep the socket alive until its consumer or the server disconnects.
+    struct timeval no_timeout = {0};
+    setsockopt(peer->fd, SOL_SOCKET, SO_RCVTIMEO, &no_timeout, sizeof(no_timeout));
     char byte;
     recv(peer->fd, &byte, 1, 0);
 done:
