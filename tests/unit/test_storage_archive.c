@@ -1443,21 +1443,24 @@ static void test_batch_export_waits_for_verified_archive_source(void) {
         struct timespec delay = {.tv_nsec = 10000000};
         nanosleep(&delay, NULL);
     }
-    if (!completed) {
-        // Give the detached export worker a bounded chance to reach a terminal
-        // state before the assertion aborts this test's fixture.
-        for (int drain = 0; drain < 500; drain++) {
+    bool timed_out = !completed;
+    if (timed_out) {
+        // Do not abort immediately: first wait for a terminal worker state so
+        // fixture teardown cannot race a detached export worker.
+        bool terminal = false;
+        for (int drain = 0; drain < 5000; drain++) {
             (void)storage_source_process_one();
             json = api(handle_batch_download_status, HTTP_METHOD_GET, path, NULL, NULL, NULL, 200);
-            bool terminal = strcmp(field(json, "status")->valuestring, "pending") != 0 &&
-                            strcmp(field(json, "status")->valuestring, "running") != 0;
+            terminal = strcmp(field(json, "status")->valuestring, "pending") != 0 &&
+                       strcmp(field(json, "status")->valuestring, "running") != 0;
             cJSON_Delete(json);
             if (terminal) break;
             struct timespec delay = {.tv_nsec = 10000000};
             nanosleep(&delay, NULL);
         }
-        TEST_FAIL_MESSAGE("batch export did not complete before polling deadline");
+        TEST_ASSERT_TRUE_MESSAGE(terminal, "batch export worker did not reach terminal state before fixture release");
     }
+    TEST_ASSERT_FALSE_MESSAGE(timed_out, "batch export did not complete before polling deadline");
     TEST_ASSERT_TRUE(retrieved);
     // Inspect the ZIP produced through the real handler's deferred-file contract.
     uv_loop_t loop;
