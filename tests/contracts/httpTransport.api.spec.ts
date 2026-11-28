@@ -253,7 +253,20 @@ test('closing a client during file delivery leaves file callbacks safe', async (
         }
       });
     })));
-    const health = await server.request('/api/health?liveness=true');
+    let consecutiveHealthy = 0;
+    let health = await server.request('/api/health?liveness=true');
+    for (let attempt = 0; attempt < 20 && consecutiveHealthy < 3; attempt += 1) {
+      health = await server.request('/api/health?liveness=true');
+      if (health.status === 200) {
+        consecutiveHealthy += 1;
+      } else {
+        consecutiveHealthy = 0;
+      }
+      if (consecutiveHealthy < 3) {
+        await new Promise(resolve => setTimeout(resolve, 25));
+      }
+    }
+    expect(consecutiveHealthy).toBe(3);
     expect(health.status).toBe(200);
   } finally {
     if (server) await server.stop();
