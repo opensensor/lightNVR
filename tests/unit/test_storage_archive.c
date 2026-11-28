@@ -630,7 +630,7 @@ static void test_multipart_resume_after_restart(void) {
     TEST_ASSERT_NOT_NULL(file);
     unsigned char block[65536];
     uint64_t expected_size = 0;
-    uint64_t expected_hash = 1469598103934665603ULL; /* FNV-1a 64-bit offset basis */
+    uint64_t expected_hash = 14695981039346656037ULL; /* FNV-1a 64-bit offset basis */
     for (size_t i = 0; i < sizeof(block); i++) block[i] = (unsigned char)(i * 13);
     for (int i = 0; i < 144; i++) {
         TEST_ASSERT_EQUAL_UINT(sizeof(block), fwrite(block, 1, sizeof(block), file));
@@ -663,7 +663,7 @@ static void test_multipart_resume_after_restart(void) {
                             expected_size, job.checksum, NULL, error));
     FILE *archived = fopen(verified_path, "rb");
     TEST_ASSERT_NOT_NULL(archived);
-    uint64_t archived_hash = 1469598103934665603ULL;
+    uint64_t archived_hash = 14695981039346656037ULL;
     uint64_t archived_size = 0;
     size_t bytes_read;
     while ((bytes_read = fread(block, 1, sizeof(block), archived)) > 0) {
