@@ -34,6 +34,8 @@ static bool acknowledge_media_policy;
 static bool informational_media_ack;
 static int upstream_requests;
 static char upstream_request[2048];
+static bool test_db_initialized;
+static char test_db_path[sizeof("/tmp/lightnvr-webrtc-proxy-XXXXXX")];
 static pthread_mutex_t upstream_mutex = PTHREAD_MUTEX_INITIALIZER;
 static libuv_connection_t *overflow_test_connections;
 static int overflow_test_connections_initialized;
@@ -116,6 +118,8 @@ static void init_connection(libuv_connection_t *connection) {
 }
 
 void setUp(void) {
+    test_db_initialized = false;
+    test_db_path[0] = '\0';
     redirect_server = -1;
     redirect_peer_started = false;
     fixture_connection_initialized = false;
@@ -169,6 +173,14 @@ void tearDown(void) {
     if (fixture_connection_initialized) {
         http_response_free(&fixture_connection.response);
         fixture_connection_initialized = false;
+    }
+    if (test_db_initialized) {
+        shutdown_database();
+        test_db_initialized = false;
+    }
+    if (test_db_path[0]) {
+        unlink(test_db_path);
+        test_db_path[0] = '\0';
     }
     http_response_free(&threaded_connection.response);
     if (slow_snapshot_thread_started) {
@@ -477,11 +489,12 @@ static void *webrtc_peer(void *arg) {
 
 static void check_both_webrtc_proxies(bool acknowledged, bool fail_issuance) {
     acknowledge_media_policy = acknowledged;
-    char db_path[] = "/tmp/lightnvr-webrtc-proxy-XXXXXX";
-    int db_file = mkstemp(db_path);
+    strcpy(test_db_path, "/tmp/lightnvr-webrtc-proxy-XXXXXX");
+    int db_file = mkstemp(test_db_path);
     TEST_ASSERT_GREATER_OR_EQUAL_INT(0, db_file);
     close(db_file);
-    TEST_ASSERT_EQUAL_INT(0, init_database(db_path));
+    TEST_ASSERT_EQUAL_INT(0, init_database(test_db_path));
+    test_db_initialized = true;
     stream_config_t stream = {0};
     strcpy(stream.name, "Front Gate");
     strcpy(stream.url, "rtsp://camera/live");
@@ -549,8 +562,6 @@ static void check_both_webrtc_proxies(bool acknowledged, bool fail_issuance) {
         TEST_ASSERT_NOT_NULL(strstr(upstream_request, sdp_offer));
         http_response_free(&threaded_connection.response);
     }
-    shutdown_database();
-    unlink(db_path);
 }
 
 void test_both_proxy_handlers_forward_authorized_webrtc_sdp(void) {
@@ -593,8 +604,9 @@ void test_shutdown_waits_for_a_worker_beyond_the_old_ten_second_timeout(void) {
     while (!worker_in_curl && wait_rc == 0) {
         wait_rc = pthread_cond_timedwait(&upstream_ready, &upstream_mutex, &deadline);
     }
+    bool worker_in_curl_snapshot = worker_in_curl;
     pthread_mutex_unlock(&upstream_mutex);
-    TEST_ASSERT_TRUE_MESSAGE(worker_in_curl, "Timed out waiting for worker to enter curl");
+    TEST_ASSERT_TRUE_MESSAGE(worker_in_curl_snapshot, "Timed out waiting for worker to enter curl");
     pthread_t releaser;
     TEST_ASSERT_EQUAL_INT(0, pthread_create(&releaser, NULL, release_delayed_worker, NULL));
     long started = monotonic_ms();
