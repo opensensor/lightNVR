@@ -1286,10 +1286,12 @@ static void write_lifecycle_attestation(const storage_target_t *target, double c
         snprintf(isolated_template, sizeof(isolated_template), "%s/attestation-creds-XXXXXX", root);
         TEST_ASSERT_NOT_NULL(mkdtemp(isolated_template));
         safe_strcpy(isolated_attestation_dir, isolated_template, sizeof(isolated_attestation_dir), 0);
+        copy_fixture_credential_into_isolated_dir(original_credentials_dir,
+                                                  isolated_attestation_dir,
+                                                  target->credential_ref);
+        TEST_ASSERT_EQUAL_INT(0, setenv("LIGHTNVR_ARCHIVE_CREDENTIALS_DIR",
+                                        isolated_attestation_dir, 1));
     }
-
-    copy_fixture_credential_into_isolated_dir(original_credentials_dir, isolated_attestation_dir,
-                                              target->credential_ref);
     snprintf(path, 1024, "%s/%s.lifecycle.json", isolated_attestation_dir, target->credential_ref);
     cJSON *json = cJSON_CreateObject();
     cJSON_AddStringToObject(json, "endpoint", target->endpoint);
@@ -1479,7 +1481,7 @@ static void test_batch_export_waits_for_verified_archive_source(void) {
         // Do not abort immediately: first wait for a terminal worker state so
         // fixture teardown cannot race a detached export worker.
         bool terminal = false;
-        for (int drain = 0; drain < 5000; drain++) {
+        for (int drain = 0; drain < 500; drain++) {
             (void)storage_source_process_one();
             json = api(handle_batch_download_status, HTTP_METHOD_GET, path, NULL, NULL, NULL, 200);
             terminal = strcmp(field(json, "status")->valuestring, "pending") != 0 &&
