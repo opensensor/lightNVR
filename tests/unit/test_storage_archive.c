@@ -43,8 +43,7 @@
 static char root[] = "/tmp/lightnvr-archive-test-XXXXXX";
 static char db_path[512], source_path[512], source_uuid[37];
 static const char *payload = "a finalized recording preserved across storage tiers";
-static bool env_archive_cache_mb_had_value;
-static char env_archive_cache_mb_value[64];
+static char *saved_archive_cache_mb;
 
 /* Instrument private background readers, including instruction budgets and
  * a deterministic pause while a SELECT is in progress. */
@@ -199,6 +198,9 @@ static uint64_t recording(bool protect) {
 }
 
 void setUp(void) {
+    const char *archive_cache_mb = getenv("LIGHTNVR_ARCHIVE_CACHE_MB");
+    saved_archive_cache_mb = archive_cache_mb ? strdup(archive_cache_mb) : NULL;
+    if (archive_cache_mb) TEST_ASSERT_NOT_NULL(saved_archive_cache_mb);
     reader_progress = NULL;
     reader_progress_context = NULL;
     deny_recording_reads = false;
@@ -216,6 +218,13 @@ void setUp(void) {
     TEST_ASSERT_EQUAL_INT(0, db_storage_target_bootstrap_default(root, source_uuid));
 }
 void tearDown(void) {
+    if (saved_archive_cache_mb) {
+        TEST_ASSERT_EQUAL_INT(0, setenv("LIGHTNVR_ARCHIVE_CACHE_MB", saved_archive_cache_mb, 1));
+        free(saved_archive_cache_mb);
+        saved_archive_cache_mb = NULL;
+    } else {
+        TEST_ASSERT_EQUAL_INT(0, unsetenv("LIGHTNVR_ARCHIVE_CACHE_MB"));
+    }
     reader_progress = NULL;
     reader_progress_context = NULL;
     deny_recording_reads = false;
