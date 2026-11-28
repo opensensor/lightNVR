@@ -763,15 +763,6 @@ void handle_go2rtc_proxy(const http_request_t *req, http_response_t *res) {
 
     log_debug("go2rtc proxy: %s %s -> %s", req->method_str, req->path, url);
 
-    // Get connection handle (libuv-specific)
-    libuv_connection_t *conn = (libuv_connection_t *)req->user_data;
-    if (!conn) {
-        log_error("go2rtc proxy: No connection handle available");
-        sem_post(g_proxy_semaphore);
-        http_response_set_json_error(res, 500, "Internal server error");
-        return;
-    }
-
     // Set up buffered context
     streaming_proxy_ctx_t ctx = {
         .buffer = NULL,
