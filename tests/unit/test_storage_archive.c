@@ -1587,11 +1587,13 @@ static void test_batch_export_waits_for_verified_archive_source(void) {
     int submit_status = 0;
     bool submit_failed = false;
     bool have_status_path = false;
+    bool accepted_submission = false;
     cJSON *json = api_noassert(handle_batch_download_recordings, HTTP_METHOD_POST,
                               "/api/recordings/batch-download", NULL, body, NULL, &submit_status);
     if (submit_status != 202 || !json) {
         submit_failed = true;
     } else {
+        accepted_submission = true;
         cJSON *tok = cJSON_GetObjectItemCaseSensitive(json, "token");
         if (!cJSON_IsString(tok) || !tok->valuestring ||
             safe_strcpy(token, tok->valuestring, sizeof(token), 0) != 0) {
@@ -1602,6 +1604,12 @@ static void test_batch_export_waits_for_verified_archive_source(void) {
         }
     }
     cJSON_Delete(json);
+    if (accepted_submission && !have_status_path) {
+        fprintf(stderr,
+                "FATAL: batch export accepted without usable status token; "
+                "cannot safely wait for detached worker before fixture teardown\n");
+        abort();
+    }
     bool completed = false, retrieved = false, failed = false, poll_failed = false;
     for (int i = 0; i < 500 && have_status_path; i++) {
         if (storage_source_process_one() == 1) retrieved = true;
