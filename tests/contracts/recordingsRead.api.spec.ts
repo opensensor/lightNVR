@@ -363,6 +363,7 @@ test('related mutation boundaries reject historical and mixed unauthorized sets 
     expect(batchOk.response.status).toBe(202);
     expect(typeof batchOk.body.job_id).toBe('string');
     await expect.poll(async()=>{const progress=await ok(server,`/api/recordings/batch-delete/progress/${batchOk.body.job_id}`,actor);return progress.complete&&progress.succeeded===1;},{timeout:15000}).toBe(true);
+    await expect.poll(()=>!existsSync(path.join(fixture.directory,`${ids.playable}.mp4`)),{timeout:15000}).toBe(true);
     const pendingRow=rowById(ids.playable);
     if(pendingRow)expect(pendingRow.deletion_pending).toBe(1);
   } finally {db.close();}
