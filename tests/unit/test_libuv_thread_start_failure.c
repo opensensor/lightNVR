@@ -160,6 +160,12 @@ static void test_failed_bind_can_retry_after_port_released(void) {
     close(fixture_occupied_fd);
     fixture_occupied_fd = -1;
     TEST_ASSERT_EQUAL_INT(0, http_server_start(fixture_server));
+    struct sockaddr_in rebound = {0};
+    int rebound_len = sizeof(rebound);
+    TEST_ASSERT_EQUAL_INT(0, uv_tcp_getsockname(
+        &((libuv_server_t *)fixture_server)->listener,
+        (struct sockaddr *)&rebound, &rebound_len));
+    TEST_ASSERT_EQUAL_UINT16(config.port, ntohs(rebound.sin_port));
     assert_http_probe_ok();
 }
 
