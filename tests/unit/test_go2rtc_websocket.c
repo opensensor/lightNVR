@@ -101,7 +101,7 @@ typedef struct {
     bool bad_accept;
 } peer_t;
 
-static int tracked_clients[4];
+static int tracked_clients[5];
 static pthread_t tracked_threads[4];
 static bool tracked_thread_started[4];
 static peer_t tracked_peers[4];
@@ -203,6 +203,7 @@ void setUp(void) {
         tracked_thread_started[i] = false;
         memset(&tracked_peers[i], 0, sizeof(tracked_peers[i]));
     }
+    tracked_clients[4] = -1;
     load_default_config(&g_config);
     g_config.web_auth_enabled = false;
     g_config.demo_mode = false;
@@ -243,7 +244,7 @@ void setUp(void) {
     web_port = ntohs(address.sin_port);
 }
 void tearDown(void) {
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 5; i++) {
         if (tracked_clients[i] >= 0) {
             close(tracked_clients[i]);
             tracked_clients[i] = -1;
