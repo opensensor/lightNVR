@@ -124,28 +124,48 @@ static bool parse_authority(const char *value, const char **host, size_t *host_l
     return true;
 }
 
-static bool origin_matches_host(const char *origin, const char *host) {
+static bool origin_matches_host(const char *origin, const char *host, const char *request_scheme) {
     const char *authority;
-    unsigned short default_port;
-    if (strncasecmp(origin, "http://", 7) == 0) {
-        authority = origin + 7;
-        default_port = 80;
-    } else if (strncasecmp(origin, "https://", 8) == 0) {
-        authority = origin + 8;
-        default_port = 443;
+    unsigned short origin_default_port;
+    unsigned short host_default_port;
+    bool req_https;
+
+    if (!request_scheme) return false;
+    if (strcasecmp(request_scheme, "https") == 0) {
+        req_https = true;
+        host_default_port = 443;
+    } else if (strcasecmp(request_scheme, "http") == 0) {
+        req_https = false;
+        host_default_port = 80;
     } else {
         return false;
     }
+
+    if (strncasecmp(origin, "http://", 7) == 0) {
+        if (req_https) return false;
+        authority = origin + 7;
+        origin_default_port = 80;
+    } else if (strncasecmp(origin, "https://", 8) == 0) {
+        if (!req_https) return false;
+        authority = origin + 8;
+        origin_default_port = 443;
+    } else {
+        return false;
+    }
+
     const char *origin_name = NULL, *host_name = NULL;
     size_t origin_len = 0, host_len = 0;
     unsigned short origin_port = 0, host_port = 0;
     bool origin_has_port = false, host_has_port = false;
     if (!parse_authority(authority, &origin_name, &origin_len, &origin_port, &origin_has_port) ||
         !parse_authority(host, &host_name, &host_len, &host_port, &host_has_port)) return false;
+
+    unsigned short origin_effective_port = origin_has_port ? origin_port : origin_default_port;
+    unsigned short host_effective_port = host_has_port ? host_port : host_default_port;
+
     return origin_len == host_len &&
            strncasecmp(origin_name, host_name, origin_len) == 0 &&
-           (origin_has_port ? origin_port : default_port) ==
-           (host_has_port ? host_port : default_port);
+           origin_effective_port == host_effective_port;
 }
 
 bool go2rtc_websocket_validate(const http_request_t *req, http_response_t *res) {
@@ -165,10 +185,13 @@ bool go2rtc_websocket_validate(const http_request_t *req, http_response_t *res) 
     // omit it. Reject duplicate Origin/Host headers and cross-site cookies.
     const char *origin = single_header(req, "Origin");
     const char *host = single_header(req, "Host");
+    const char *request_scheme = single_header(req, "X-Forwarded-Proto");
+    if (!request_scheme || (!strcasecmp(request_scheme, "http") && !strcasecmp(request_scheme, "https")))
+        request_scheme = req->is_tls ? "https" : "http";
     int origin_count = 0;
     for (int i = 0; i < req->num_headers; i++)
         if (strcasecmp(req->headers[i].name, "Origin") == 0) origin_count++;
-    if (!host || origin_count > 1 || (origin && !origin_matches_host(origin, host))) {
+    if (!host || origin_count > 1 || (origin && !origin_matches_host(origin, host, request_scheme))) {
         http_response_set_json_error(res, 403, "WebSocket origin denied");
         return false;
     }
