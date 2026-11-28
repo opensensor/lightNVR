@@ -138,6 +138,11 @@ void setUp(void) {
     release_start_open = false;
     pthread_mutex_unlock(&release_start_mutex);
     connection = NULL;
+    if (suppress_fixture_for_subprocess_parent) {
+        server = NULL;
+        client = -1;
+        return;
+    }
     http_server_config_t config = {0};
     config.bind_ip = "127.0.0.1";
     config.web_root = "/nonexistent-lifecycle-fixture";
