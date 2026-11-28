@@ -359,6 +359,7 @@ void test_websocket_auth_origin_and_query_failures_never_reach_upstream(void) {
 }
 
 void test_failed_upstream_handshake_returns_502(void) {
+    /* Use tracked peer/thread/client resources so tearDown cleanup runs even if assertions fail. */
     peer_t peer = {.status = 404};
     pthread_t thread;
     TEST_ASSERT_EQUAL_INT(0, pthread_create(&thread, NULL, upstream_peer, &peer));
