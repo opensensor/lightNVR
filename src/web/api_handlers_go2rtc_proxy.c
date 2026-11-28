@@ -827,14 +827,6 @@ void handle_go2rtc_proxy(const http_request_t *req, http_response_t *res) {
             curl_easy_setopt(curl, CURLOPT_POSTFIELDS, "");
             curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, 0L);
         }
-    } else if (strcmp(req->method_str, "PUT") == 0) {
-        curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "PUT");
-        if (req->body && req->body_len > 0) {
-            curl_easy_setopt(curl, CURLOPT_POSTFIELDS, req->body);
-            curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)req->body_len);
-        }
-    } else if (strcmp(req->method_str, "DELETE") == 0) {
-        curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "DELETE");
     }
 
     // Forward Content-Type header if present
