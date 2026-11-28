@@ -52,6 +52,7 @@ static pthread_once_t g_proxy_init_once = PTHREAD_ONCE_INIT;
     ((MAX_STREAMS * 2 < 64) ? 64 : ((MAX_STREAMS * 2 > 1024) ? 1024 : MAX_STREAMS * 2))
 #define HLS_SESSION_AUTH_TTL_SECONDS 30
 #define HLS_SESSION_ID_MAX 128
+#define GO2RTC_PROXY_MAX_BUFFERED_RESPONSE (16 * 1024 * 1024)
 
 typedef struct {
     bool occupied;
@@ -69,6 +70,7 @@ static pthread_mutex_t g_hls_sessions_mutex = PTHREAD_MUTEX_INITIALIZER;
 typedef struct {
     char *buffer;
     size_t buffer_size;
+    size_t buffer_capacity;
     char content_type[256];
     long http_code;
     bool media_policy_ack;
@@ -103,18 +105,54 @@ static void init_proxy_semaphore(void) {
  * @brief Simple buffered write callback
  */
 static size_t buffered_write_cb(void *contents, size_t size, size_t nmemb, void *userp) {
+    if (size != 0 && nmemb > (SIZE_MAX / size)) {
+        log_error("go2rtc proxy: Response chunk size overflow");
+        ((streaming_proxy_ctx_t *)userp)->error_occurred = true;
+        return 0;
+    }
+
     size_t total = size * nmemb;
     streaming_proxy_ctx_t *ctx = (streaming_proxy_ctx_t *)userp;
 
-    // Reallocate buffer to fit new data
-    char *new_buf = realloc(ctx->buffer, ctx->buffer_size + total);
-    if (!new_buf) {
-        log_error("go2rtc proxy: Failed to allocate buffer");
+    if (total == 0) {
+        return 0;
+    }
+
+    if (ctx->buffer_size > (SIZE_MAX - total)) {
+        log_error("go2rtc proxy: Buffered response size overflow");
         ctx->error_occurred = true;
         return 0;
     }
 
-    ctx->buffer = new_buf;
+    size_t required = ctx->buffer_size + total;
+    if (required > GO2RTC_PROXY_MAX_BUFFERED_RESPONSE) {
+        log_error("go2rtc proxy: Buffered response exceeds limit (%u bytes)",
+                  (unsigned)GO2RTC_PROXY_MAX_BUFFERED_RESPONSE);
+        ctx->error_occurred = true;
+        return 0;
+    }
+
+    if (required > ctx->buffer_capacity) {
+        size_t new_capacity = (ctx->buffer_capacity == 0) ? 4096 : ctx->buffer_capacity;
+        while (new_capacity < required) {
+            if (new_capacity > (GO2RTC_PROXY_MAX_BUFFERED_RESPONSE / 2)) {
+                new_capacity = GO2RTC_PROXY_MAX_BUFFERED_RESPONSE;
+                break;
+            }
+            new_capacity *= 2;
+        }
+
+        char *new_buf = realloc(ctx->buffer, new_capacity);
+        if (!new_buf) {
+            log_error("go2rtc proxy: Failed to allocate buffer");
+            ctx->error_occurred = true;
+            return 0;
+        }
+
+        ctx->buffer = new_buf;
+        ctx->buffer_capacity = new_capacity;
+    }
+
     memcpy(ctx->buffer + ctx->buffer_size, contents, total);
     ctx->buffer_size += total;
 
