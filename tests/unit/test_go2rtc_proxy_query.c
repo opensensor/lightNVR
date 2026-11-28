@@ -141,16 +141,57 @@ void test_expired_hls_substream_session_rechecks_the_parent_camera(void) {
     strcpy(req.client_ip, "192.0.2.99");
     char fingerprint[65];
     TEST_ASSERT_EQUAL_INT(0, httpd_request_auth_fingerprint(&req, fingerprint));
+
     cache_hls_session("renew-session", fingerprint, "renew-camera_sub");
     g_hls_sessions[0].authorized_until = 0;
     http_response_t res;
     http_response_init(&res);
     bool allowed = go2rtc_proxy_authorize_request(&req, &res);
     http_response_free(&res);
-    shutdown_database();
-    unlink(path);
     TEST_ASSERT_TRUE(allowed);
     TEST_ASSERT_GREATER_THAN_INT64(0, g_hls_sessions[0].authorized_until);
+
+    /* Denial case: parent camera is forbidden, so fallback must deny and not extend cache. */
+    stream_config_t forbidden_parent = {0};
+    strcpy(forbidden_parent.name, "forbidden-parent");
+    strcpy(forbidden_parent.url, "rtsp://test/forbidden");
+    forbidden_parent.enabled = true;
+    forbidden_parent.public = false;
+    TEST_ASSERT_NOT_EQUAL(0, add_stream_config(&forbidden_parent));
+    cache_hls_session("renew-session-forbidden", fingerprint, "forbidden-parent_sub");
+    g_hls_sessions[0].authorized_until = 0;
+    request_for(&req, "/go2rtc/api/hls/segment.m4s", "id=renew-session-forbidden&n=1");
+    strcpy(req.client_ip, "192.0.2.99");
+    http_response_init(&res);
+    allowed = go2rtc_proxy_authorize_request(&req, &res);
+    http_response_free(&res);
+    TEST_ASSERT_FALSE(allowed);
+    TEST_ASSERT_EQUAL_INT64(0, g_hls_sessions[0].authorized_until);
+
+    /* Denial case: explicit _sub stream exists and is denied even if parent would allow. */
+    stream_config_t strict_parent = {0};
+    strcpy(strict_parent.name, "strict-parent");
+    strcpy(strict_parent.url, "rtsp://test/strict");
+    strict_parent.enabled = true;
+    TEST_ASSERT_NOT_EQUAL(0, add_stream_config(&strict_parent));
+    stream_config_t strict_sub = {0};
+    strcpy(strict_sub.name, "strict-parent_sub");
+    strcpy(strict_sub.url, "rtsp://test/strict-sub");
+    strict_sub.enabled = true;
+    strict_sub.public = false;
+    TEST_ASSERT_NOT_EQUAL(0, add_stream_config(&strict_sub));
+    cache_hls_session("renew-session-strict", fingerprint, "strict-parent_sub");
+    g_hls_sessions[0].authorized_until = 0;
+    request_for(&req, "/go2rtc/api/hls/segment.m4s", "id=renew-session-strict&n=1");
+    strcpy(req.client_ip, "192.0.2.99");
+    http_response_init(&res);
+    allowed = go2rtc_proxy_authorize_request(&req, &res);
+    http_response_free(&res);
+    TEST_ASSERT_FALSE(allowed);
+    TEST_ASSERT_EQUAL_INT64(0, g_hls_sessions[0].authorized_until);
+
+    shutdown_database();
+    unlink(path);
 }
 
 int main(void) {
