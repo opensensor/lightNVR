@@ -281,7 +281,7 @@ done:
 void setUp(void) {
     atomic_store(&teardown_started, false);
     atomic_store(&client_teardown_started, false);
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 5; i++) {
         tracked_clients[i] = -1;
         tracked_thread_started[i] = false;
         memset(&tracked_peers[i], 0, sizeof(tracked_peers[i]));
@@ -476,13 +476,18 @@ void test_websocket_auth_origin_and_query_failures_never_reach_upstream(void) {
         char origin[64];
         snprintf(origin, sizeof(origin), "http://localhost:%d", web_port);
         if (i == 0) {
-            send_upgrade(client, 0, "https://attacker.invalid", false);
+            g_config.web_auth_enabled = true;
+            send_upgrade(client, 0, origin, false);
         } else if (i == 1) {
+            g_config.web_auth_enabled = false;
+            send_upgrade(client, 0, "https://attacker.invalid", false);
+        } else if (i == 2) {
+            g_config.web_auth_enabled = false;
             char request[1024];
             snprintf(request, sizeof(request), "GET /go2rtc/api/ws?src=Camera%%200&src=other HTTP/1.1\r\n"
                 "Host: localhost:%d\r\nOrigin: %s\r\n%s\r\n", web_port, origin, upgrade_headers);
             TEST_ASSERT_TRUE(send_all(client, request, strlen(request)));
-        } else if (i == 2) {
+        } else if (i == 3) {
             char request[1024];
             snprintf(request, sizeof(request), "GET /go2rtc/api/ws?src=Camera%%200 HTTP/1.1\r\n"
                 "Host: localhost:%d\r\nOrigin: %s\r\nOrigin: %s\r\n%s\r\n",
@@ -499,7 +504,7 @@ void test_websocket_auth_origin_and_query_failures_never_reach_upstream(void) {
         TEST_ASSERT_TRUE(read_headers(client, response, sizeof(response)));
         int code;
         TEST_ASSERT_EQUAL_INT(1, sscanf(response, "HTTP/1.1 %d", &code));
-        TEST_ASSERT_EQUAL_INT((i == 0 || i == 2) ? 403 : 400, code);
+        TEST_ASSERT_EQUAL_INT(i == 0 ? 401 : (i == 1 || i == 3) ? 403 : 400, code);
         close(client);
         tracked_clients[i] = -1;
     }
@@ -591,8 +596,7 @@ void test_upgrade_without_media_policy_ack_is_rejected(void) {
     pthread_join(tracked_threads[0], NULL);
     tracked_thread_started[0] = false;
     TEST_ASSERT_TRUE(tracked_peers[0].observed_upgrade_request);
-    TEST_ASSERT_NOT_NULL(tracked_peers[0].captured_upgrade_request);
-    TEST_ASSERT_NULL(strstr(tracked_peers[0].captured_upgrade_request, "Sec-WebSocket-Extensions:"));
+    TEST_ASSERT_NULL(strstr(tracked_peers[0].request, "Sec-WebSocket-Extensions:"));
     TEST_ASSERT_TRUE(tracked_peers[0].sent_configured_response);
     TEST_ASSERT_FALSE(tracked_peers[0].observed_client_ws_data_after_reject);
 }
