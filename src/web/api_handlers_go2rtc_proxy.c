@@ -312,8 +312,10 @@ static bool parse_proxy_query(const http_request_t *req, proxy_query_t *parsed) 
     for (const char *p = req->query_string; *p;) {
         const char *end = strchr(p, '&');
         if (!end) end = p + strlen(p);
+        if (end == p) return false; // Reject empty query components (e.g. "a=1&&b=2")
         const char *eq = memchr(p, '=', (size_t)(end - p));
         const char *key_end = eq ? eq : end;
+        if (key_end == p) return false; // Reject empty keys (e.g. "=value")
         int key = -1;
         for (size_t i = 0; i < sizeof(keys) / sizeof(keys[0]); i++) {
             if (strlen(keys[i]) == (size_t)(key_end - p) &&
@@ -558,8 +560,8 @@ void handle_internal_media_lease(const http_request_t *req, http_response_t *res
         /* Reauthenticate once per renewal, bypassing the segment cache. No
          * repeated allowed audit rows or repeated Basic password hashing for
          * each media direction; initial signaling already audits live access. */
-        user_t principal;
-        authorization_evaluation_t evaluation;
+        user_t principal = {0};
+        authorization_evaluation_t evaluation = {0};
         if (httpd_check_action_access(saved, &principal) && principal.id == principal_id &&
             strcmp(principal.authentication_method, authentication_method) == 0) {
             view = authorization_evaluate(&principal, AUTHZ_LIVE_VIEW, &camera, &evaluation) == 0 &&
