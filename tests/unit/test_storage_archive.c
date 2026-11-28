@@ -2096,7 +2096,7 @@ static void test_stalled_archive_writes_renew_lease_until_completion(void) {
     bool stalled = false;
     if (captured_timer_count == 2) for (int i = 0; i < 5000; i++) {
         uv_run(&loop, UV_RUN_NOWAIT);
-        if (first == NULL || second == NULL) {
+        if (first == NULL || second == NULL || clients[0] < 0 || clients[1] < 0) {
             stalled = false;
             break;
         }
