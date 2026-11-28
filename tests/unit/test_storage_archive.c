@@ -1491,7 +1491,11 @@ static void test_batch_export_waits_for_verified_archive_source(void) {
             struct timespec delay = {.tv_nsec = 10000000};
             nanosleep(&delay, NULL);
         }
-        TEST_ASSERT_TRUE_MESSAGE(terminal, "batch export worker did not reach terminal state before fixture release");
+        if (!terminal) {
+            fprintf(stderr, "batch export worker did not reach terminal state before fixture release\n");
+            fflush(stderr);
+            _exit(EXIT_FAILURE);
+        }
     }
     TEST_ASSERT_FALSE_MESSAGE(timed_out, "batch export did not complete before polling deadline");
     TEST_ASSERT_TRUE(retrieved);
