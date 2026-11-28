@@ -166,6 +166,11 @@ static void *upstream_peer(void *arg) {
     if (peer->status != 101) {
         const char error[] = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n";
         send_all(peer->fd, error, sizeof(error) - 1);
+        struct pollfd ready = {.fd = peer->fd, .events = POLLIN};
+        if (poll(&ready, 1, 200) > 0 && (ready.revents & POLLIN)) {
+            unsigned char byte;
+            peer->observed_client_ws_data_after_reject = recv(peer->fd, &byte, 1, MSG_DONTWAIT) > 0;
+        }
         goto done;
     }
     if (peer->omit_media_ack) {
