@@ -124,13 +124,13 @@ void tearDown(void) {
     go2rtc_api_apply_base_path_override(NULL, 0);
     go2rtc_proxy_thread_shutdown();
     uv_run(&loop, UV_RUN_DEFAULT);
-    if (slow_snapshot_server >= 0) {
-        close(slow_snapshot_server);
-        slow_snapshot_server = -1;
-    }
     if (slow_snapshot_thread_started) {
         pthread_join(slow_snapshot_thread, NULL);
         slow_snapshot_thread_started = false;
+    }
+    if (slow_snapshot_server >= 0) {
+        close(slow_snapshot_server);
+        slow_snapshot_server = -1;
     }
     if (slow_snapshot_connection_initialized) {
         http_response_free(&slow_snapshot_connection.response);
