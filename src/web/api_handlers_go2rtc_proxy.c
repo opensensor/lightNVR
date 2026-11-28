@@ -405,6 +405,19 @@ static struct {
 } media_leases[MEDIA_LEASE_CAPACITY];
 static pthread_mutex_t media_lease_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+static void go2rtc_media_policy_release_lease(const char *token) {
+    if (!token || !token[0]) return;
+    pthread_mutex_lock(&media_lease_mutex);
+    for (int i = 0; i < MEDIA_LEASE_CAPACITY; i++) {
+        if (!media_leases[i].request || strcmp(media_leases[i].token, token)) continue;
+        memset(media_leases[i].request, 0, sizeof(*media_leases[i].request));
+        free(media_leases[i].request);
+        memset(&media_leases[i], 0, sizeof(media_leases[i]));
+        break;
+    }
+    pthread_mutex_unlock(&media_lease_mutex);
+}
+
 static int lease_camera(const char *source, fleet_camera_t *camera) {
     int result = db_fleet_camera_find_by_name_readonly(source, camera);
     size_t length = strlen(source);
@@ -776,6 +789,7 @@ void handle_go2rtc_proxy(const http_request_t *req, http_response_t *res) {
     CURL *curl = curl_easy_init();
     if (!curl) {
         log_error("go2rtc proxy: curl_easy_init failed");
+        go2rtc_media_policy_release_lease(media_lease);
         sem_post(g_proxy_semaphore);
         http_response_set_json_error(res, 502, "Proxy error: failed to initialize HTTP client");
         return;
