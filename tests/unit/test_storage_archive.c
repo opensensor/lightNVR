@@ -1254,9 +1254,11 @@ static void test_archive_credentials_reject_symlinked_directory_components(void)
 
 static void write_lifecycle_attestation(const storage_target_t *target, double checked_at,
                                         const char *xml, char path[1024]) {
-    const char *credentials_dir = isolated_attestation_dir;
-    TEST_ASSERT_TRUE_MESSAGE(credentials_dir[0] != '\0',
-                             "isolated attestation credentials directory is required");
+    const char *credentials_dir =
+        isolated_attestation_dir[0] ? isolated_attestation_dir
+                                    : getenv("LIGHTNVR_ARCHIVE_CREDENTIALS_DIR");
+    TEST_ASSERT_NOT_NULL_MESSAGE(credentials_dir, "archive credentials directory is required");
+    TEST_ASSERT_TRUE_MESSAGE(credentials_dir[0] != '\0', "archive credentials directory is empty");
     snprintf(path, 1024, "%s/%s.lifecycle.json", credentials_dir, target->credential_ref);
     cJSON *json = cJSON_CreateObject();
     cJSON_AddStringToObject(json, "endpoint", target->endpoint);
@@ -1831,13 +1833,13 @@ static void test_stalled_archive_writes_renew_lease_until_completion(void) {
         else TEST_ASSERT_TRUE(errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR);
         struct timespec pause = {.tv_nsec = 1000000}; nanosleep(&pause, NULL);
     }
-    close(clients[1]);
     if (!ended) {
-        // Timeout/stall path: ensure the server-side second stream and its
-        // archive renewal resources are explicitly closed before draining.
-        // Do not do this on success path; it may already be freed.
-        archive_test_close_second_stream();
+        // Wake the server side of the remaining stream before draining libuv.
+        // Its connection may already have been released, so use the owned
+        // client socket instead of dereferencing the server pointer.
+        shutdown(clients[1], SHUT_RDWR);
     }
+    close(clients[1]);
     uv_run(&loop, UV_RUN_DEFAULT);
     TEST_ASSERT_EQUAL_INT(0, uv_loop_close(&loop));
     TEST_ASSERT_TRUE(ended);
