@@ -2256,7 +2256,12 @@ static void test_stalled_archive_writes_renew_lease_until_completion(void) {
     if (response_alloc_ok && set_nonblock_result == 0) {
         for (int i = 0; i < 15000; i++) {
             uv_run(&loop, UV_RUN_NOWAIT);
-            ssize_t count = recv(clients[1], response + total, capacity - total - 1, 0);
+            size_t remaining = capacity - total - 1;
+            if (remaining == 0) {
+                recv_unexpected_errno = ENOBUFS;
+                break;
+            }
+            ssize_t count = recv(clients[1], response + total, remaining, 0);
             if (count > 0) total += (size_t)count;
             else if (count == 0) { ended = true; break; }
             else if (!(errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) {
