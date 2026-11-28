@@ -1216,7 +1216,15 @@ static void test_multipart_cancellation_aborts_owned_upload_and_preserves_source
     storage_target_t target = archive_target("multipart-retry", true);
     storage_migration_job_t job = move_recording(id, &target);
     char original_upload_id[128];
-    safe_strcpy(original_upload_id, job.upload_id, sizeof(original_upload_id), 0);
+    sqlite3_stmt *statement = NULL;
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_prepare_v2(get_db_handle(),
+        "SELECT upload_id FROM storage_migration_jobs WHERE uuid=?", -1, &statement, NULL));
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_bind_text(statement, 1, job.uuid, -1, SQLITE_TRANSIENT));
+    TEST_ASSERT_EQUAL_INT(SQLITE_ROW, sqlite3_step(statement));
+    const unsigned char *upload_id = sqlite3_column_text(statement, 0);
+    TEST_ASSERT_NOT_NULL(upload_id);
+    safe_strcpy(original_upload_id, (const char *)upload_id, sizeof(original_upload_id), 0);
+    sqlite3_finalize(statement);
     TEST_ASSERT_TRUE(original_upload_id[0] != '\0');
     TEST_ASSERT_EQUAL_STRING("retry_wait", job.state);
     TEST_ASSERT_EQUAL_INT(1, scalar("SELECT count(*) FROM storage_migration_jobs WHERE upload_id<>'';"));
