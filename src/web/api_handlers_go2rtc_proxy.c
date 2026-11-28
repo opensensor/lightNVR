@@ -558,8 +558,8 @@ void handle_internal_media_lease(const http_request_t *req, http_response_t *res
         /* Reauthenticate once per renewal, bypassing the segment cache. No
          * repeated allowed audit rows or repeated Basic password hashing for
          * each media direction; initial signaling already audits live access. */
-        user_t principal;
-        authorization_evaluation_t evaluation;
+        user_t principal = {0};
+        authorization_evaluation_t evaluation = {0};
         if (httpd_check_action_access(saved, &principal) && principal.id == principal_id &&
             strcmp(principal.authentication_method, authentication_method) == 0) {
             view = authorization_evaluate(&principal, AUTHZ_LIVE_VIEW, &camera, &evaluation) == 0 &&
