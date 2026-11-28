@@ -208,9 +208,22 @@ static void *upstream_peer(void *arg) {
     }
     // Send the upgrade and first frame together; the client must handle
     // coalescing or splitting because TCP does not preserve write boundaries.
-    unsigned char combined[sizeof(upgrade_response) - 1 + sizeof(media_response)];
-    memcpy(combined, upgrade_response, sizeof(upgrade_response) - 1);
-    memcpy(combined + sizeof(upgrade_response) - 1, media_response, sizeof(media_response));
+    // Deterministically exercise split upstream handshake handling:
+    // send an incomplete upgrade response first, verify no client WS data
+    // is emitted yet, then send the remainder and first media frame.
+    const size_t upgrade_len = sizeof(upgrade_response) - 1;
+    const size_t split_at = upgrade_len - 2; // hold back final "\r\n"
+    if (!send_all(peer->fd, upgrade_response, split_at)) goto done;
+    {
+        struct pollfd ready = {.fd = peer->fd, .events = POLLIN};
+        if (poll(&ready, 1, 200) > 0 && (ready.revents & POLLIN)) {
+            unsigned char byte;
+            peer->observed_client_ws_data_after_reject = recv(peer->fd, &byte, 1, MSG_DONTWAIT) > 0;
+        }
+    }
+    unsigned char combined[(sizeof(upgrade_response) - 1 - split_at) + sizeof(media_response)];
+    memcpy(combined, upgrade_response + split_at, sizeof(upgrade_response) - 1 - split_at);
+    memcpy(combined + (sizeof(upgrade_response) - 1 - split_at), media_response, sizeof(media_response));
     if (!send_all(peer->fd, combined, sizeof(combined))) goto done;
     unsigned char frame[sizeof(mse_request)];
     if (read_all(peer->fd, frame, sizeof(frame))) {
