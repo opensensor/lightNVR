@@ -826,10 +826,26 @@ void handle_go2rtc_proxy(const http_request_t *req, http_response_t *res) {
     // Set method and body
     struct curl_slist *headers = NULL;
     if (media_lease[0]) {
+        struct curl_slist *tmp = NULL;
         char header[80];
         snprintf(header, sizeof(header), "X-LightNVR-Media-Lease: %s", media_lease);
-        headers = curl_slist_append(headers, header);
-        headers = curl_slist_append(headers, httpd_secure_cookies() ? "X-LightNVR-Media-TLS: 1" : "X-LightNVR-Media-TLS: 0");
+        tmp = curl_slist_append(headers, header);
+        if (!tmp) {
+            curl_slist_free_all(headers);
+            curl_easy_cleanup(curl);
+            sem_post(g_proxy_semaphore);
+            return send_json_error(req, 500, "out_of_memory", "failed to build upstream headers");
+        }
+        headers = tmp;
+
+        tmp = curl_slist_append(headers, httpd_secure_cookies() ? "X-LightNVR-Media-TLS: 1" : "X-LightNVR-Media-TLS: 0");
+        if (!tmp) {
+            curl_slist_free_all(headers);
+            curl_easy_cleanup(curl);
+            sem_post(g_proxy_semaphore);
+            return send_json_error(req, 500, "out_of_memory", "failed to build upstream headers");
+        }
+        headers = tmp;
     }
     if (strcmp(req->method_str, "POST") == 0) {
         curl_easy_setopt(curl, CURLOPT_POST, 1L);
