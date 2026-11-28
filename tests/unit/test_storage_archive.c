@@ -1590,6 +1590,7 @@ static void test_batch_export_waits_for_verified_archive_source(void) {
     bool have_status_path = false;
     cJSON *json = api_noassert(handle_batch_download_recordings, HTTP_METHOD_POST,
                               "/api/recordings/batch-download", NULL, body, NULL, &submit_status);
+    bool accepted_submission = submit_status == 202;
     if (submit_status != 202 || !json) {
         submit_failed = true;
     } else {
@@ -1603,6 +1604,12 @@ static void test_batch_export_waits_for_verified_archive_source(void) {
         }
     }
     cJSON_Delete(json);
+    if (accepted_submission && !have_status_path) {
+        fprintf(stderr,
+                "FATAL: batch export accepted without usable status token; "
+                "cannot safely wait for detached worker before fixture teardown\n");
+        abort();
+    }
     bool completed = false, retrieved = false, failed = false, poll_failed = false;
     for (int i = 0; i < 500 && have_status_path; i++) {
         if (storage_source_process_one() == 1) retrieved = true;
@@ -2008,9 +2015,15 @@ static void test_stalled_archive_writes_renew_lease_until_completion(void) {
     libuv_connection_t *first = stalled_archive_connection(&server, &clients[0], id);
     libuv_connection_t *second = stalled_archive_connection(&server, &clients[1], id);
     capture_lease_timers = false;
+    bool first_alive = first != NULL;
+    bool second_alive = second != NULL;
     bool stalled = false;
     if (captured_timer_count == 2) for (int i = 0; i < 5000; i++) {
         uv_run(&loop, UV_RUN_NOWAIT);
+        if (!first_alive || !second_alive) {
+            stalled = false;
+            break;
+        }
         stalled = uv_stream_get_write_queue_size((uv_stream_t *)&first->handle) > 0 &&
                   uv_stream_get_write_queue_size((uv_stream_t *)&second->handle) > 0;
         if (stalled) break;
@@ -2018,8 +2031,8 @@ static void test_stalled_archive_writes_renew_lease_until_completion(void) {
     }
     if (captured_timer_count != 2 || !stalled) {
         for (int i = 0; i < 2; i++) close(clients[i]);
-        libuv_connection_close(first);
-        libuv_connection_close(second);
+        if (first_alive) libuv_connection_close(first);
+        if (second_alive) libuv_connection_close(second);
         uv_run(&loop, UV_RUN_DEFAULT);
         TEST_ASSERT_EQUAL_INT(0, uv_loop_close(&loop));
         TEST_FAIL_MESSAGE(captured_timer_count != 2
