@@ -26,8 +26,13 @@ void tearDown(void) {
             uv_close((uv_handle_t *)&stop_timer, NULL);
             stop_timer_closed = true;
         }
+        if (callback_server) {
+            http_server_stop((http_server_handle_t)callback_server);
+            http_server_destroy((http_server_handle_t)callback_server);
+            callback_server = NULL;
+        }
         while (uv_loop_alive(&loop)) uv_run(&loop, UV_RUN_DEFAULT);
-        (void)uv_loop_close(&loop);
+        TEST_ASSERT_EQUAL_INT(0, uv_loop_close(&loop));
     }
 
     loop_initialized = false;
@@ -52,19 +57,21 @@ static void test_stop_preserves_foreign_handle(void) {
     config.bind_ip = "127.0.0.1";
     config.web_root = "/nonexistent-shared-loop-fixture";
     config.max_connections = 8;
-    libuv_server_t *server = (libuv_server_t *)libuv_server_init_with_loop(&config, &loop);
-    TEST_ASSERT_NOT_NULL(server);
-    TEST_ASSERT_EQUAL_INT(0, http_server_start((http_server_handle_t)server));
+    callback_server = (libuv_server_t *)libuv_server_init_with_loop(&config, &loop);
+    TEST_ASSERT_NOT_NULL(callback_server);
+    TEST_ASSERT_EQUAL_INT(0, http_server_start((http_server_handle_t)callback_server));
 
-    http_server_stop((http_server_handle_t)server);
+    http_server_stop((http_server_handle_t)callback_server);
     TEST_ASSERT_FALSE(uv_is_closing((uv_handle_t *)&foreign_async));
     TEST_ASSERT_TRUE(uv_loop_alive(&loop));
-    http_server_destroy((http_server_handle_t)server);
+    http_server_destroy((http_server_handle_t)callback_server);
+    callback_server = NULL;
 }
 
 static void stop_in_callback(uv_timer_t *handle) {
     http_server_stop((http_server_handle_t)callback_server);
     http_server_destroy((http_server_handle_t)callback_server);
+    callback_server = NULL;
     stopped_in_callback = true;
     uv_close((uv_handle_t *)handle, NULL);
     stop_timer_closed = true;
