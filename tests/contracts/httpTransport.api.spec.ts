@@ -208,6 +208,7 @@ test('closing a client during file delivery leaves file callbacks safe', async (
         clearTimeout(timer);
         socket.removeAllListeners('data');
         socket.removeAllListeners('error');
+        socket.destroy();
         if (err) reject(err);
         else resolve();
       };
@@ -224,7 +225,6 @@ test('closing a client during file delivery leaves file callbacks safe', async (
           return;
         }
         if (buffer.length > separator + 4) {
-          socket.destroy();
           done();
         }
       });
