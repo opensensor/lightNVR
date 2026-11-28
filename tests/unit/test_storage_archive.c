@@ -828,7 +828,7 @@ static void test_archive_restore_without_retrieval_cache(void) {
     storage_target_t target = archive_target("restore", true);
     storage_migration_job_t archived = move_recording(id, &target);
     TEST_ASSERT_EQUAL_STRING("completed", archived.state);
-    setenv("LIGHTNVR_ARCHIVE_CACHE_MB", "0", 1);
+    TEST_ASSERT_EQUAL_INT(0, setenv("LIGHTNVR_ARCHIVE_CACHE_MB", "0", 1));
     storage_migration_job_t restore;
     TEST_ASSERT_EQUAL_INT(DB_STORAGE_MIGRATION_OK, db_storage_migration_create(id, source_uuid, 0, &restore));
     TEST_ASSERT_EQUAL_INT(1, storage_migration_process_one());
