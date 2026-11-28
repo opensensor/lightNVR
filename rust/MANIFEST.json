@@ -1900,9 +1900,9 @@
     },
     {
       "c": "src/web/recording_archive.c",
-      "c_sha256": "3e23419d087dcd97fc553336fffa8d9240fef59ef42f8e6b8813d44b3bddb998",
+      "c_sha256": "e0ead69729b64666d11169248bc9a118bf6c6258fd0765c51cfb78ef3426e8e6",
       "rust": "generated/src__web__recording_archive.rs",
-      "rust_sha256": "bee0e2e12cf36a3b5d086ddcb2bb69271f92b7a89bc82d9fb6e05fed7d0b1fe4",
+      "rust_sha256": "9469e5bfca93eb9f83183d1d9acf015069c053e9a975a22ddc3810e93615ea2c",
       "adapted": true
     },
     {

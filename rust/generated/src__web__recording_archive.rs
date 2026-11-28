@@ -1643,6 +1643,8 @@ pub unsafe extern "C" fn recording_archive_disconnected(mut conn: *mut libuv_con
     }
     (*stream).conn = ::core::ptr::null_mut::<libuv_connection_t>();
     ::core::sync::atomic::AtomicBool::from_ptr(&raw mut (*stream).cancelled).store(true, ::core::sync::atomic::Ordering::SeqCst);
+    (*conn).async_response_pending = r#false != 0;
+    archive_stop_timer(stream);
 }
 pub const NULL: *mut ::core::ffi::c_void = ::core::ptr::null_mut::<::core::ffi::c_void>();
 pub const r#true: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
