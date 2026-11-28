@@ -108,6 +108,8 @@ typedef struct {
     bool wait_for_client_teardown;
     bool omit_media_ack;
     bool bad_accept;
+    bool split_upgrade;
+    bool premature_client_ws_data;
 } peer_t;
 
 static int tracked_clients[5];
@@ -206,12 +208,25 @@ static void *upstream_peer(void *arg) {
         }
         goto done;
     }
-    // Send the upgrade and first frame together; the client must handle
-    // coalescing or splitting because TCP does not preserve write boundaries.
-    unsigned char combined[sizeof(upgrade_response) - 1 + sizeof(media_response)];
-    memcpy(combined, upgrade_response, sizeof(upgrade_response) - 1);
-    memcpy(combined + sizeof(upgrade_response) - 1, media_response, sizeof(media_response));
-    if (!send_all(peer->fd, combined, sizeof(combined))) goto done;
+    if (peer->split_upgrade) {
+        // Hold back the final CRLF so the proxy must wait for a complete response.
+        const size_t upgrade_len = sizeof(upgrade_response) - 1;
+        const size_t split_at = upgrade_len - 2;
+        if (!send_all(peer->fd, upgrade_response, split_at)) goto done;
+        struct pollfd ready = {.fd = peer->fd, .events = POLLIN};
+        if (poll(&ready, 1, 200) > 0 && (ready.revents & POLLIN)) {
+            unsigned char byte;
+            peer->premature_client_ws_data = recv(peer->fd, &byte, 1, MSG_DONTWAIT) > 0;
+        }
+        if (!send_all(peer->fd, upgrade_response + split_at, upgrade_len - split_at) ||
+            !send_all(peer->fd, media_response, sizeof(media_response))) goto done;
+    } else {
+        // Keep the combined upgrade and first frame case.
+        unsigned char combined[sizeof(upgrade_response) - 1 + sizeof(media_response)];
+        memcpy(combined, upgrade_response, sizeof(upgrade_response) - 1);
+        memcpy(combined + sizeof(upgrade_response) - 1, media_response, sizeof(media_response));
+        if (!send_all(peer->fd, combined, sizeof(combined))) goto done;
+    }
     unsigned char frame[sizeof(mse_request)];
     if (read_all(peer->fd, frame, sizeof(frame))) {
         peer->received_mse = memcmp(frame, mse_request, sizeof(frame)) == 0;
@@ -357,6 +372,7 @@ void test_four_websockets_relay_media_on_the_web_port_and_close_cleanly(void) {
     for (int i = 0; i < 4; i++) {
         tracked_peers[i].status = 101;
         tracked_peers[i].wait_for_client_teardown = i < 2;
+        tracked_peers[i].split_upgrade = i == 0;
         TEST_ASSERT_EQUAL_INT(0, pthread_create(&tracked_threads[i], NULL, upstream_peer, &tracked_peers[i]));
         tracked_thread_started[i] = true;
         tracked_clients[i] = client_open();
@@ -395,6 +411,7 @@ void test_four_websockets_relay_media_on_the_web_port_and_close_cleanly(void) {
         tracked_thread_started[i] = false;
         TEST_ASSERT_TRUE(tracked_peers[i].received_mse);
         TEST_ASSERT_TRUE(tracked_peers[i].observed_disconnect);
+        TEST_ASSERT_FALSE(tracked_peers[i].premature_client_ws_data);
         char target[128];
         snprintf(target, sizeof(target), "GET %s/api/ws?src=Camera%%20%d_sub HTTP/1.1", go2rtc_api_get_base_path(), i);
         TEST_ASSERT_NOT_NULL(strstr(tracked_peers[i].request, target));
@@ -486,10 +503,17 @@ void test_failed_upstream_handshake_returns_502(void) {
     char origin[64], response[2048];
     int status = 0;
     snprintf(origin, sizeof(origin), "http://localhost:%d", web_port);
-    send_upgrade(client, 0, origin, false);
-    /* Send a masked client WebSocket frame so forwarding-after-reject regressions are detectable. */
+    /* Send upgrade request and a masked client frame in one write to avoid races with early close. */
     const unsigned char frame[] = {0x81, 0x81, 0x12, 0x34, 0x56, 0x78, (unsigned char)('x' ^ 0x12)};
-    TEST_ASSERT_TRUE(send_all(client, frame, sizeof(frame)));
+    unsigned char request[2048];
+    int header_len = snprintf((char *)request, sizeof(request),
+        "GET /go2rtc/api/ws?src=Camera%%200_sub HTTP/1.1\r\n"
+        "Host: localhost:%d\r\nOrigin: %s\r\n%s\r\n",
+        web_port, origin, upgrade_headers);
+    TEST_ASSERT_TRUE(header_len > 0);
+    TEST_ASSERT_TRUE((size_t)header_len + sizeof(frame) <= sizeof(request));
+    memcpy(request + header_len, frame, sizeof(frame));
+    TEST_ASSERT_TRUE(send_all(client, request, (size_t)header_len + sizeof(frame)));
     TEST_ASSERT_TRUE(read_headers(client, response, sizeof(response)));
     TEST_ASSERT_EQUAL_INT(1, sscanf(response, "HTTP/%*d.%*d %d", &status));
     TEST_ASSERT_EQUAL_INT(502, status);
