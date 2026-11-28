@@ -1139,9 +1139,23 @@ void test_percent_encoded_source_cannot_authorize_a_shorter_camera(void) {
 }
 
 int main(void) {
+    int rc;
+
     unlink(TEST_DB_PATH);
-    TEST_ASSERT_EQUAL_INT(0, init_database(TEST_DB_PATH));
-    TEST_ASSERT_EQUAL_INT(0, db_auth_init());
+
+    rc = init_database(TEST_DB_PATH);
+    if (rc != 0) {
+        fprintf(stderr, "init_database failed: %d\n", rc);
+        return 1;
+    }
+
+    rc = db_auth_init();
+    if (rc != 0) {
+        fprintf(stderr, "db_auth_init failed: %d\n", rc);
+        shutdown_database();
+        unlink(TEST_DB_PATH);
+        return 1;
+    }
 
     UNITY_BEGIN();
     RUN_TEST(test_parse_json_valid_body);
