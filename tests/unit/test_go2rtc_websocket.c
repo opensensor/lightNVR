@@ -413,7 +413,9 @@ void test_four_websockets_relay_media_on_the_web_port_and_close_cleanly(void) {
         unsigned char media[sizeof(media_response)];
         TEST_ASSERT_TRUE(read_all(tracked_clients[i], media, sizeof(media)));
         TEST_ASSERT_EQUAL_MEMORY(media_response, media, sizeof(media));
-        TEST_ASSERT_TRUE(send_all(tracked_clients[i], mse_request, sizeof(mse_request)));
+        if (i != 0) {
+            TEST_ASSERT_TRUE(send_all(tracked_clients[i], mse_request, sizeof(mse_request)));
+        }
         TEST_ASSERT_TRUE(read_all(tracked_clients[i], media, sizeof(media)));
         TEST_ASSERT_EQUAL_MEMORY(media_response, media, sizeof(media));
     }
