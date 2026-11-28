@@ -253,13 +253,13 @@ void tearDown(void) {
         }
     }
     if (server) { http_server_stop(server); http_server_destroy(server); server = NULL; }
-    close(upstream);
     for (int i = 0; i < 4; i++) {
         if (tracked_thread_started[i]) {
             pthread_join(tracked_threads[i], NULL);
             tracked_thread_started[i] = false;
         }
     }
+    close(upstream);
     shutdown_database();
     unlink(db_path);
     go2rtc_api_apply_base_path_override(NULL, 0);
