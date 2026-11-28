@@ -557,7 +557,24 @@ static void test_api_responsive_during_lifecycle_scan(void) {
     release_scan = true;
     pthread_cond_broadcast(&scan_condition);
     pthread_mutex_unlock(&scan_mutex);
-    pthread_join(background, NULL);
+    {
+        struct timespec join_deadline;
+        clock_gettime(CLOCK_REALTIME, &join_deadline);
+        join_deadline.tv_sec += 10;
+        for (;;) {
+            int join_result = pthread_tryjoin_np(background, NULL);
+            if (join_result == 0) break;
+            struct timespec now;
+            clock_gettime(CLOCK_REALTIME, &now);
+            if (now.tv_sec > join_deadline.tv_sec ||
+                (now.tv_sec == join_deadline.tv_sec && now.tv_nsec >= join_deadline.tv_nsec)) {
+                TEST_FAIL_MESSAGE("Timed out waiting for lifecycle thread completion");
+                abort();
+            }
+            struct timespec sleep_interval = {.tv_sec = 0, .tv_nsec = 10 * 1000 * 1000};
+            nanosleep(&sleep_interval, NULL);
+        }
+    }
     reader_progress = NULL;
     TEST_ASSERT_TRUE_MESSAGE(paused, "Background read must run on a private connection");
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, lock_result, "API mutex must remain available during scan");
