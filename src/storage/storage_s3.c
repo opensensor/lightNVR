@@ -247,7 +247,10 @@ static size_t receive_bytes(char *buffer, size_t size, size_t count, void *conte
     if (io->file && fwrite(buffer, 1, length, io->file) != length) return 0;
     if (io->digest && mbedtls_sha256_update(io->digest, (unsigned char *)buffer, length) != 0) return 0;
     if (io->body) {
-        if (io->length + length >= S3_REPLY_LIMIT) return 0;
+        if (io->length + length >= S3_REPLY_LIMIT) {
+            io->limit_exceeded = true;
+            return 0;
+        }
         memcpy(io->body + io->length, buffer, length);
         io->length += length;
         io->body[io->length] = 0;
@@ -370,6 +373,10 @@ static int request(const storage_target_t *target, const char *key, const char *
     if (code == CURLE_ABORTED_BY_CALLBACK) {
         error_set(error, "Archive operation cancelled");
         return STORAGE_S3_CANCELLED;
+    }
+    if (io->limit_exceeded) {
+        error_set(error, "Archive response exceeded size limit");
+        return STORAGE_S3_ERROR;
     }
     if (code != CURLE_OK) {
         snprintf(error, STORAGE_TARGET_ERROR_MAX, "Archive transport failed (%d)", (int)code);
