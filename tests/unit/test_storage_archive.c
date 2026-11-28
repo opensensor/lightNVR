@@ -1252,14 +1252,47 @@ static void test_archive_credentials_reject_symlinked_directory_components(void)
     TEST_ASSERT_EQUAL_INT(STORAGE_S3_ERROR, final);
 }
 
+static void copy_fixture_credential_into_isolated_dir(const char *source_dir,
+                                                      const char *dest_dir,
+                                                      const char *credential_ref) {
+    char source_path_local[1024], dest_path_local[1024];
+    snprintf(source_path_local, sizeof(source_path_local), "%s/%s", source_dir, credential_ref);
+    snprintf(dest_path_local, sizeof(dest_path_local), "%s/%s", dest_dir, credential_ref);
+
+    FILE *src = fopen(source_path_local, "r");
+    TEST_ASSERT_NOT_NULL_MESSAGE(src, "failed to open source credential fixture");
+    FILE *dst = fopen(dest_path_local, "w");
+    TEST_ASSERT_NOT_NULL_MESSAGE(dst, "failed to create isolated credential fixture");
+
+    char buffer[4096];
+    size_t nread;
+    while ((nread = fread(buffer, 1, sizeof(buffer), src)) > 0) {
+        TEST_ASSERT_EQUAL_UINT64(nread, fwrite(buffer, 1, nread, dst));
+    }
+
+    fclose(dst);
+    fclose(src);
+    TEST_ASSERT_EQUAL_INT(0, chmod(dest_path_local, 0600));
+}
+
 static void write_lifecycle_attestation(const storage_target_t *target, double checked_at,
                                         const char *xml, char path[1024]) {
-    const char *credentials_dir =
-        isolated_attestation_dir[0] ? isolated_attestation_dir
-                                    : getenv("LIGHTNVR_ARCHIVE_CREDENTIALS_DIR");
-    TEST_ASSERT_NOT_NULL_MESSAGE(credentials_dir, "archive credentials directory is required");
-    TEST_ASSERT_TRUE_MESSAGE(credentials_dir[0] != '\0', "archive credentials directory is empty");
-    snprintf(path, 1024, "%s/%s.lifecycle.json", credentials_dir, target->credential_ref);
+    const char *original_credentials_dir = getenv("LIGHTNVR_ARCHIVE_CREDENTIALS_DIR");
+    TEST_ASSERT_NOT_NULL_MESSAGE(original_credentials_dir, "archive credentials directory is required");
+    TEST_ASSERT_TRUE_MESSAGE(original_credentials_dir[0] != '\0', "archive credentials directory is empty");
+
+    if (!isolated_attestation_dir[0]) {
+        char isolated_template[512];
+        snprintf(isolated_template, sizeof(isolated_template), "%s/attestation-creds-XXXXXX", root);
+        TEST_ASSERT_NOT_NULL(mkdtemp(isolated_template));
+        safe_strcpy(isolated_attestation_dir, isolated_template, sizeof(isolated_attestation_dir), 0);
+        copy_fixture_credential_into_isolated_dir(original_credentials_dir,
+                                                  isolated_attestation_dir,
+                                                  target->credential_ref);
+        TEST_ASSERT_EQUAL_INT(0, setenv("LIGHTNVR_ARCHIVE_CREDENTIALS_DIR",
+                                        isolated_attestation_dir, 1));
+    }
+    snprintf(path, 1024, "%s/%s.lifecycle.json", isolated_attestation_dir, target->credential_ref);
     cJSON *json = cJSON_CreateObject();
     cJSON_AddStringToObject(json, "endpoint", target->endpoint);
     cJSON_AddStringToObject(json, "region", target->region);
@@ -1443,21 +1476,24 @@ static void test_batch_export_waits_for_verified_archive_source(void) {
         struct timespec delay = {.tv_nsec = 10000000};
         nanosleep(&delay, NULL);
     }
-    if (!completed) {
-        // Give the detached export worker a bounded chance to reach a terminal
-        // state before the assertion aborts this test's fixture.
+    bool timed_out = !completed;
+    if (timed_out) {
+        // Do not abort immediately: first wait for a terminal worker state so
+        // fixture teardown cannot race a detached export worker.
+        bool terminal = false;
         for (int drain = 0; drain < 500; drain++) {
             (void)storage_source_process_one();
             json = api(handle_batch_download_status, HTTP_METHOD_GET, path, NULL, NULL, NULL, 200);
-            bool terminal = strcmp(field(json, "status")->valuestring, "pending") != 0 &&
-                            strcmp(field(json, "status")->valuestring, "running") != 0;
+            terminal = strcmp(field(json, "status")->valuestring, "pending") != 0 &&
+                       strcmp(field(json, "status")->valuestring, "running") != 0;
             cJSON_Delete(json);
             if (terminal) break;
             struct timespec delay = {.tv_nsec = 10000000};
             nanosleep(&delay, NULL);
         }
-        TEST_FAIL_MESSAGE("batch export did not complete before polling deadline");
+        TEST_ASSERT_TRUE_MESSAGE(terminal, "batch export worker did not reach terminal state before fixture release");
     }
+    TEST_ASSERT_FALSE_MESSAGE(timed_out, "batch export did not complete before polling deadline");
     TEST_ASSERT_TRUE(retrieved);
     // Inspect the ZIP produced through the real handler's deferred-file contract.
     uv_loop_t loop;
