@@ -53,6 +53,19 @@ class S3Handler(BaseHTTPRequestHandler):
             return False
         if not self.headers.get('x-amz-date'):
             return False
+        signed_headers = match[3].split(';')
+        if not signed_headers:
+            return False
+        if any(header != header.lower() for header in signed_headers):
+            return False
+        if signed_headers != sorted(signed_headers):
+            return False
+        if len(set(signed_headers)) != len(signed_headers):
+            return False
+        if 'host' not in signed_headers:
+            return False
+        if any(header not in self.headers for header in signed_headers):
+            return False
         payload_hash = self.headers.get('x-amz-content-sha256', hashlib.sha256(body).hexdigest())
         if payload_hash != 'UNSIGNED-PAYLOAD' and payload_hash != hashlib.sha256(body).hexdigest():
             return False
@@ -63,7 +76,7 @@ class S3Handler(BaseHTTPRequestHandler):
         ]
         query = '&'.join(f'{k}={v}' for k, v in sorted(encoded_query_pairs))
         canonical_headers = ''.join(f'{key}:{" ".join(self.headers.get(key, "").split())}\n'
-                                    for key in match[3].split(';'))
+                                    for key in signed_headers)
         canonical = '\n'.join([self.command, url.path, query, canonical_headers, match[3], payload_hash])
         string_to_sign = '\n'.join(['AWS4-HMAC-SHA256', self.headers['x-amz-date'], scope,
                                     hashlib.sha256(canonical.encode()).hexdigest()])
