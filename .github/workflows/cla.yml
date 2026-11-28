@@ -4,7 +4,13 @@ on:
   issue_comment:
     types: [created]
   pull_request_target:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, closed]
+
+# A merged PR queues a job-free run in the same group, canceling queued or
+# running CLA checks without waiting for the cleanup workflow's runner.
+concurrency:
+  group: CLA Assistant-${{ github.event.pull_request.number || github.event.issue.number || github.run_id }}
+  cancel-in-progress: true
 
 permissions:
   actions: write
@@ -15,6 +21,7 @@ permissions:
 
 jobs:
   cla-check:
+    if: github.event.action != 'closed'
     runs-on: ubuntu-latest
     steps:
       - name: CLA Assistant

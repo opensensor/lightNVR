@@ -6,6 +6,7 @@ name: lightnvr-rs
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, closed]
     branches: [main]
     paths: &inputs
       - 'src/**'
@@ -44,6 +45,7 @@ env:
 
 jobs:
   transpile:
+    if: github.event.action != 'closed'
     name: C → Rust conversion, build and smoke test
     runs-on: ubuntu-latest
     timeout-minutes: 90

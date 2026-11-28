@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, closed]
     # Keep the same gates on the explicitly stacked hardening PRs.
     branches: [main, 'codex/hardening-*']
   workflow_dispatch:
@@ -21,6 +22,7 @@ concurrency:
 
 jobs:
   web-jsx-a11y:
+    if: github.event.action != 'closed'
     name: Web JSX accessibility lint
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -52,6 +54,7 @@ jobs:
         run: npm run lint --prefix web
 
   clang-tidy:
+    if: github.event.action != 'closed'
     name: clang-tidy
     runs-on: ubuntu-latest
     container: debian:sid-slim
@@ -125,6 +128,7 @@ jobs:
           retention-days: 30
 
   cppcheck:
+    if: github.event.action != 'closed'
     name: cppcheck
     runs-on: ubuntu-latest
     timeout-minutes: 30
