@@ -1215,6 +1215,9 @@ static void test_multipart_cancellation_aborts_owned_upload_and_preserves_source
     sql("UPDATE recordings SET size_bytes=9437184;");
     storage_target_t target = archive_target("multipart-retry", true);
     storage_migration_job_t job = move_recording(id, &target);
+    char original_upload_id[128];
+    safe_strcpy(original_upload_id, job.upload_id, sizeof(original_upload_id), 0);
+    TEST_ASSERT_TRUE(original_upload_id[0] != '\0');
     TEST_ASSERT_EQUAL_STRING("retry_wait", job.state);
     TEST_ASSERT_EQUAL_INT(1, scalar("SELECT count(*) FROM storage_migration_jobs WHERE upload_id<>'';"));
     TEST_ASSERT_EQUAL_INT(DB_STORAGE_MIGRATION_OK, db_storage_migration_request_cancel(job.uuid, &job));
@@ -1225,7 +1228,7 @@ static void test_multipart_cancellation_aborts_owned_upload_and_preserves_source
     uint64_t bytes;
     char error[256];
     TEST_ASSERT_EQUAL_INT(STORAGE_S3_MISSING, storage_s3_stat(&target, job.destination_object_key, &bytes, error));
-    TEST_ASSERT_EQUAL_INT(0, storage_s3_abort_upload(&target, job.destination_object_key, "already-absent-upload", error));
+    TEST_ASSERT_EQUAL_INT(0, storage_s3_abort_upload(&target, job.destination_object_key, original_upload_id, error));
 }
 
 static void test_archive_credentials_require_private_regular_files(void) {
