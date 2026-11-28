@@ -629,8 +629,17 @@ static void test_multipart_resume_after_restart(void) {
     FILE *file = fopen(source_path, "wb");
     TEST_ASSERT_NOT_NULL(file);
     unsigned char block[65536];
+    uint64_t expected_size = 0;
+    uint64_t expected_hash = 1469598103934665603ULL; /* FNV-1a 64-bit offset basis */
     for (size_t i = 0; i < sizeof(block); i++) block[i] = (unsigned char)(i * 13);
-    for (int i = 0; i < 144; i++) TEST_ASSERT_EQUAL_UINT(sizeof(block), fwrite(block, 1, sizeof(block), file));
+    for (size_t i = 0; i < sizeof(block); i++) {
+        expected_hash ^= block[i];
+        expected_hash *= 1099511628211ULL; /* FNV-1a prime */
+    }
+    for (int i = 0; i < 144; i++) {
+        TEST_ASSERT_EQUAL_UINT(sizeof(block), fwrite(block, 1, sizeof(block), file));
+        expected_size += sizeof(block);
+    }
     fclose(file);
     sql("UPDATE recordings SET size_bytes=9437184;");
     storage_target_t target = archive_target("multipart-retry", true);
@@ -645,6 +654,20 @@ static void test_multipart_resume_after_restart(void) {
     TEST_ASSERT_EQUAL_INT(DB_STORAGE_MIGRATION_OK, db_storage_migration_get(job.uuid, &job));
     TEST_ASSERT_EQUAL_STRING("completed", job.state);
     TEST_ASSERT_NOT_EQUAL_INT(0, access(source_path, F_OK));
+
+    /* Verify archived object content integrity after multipart resume. */
+    char *archived = NULL;
+    size_t archived_len = 0;
+    TEST_ASSERT_EQUAL_INT(0, download_archived_recording_bytes(id, &archived, &archived_len));
+    TEST_ASSERT_NOT_NULL(archived);
+    TEST_ASSERT_EQUAL_UINT64(expected_size, (uint64_t)archived_len);
+    uint64_t archived_hash = 1469598103934665603ULL;
+    for (size_t i = 0; i < archived_len; i++) {
+        archived_hash ^= (unsigned char)archived[i];
+        archived_hash *= 1099511628211ULL;
+    }
+    TEST_ASSERT_EQUAL_UINT64(expected_hash, archived_hash);
+    free(archived);
 }
 
 static void test_existing_archive_promotion_and_pressure(void) {
