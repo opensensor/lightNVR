@@ -645,10 +645,11 @@ static int multipart_upload(const storage_target_t *target, const char *key, FIL
         if (!manifest) result = -1;
         else {
             fputs("<CompleteMultipartUpload>", manifest);
-            for (int i = 0; i < completed; i++) {
-                const cJSON *etag = cJSON_GetArrayItem(parts, i);
+            int part_number = 1;
+            cJSON *etag = NULL;
+            cJSON_ArrayForEach(etag, parts) {
                 if (!cJSON_IsString(etag)) { result = -1; break; }
-                fprintf(manifest, "<Part><PartNumber>%d</PartNumber><ETag>%s</ETag></Part>", i+1, etag->valuestring);
+                fprintf(manifest, "<Part><PartNumber>%d</PartNumber><ETag>%s</ETag></Part>", part_number++, etag->valuestring);
             }
             fputs("</CompleteMultipartUpload>", manifest);
             off_t length = ftello(manifest);
@@ -874,7 +875,8 @@ int storage_s3_probe(storage_target_t *target, bool write_test) {
             if (result == 0) result = storage_s3_verify(target, key, 1, checksum, NULL, error);
             if (result == 0) {
                 s3_io_t anonymous = {.limit = S3_REPLY_LIMIT, .anonymous = true};
-                request(target, key, NULL, "GET", NULL, 0, NULL, &anonymous, NULL, error);
+                /* request() reports these expected HTTP denials as errors; inspect the status. */
+                (void)request(target, key, NULL, "GET", NULL, 0, NULL, &anonymous, NULL, error);
                 if (anonymous.status != 401 && anonymous.status != 403 && anonymous.status != 404) {
                     error_set(error, "Archive probe is publicly readable or private access could not be verified");
                     result = STORAGE_S3_CONFLICT;
