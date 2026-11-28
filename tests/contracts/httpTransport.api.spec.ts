@@ -216,7 +216,7 @@ test('HEAD serves static file headers without file bytes', async () => {
   }
 });
 
-test('closing a client during file delivery leaves file callbacks safe', async () => {
+test('closing clients during partial file delivery keeps the server responsive', async () => {
   const webRoot = mkdtempSync(path.join(tmpdir(), 'lightnvr-file-close-'));
   writeFileSync(path.join(webRoot, 'large.bin'), Buffer.alloc(4 * 1024 * 1024, 0x61));
   let server: Awaited<ReturnType<typeof startFixture>> | undefined;
@@ -256,11 +256,10 @@ test('closing a client during file delivery leaves file callbacks safe', async (
           done(new Error('File finished before the client could interrupt delivery'));
           return;
         }
-        // Do not infer pending server-side file callbacks from partial body bytes alone:
-        // buffered delivery can make this appear true after callbacks have already completed.
-        // Instead, rely on fixture-level synchronization that explicitly pauses file delivery
-        // with a callback pending, then disconnect, then resume (configured outside this handler).
-        if (bodyBytes > 0 && bodyBytes < 4 * 1024 * 1024) {
+        // The client has received a substantial, incomplete response. This is
+        // a disconnect smoke test; TCP buffering cannot prove a file callback
+        // is still pending on the server when the socket closes.
+        if (bodyBytes >= 64 * 1024 && bodyBytes < 4 * 1024 * 1024) {
           interruptionObserved = true;
           done();
         }
