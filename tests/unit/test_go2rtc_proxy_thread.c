@@ -35,6 +35,11 @@ static int upstream_requests;
 static char upstream_request[2048];
 static pthread_mutex_t upstream_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t upstream_ready = PTHREAD_COND_INITIALIZER;
+static int slow_snapshot_server = -1;
+static pthread_t slow_snapshot_thread;
+static bool slow_snapshot_thread_started;
+static libuv_connection_t slow_snapshot_connection;
+static bool slow_snapshot_connection_initialized;
 
 bool __real_go2rtc_proxy_authorize_request(const http_request_t *request,
                                           http_response_t *response);
@@ -97,6 +102,9 @@ static void init_connection(libuv_connection_t *connection) {
 }
 
 void setUp(void) {
+    slow_snapshot_server = -1;
+    slow_snapshot_thread_started = false;
+    slow_snapshot_connection_initialized = false;
     load_default_config(&g_config);
     go2rtc_api_apply_base_path_override(NULL, 0);
     completed_responses = 0;
@@ -116,6 +124,18 @@ void tearDown(void) {
     go2rtc_api_apply_base_path_override(NULL, 0);
     go2rtc_proxy_thread_shutdown();
     uv_run(&loop, UV_RUN_DEFAULT);
+    if (slow_snapshot_server >= 0) {
+        close(slow_snapshot_server);
+        slow_snapshot_server = -1;
+    }
+    if (slow_snapshot_thread_started) {
+        pthread_join(slow_snapshot_thread, NULL);
+        slow_snapshot_thread_started = false;
+    }
+    if (slow_snapshot_connection_initialized) {
+        http_response_free(&slow_snapshot_connection.response);
+        slow_snapshot_connection_initialized = false;
+    }
     TEST_ASSERT_EQUAL_INT(0, uv_loop_close(&loop));
     curl_global_cleanup();
 }
@@ -174,29 +194,32 @@ static void *slow_snapshot_peer(void *arg) {
 }
 
 void test_slow_snapshot_releases_its_slot_after_ten_seconds(void) {
-    int server = socket(AF_INET, SOCK_STREAM, 0);
-    TEST_ASSERT_GREATER_OR_EQUAL_INT(0, server);
+    slow_snapshot_server = socket(AF_INET, SOCK_STREAM, 0);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(0, slow_snapshot_server);
     struct sockaddr_in address = {
         .sin_family = AF_INET,
         .sin_addr.s_addr = htonl(INADDR_LOOPBACK),
     };
-    TEST_ASSERT_EQUAL_INT(0, bind(server, (struct sockaddr *)&address, sizeof(address)));
-    TEST_ASSERT_EQUAL_INT(0, listen(server, 1));
+    TEST_ASSERT_EQUAL_INT(0, bind(slow_snapshot_server, (struct sockaddr *)&address, sizeof(address)));
+    TEST_ASSERT_EQUAL_INT(0, listen(slow_snapshot_server, 1));
     socklen_t size = sizeof(address);
-    TEST_ASSERT_EQUAL_INT(0, getsockname(server, (struct sockaddr *)&address, &size));
+    TEST_ASSERT_EQUAL_INT(0, getsockname(slow_snapshot_server, (struct sockaddr *)&address, &size));
     g_config.go2rtc_api_port = ntohs(address.sin_port);
-    pthread_t peer;
-    TEST_ASSERT_EQUAL_INT(0, pthread_create(&peer, NULL, slow_snapshot_peer, &server));
-    libuv_connection_t connection;
-    init_connection(&connection);
+    TEST_ASSERT_EQUAL_INT(0, pthread_create(&slow_snapshot_thread, NULL, slow_snapshot_peer, &slow_snapshot_server));
+    slow_snapshot_thread_started = true;
+    init_connection(&slow_snapshot_connection);
+    slow_snapshot_connection_initialized = true;
     long started = monotonic_ms();
-    TEST_ASSERT_EQUAL_INT(0, go2rtc_proxy_thread_submit(&connection, WRITE_ACTION_CLOSE));
+    TEST_ASSERT_EQUAL_INT(0, go2rtc_proxy_thread_submit(&slow_snapshot_connection, WRITE_ACTION_CLOSE));
     pump_responses(1, 12000);
     long elapsed = monotonic_ms() - started;
-    int status = connection.response.status_code;
-    pthread_join(peer, NULL);
-    close(server);
-    http_response_free(&connection.response);
+    int status = slow_snapshot_connection.response.status_code;
+    pthread_join(slow_snapshot_thread, NULL);
+    slow_snapshot_thread_started = false;
+    close(slow_snapshot_server);
+    slow_snapshot_server = -1;
+    http_response_free(&slow_snapshot_connection.response);
+    slow_snapshot_connection_initialized = false;
 
     TEST_ASSERT_EQUAL_INT(1, completed_responses);
     TEST_ASSERT_EQUAL_INT(502, status);
