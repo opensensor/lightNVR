@@ -706,7 +706,7 @@ int storage_s3_upload(const storage_target_t *target, const char *key, const cha
     FILE *file = fdopen(descriptor, "rb");
     if (!file) { close(descriptor); return STORAGE_S3_ERROR; }
     s3_io_t io = {.limit = S3_REPLY_LIMIT, .control = control};
-    int result = (uint64_t)status.st_size >= S3_PART_BYTES
+    int result = control && control->job_uuid && (uint64_t)status.st_size >= S3_PART_BYTES
         ? multipart_upload(target, key, file, (uint64_t)status.st_size, checksum, control, error)
         : request(target, key, NULL, "PUT", file, (uint64_t)status.st_size, checksum, &io, NULL, error);
     fclose(file);
@@ -875,11 +875,9 @@ int storage_s3_probe(storage_target_t *target, bool write_test) {
             if (result == 0) result = storage_s3_verify(target, key, 1, checksum, NULL, error);
             if (result == 0) {
                 s3_io_t anonymous = {.limit = S3_REPLY_LIMIT, .anonymous = true};
-                int anonymous_result = request(target, key, NULL, "GET", NULL, 0, NULL, &anonymous, NULL, error);
-                if (anonymous_result != 0) {
-                    error_set(error, "Anonymous access verification request failed");
-                    result = STORAGE_S3_CONFLICT;
-                } else if (anonymous.status != 401 && anonymous.status != 403 && anonymous.status != 404) {
+                /* request() reports these expected HTTP denials as errors; inspect the status. */
+                (void)request(target, key, NULL, "GET", NULL, 0, NULL, &anonymous, NULL, error);
+                if (anonymous.status != 401 && anonymous.status != 403 && anonymous.status != 404) {
                     error_set(error, "Archive probe is publicly readable or private access could not be verified");
                     result = STORAGE_S3_CONFLICT;
                 }
