@@ -33,6 +33,7 @@
 
 #define S3_REPLY_LIMIT (128U * 1024U)
 #define S3_SECRET_LIMIT 8192
+#define S3_ERROR_BODY_LIMIT (64U * 1024U)
 
 typedef struct {
     char access[256];
@@ -238,7 +239,14 @@ static size_t receive_bytes(char *buffer, size_t size, size_t count, void *conte
     s3_io_t *io = context;
     if (size && count > SIZE_MAX / size) return 0;
     size_t length = size * count;
-    if (io->status < 200 || io->status >= 300) return length; /* never persist error documents as video */
+    if (io->status < 200 || io->status >= 300) {
+        if (io->bytes > S3_ERROR_BODY_LIMIT || length > S3_ERROR_BODY_LIMIT - io->bytes) {
+            io->limit_exceeded = true;
+            return 0;
+        }
+        io->bytes += length;
+        return length; /* never persist error documents as video */
+    }
     if (io->bytes > io->limit || length > io->limit - io->bytes) {
         io->limit_exceeded = true;
         return 0;
@@ -334,9 +342,40 @@ static int request(const storage_target_t *target, const char *key, const char *
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 0L);
     curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 10L);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, upload || io->digest || io->file ? 3600L : 20L);
-    curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, 1024L);
-    curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, 30L);
+
+    long timeout_s = (upload || io->digest || io->file) ? 3600L : 20L;
+    long low_speed_limit = 1024L;
+    long low_speed_time = 30L;
+
+    if (io->control && io->control->bandwidth_bps) {
+        uint64_t bw = io->control->bandwidth_bps;
+        uint64_t expected_bytes = 0;
+        if (upload) {
+            expected_bytes = upload_size;
+        } else if (io->limit) {
+            expected_bytes = io->limit;
+        }
+
+        if (bw > 0 && bw < (uint64_t)low_speed_limit) {
+            low_speed_limit = (long)bw;
+            if (low_speed_limit < 1L) {
+                low_speed_limit = 1L;
+            }
+        }
+
+        if (bw > 0 && expected_bytes > 0) {
+            uint64_t seconds = expected_bytes / bw + (expected_bytes % bw != 0);
+            long required = seconds > (uint64_t)LONG_MAX - 15
+                ? LONG_MAX : (long)seconds + 15L;
+            if (required > timeout_s) {
+                timeout_s = required;
+            }
+        }
+    }
+
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeout_s);
+    curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, low_speed_limit);
+    curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, low_speed_time);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, receive_bytes);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, io);
     curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, response_header);
@@ -762,7 +801,8 @@ static bool safe_lifecycle(char *body) {
 /* Some providers deny lifecycle GET to bucket-scoped object credentials.
  * A trusted operator may supply a fresh, bucket-bound inspection beside the
  * credentials. Never infer safety from a 403 or bypass a readable unsafe rule.
- * Refresh at least every 30 minutes; stale/malformed files fail closed. */
+ * Refresh at least every 30 minutes; attestations are accepted for <1 hour,
+ * and stale/malformed files fail closed. */
 static bool lifecycle_attested(const storage_target_t *target) {
     cJSON *json = private_json_read(target, ".lifecycle.json");
     const cJSON *endpoint = cJSON_GetObjectItemCaseSensitive(json, "endpoint");
