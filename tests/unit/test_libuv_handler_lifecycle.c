@@ -284,10 +284,23 @@ static void test_clean_stop_can_restart_on_same_loop(void) {
     const char request[] = "GET /lifecycle HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n";
     TEST_ASSERT_EQUAL_INT(sizeof(request) - 1, send(client, request, sizeof(request) - 1, 0));
     size_t used = 0;
-    while (used < sizeof(response) - 1 &&
-           (nread = recv(client, response + used, sizeof(response) - 1 - used, 0)) > 0)
-        used += (size_t)nread;
+    bool saw_eof = false;
+    while (used < sizeof(response) - 1) {
+        nread = recv(client, response + used, sizeof(response) - 1 - used, 0);
+        if (nread > 0) {
+            used += (size_t)nread;
+            continue;
+        }
+        if (nread == 0) {
+            saw_eof = true;
+            break;
+        }
+        if (errno == EINTR)
+            continue;
+        TEST_FAIL_MESSAGE("recv failed before EOF");
+    }
     TEST_ASSERT_TRUE(used > 0);
+    TEST_ASSERT_TRUE_MESSAGE(saw_eof, "response did not terminate with EOF");
     response[used] = '\0';
     TEST_ASSERT_NOT_NULL(strstr(response, "HTTP/1.1 200"));
     TEST_ASSERT_NOT_NULL(strstr(response, "\"ok\":true"));
