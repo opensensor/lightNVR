@@ -81,12 +81,10 @@ static void test_duplicate_start_is_rejected_without_disrupting_server(void) {
     config.bind_ip = "127.0.0.1";
     config.web_root = "/nonexistent-thread-start-fixture";
     config.max_connections = 8;
-    http_server_handle_t server = libuv_server_init(&config);
-    TEST_ASSERT_NOT_NULL(server);
-    TEST_ASSERT_EQUAL_INT(0, http_server_start(server));
-    TEST_ASSERT_EQUAL_INT(-1, http_server_start(server));
-    http_server_stop(server);
-    http_server_destroy(server);
+    fixture_server = libuv_server_init(&config);
+    TEST_ASSERT_NOT_NULL(fixture_server);
+    TEST_ASSERT_EQUAL_INT(0, http_server_start(fixture_server));
+    TEST_ASSERT_EQUAL_INT(-1, http_server_start(fixture_server));
 }
 
 int main(void) {
