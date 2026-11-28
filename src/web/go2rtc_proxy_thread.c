@@ -66,6 +66,7 @@ typedef struct proxy_thread_ctx {
     char url[2048];
     char media_lease[37];
     bool media_policy_ack;
+    bool header_block_is_informational;
     bool incompatible_media_policy;
     char method[16];
     char *body;                 // malloc'd copy, NULL if no body
@@ -145,9 +146,27 @@ static size_t proxy_header_cb(char *buffer, size_t size, size_t nitems, void *us
     size_t total = size * nitems;
     proxy_thread_ctx_t *ctx = (proxy_thread_ctx_t *)userp;
 
-    if (total == sizeof("X-LightNVR-Media-Policy: 1\r\n") - 1 && strncasecmp(buffer, "X-LightNVR-Media-Policy: 1\r\n", total) == 0)
+    if (total >= 12 && strncasecmp(buffer, "HTTP/", 5) == 0) {
+        /* libcurl's header buffer is length-delimited, not NUL-terminated. */
+        const char *space = memchr(buffer, ' ', total);
+        int code = 0;
+        if (space && (size_t)(buffer + total - space) >= 4 &&
+            space[1] >= '0' && space[1] <= '9' &&
+            space[2] >= '0' && space[2] <= '9' &&
+            space[3] >= '0' && space[3] <= '9')
+            code = (space[1] - '0') * 100 + (space[2] - '0') * 10 + space[3] - '0';
+        ctx->header_block_is_informational = code >= 100 && code < 200;
+        ctx->media_policy_ack = false;
+        ctx->response_content_type[0] = '\0';
+        return total;
+    }
+
+    if (!ctx->header_block_is_informational &&
+        total == sizeof("X-LightNVR-Media-Policy: 1\r\n") - 1 &&
+        strncasecmp(buffer, "X-LightNVR-Media-Policy: 1\r\n", total) == 0)
         ctx->media_policy_ack = true;
-    if (total > 14 && strncasecmp(buffer, "Content-Type:", 13) == 0) {
+    if (!ctx->header_block_is_informational &&
+        total > 14 && strncasecmp(buffer, "Content-Type:", 13) == 0) {
         const char *val = buffer + 13;
         while (*val == ' ' || *val == '\t') val++;
         size_t len = total - (size_t)(val - buffer);
