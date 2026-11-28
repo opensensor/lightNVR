@@ -672,6 +672,9 @@ static void test_archive_range_proxy_and_disconnect(void) {
         }
         TEST_ASSERT_TRUE(recording_archive_serve(&conn->request, &conn->response, id, download));
         if (disconnect) {
+            // Teardown may detach an archive while its worker still owns the
+            // stream. Completion must not access the freed connection.
+            recording_archive_disconnected(conn);
             close(client);
             libuv_connection_close(conn);
         }

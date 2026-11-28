@@ -260,8 +260,12 @@ void recording_archive_disconnected(libuv_connection_t *conn) {
     if (!stream) return;
     conn->archive_stream = NULL;
     if (!stream->counted) { archive_free(stream); return; }
+    // The connection may be freed before the queued read/write callback runs.
+    // Detach it first so that callback only releases the stream.
+    stream->conn = NULL;
     atomic_store(&stream->cancelled, true);
-    // Keep stream->conn so archive_finish() can clear async pending and finalize cleanup.
+    conn->async_response_pending = false;
+    archive_stop_timer(stream);
     // The outstanding work/write callback releases the final reference.
 }
 #endif
