@@ -458,9 +458,21 @@ void test_upgrade_without_media_policy_ack_is_rejected(void) {
     static const unsigned char masked_frame[] = {
         0x81, 0x82, 0x01, 0x02, 0x03, 0x04, (unsigned char)('h' ^ 0x01), (unsigned char)('i' ^ 0x02)
     };
+    unsigned char request_with_frame[4096];
+    int header_len;
     snprintf(origin, sizeof(origin), "http://localhost:%d", web_port);
-    send_upgrade(client, 0, origin, true);
-    (void)send_all(client, masked_frame, sizeof(masked_frame));
+    header_len = snprintf((char *)request_with_frame, sizeof(request_with_frame),
+                          "GET /api/ws?src=test HTTP/1.1\r\n"
+                          "Host: localhost:%d\r\n"
+                          "Origin: %s\r\n"
+                          "%s"
+                          "Sec-WebSocket-Extensions: permessage-deflate\r\n"
+                          "\r\n",
+                          web_port, origin, upgrade_headers);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(0, header_len);
+    TEST_ASSERT_LESS_THAN_INT((int)sizeof(request_with_frame) - (int)sizeof(masked_frame), header_len);
+    memcpy(request_with_frame + header_len, masked_frame, sizeof(masked_frame));
+    TEST_ASSERT_TRUE(send_all(client, request_with_frame, (size_t)header_len + sizeof(masked_frame)));
     TEST_ASSERT_TRUE(read_headers(client, response, sizeof(response)));
     TEST_ASSERT_EQUAL_INT(1, sscanf(response, "HTTP/%*d.%*d %d", &status));
     TEST_ASSERT_EQUAL_INT(502, status);
