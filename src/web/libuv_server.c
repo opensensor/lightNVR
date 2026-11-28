@@ -360,6 +360,23 @@ int libuv_server_start(http_server_handle_t handle) {
             server->thread_running = false;
             server->running = false;
             log_error("libuv_server_start: Failed to create server thread");
+
+            /* Roll back only the embedded handles. Other subsystems may have
+             * long-lived handles on this loop, so loop liveness is not a
+             * useful completion condition here. */
+            if (!uv_is_closing((uv_handle_t *)&server->listener)) {
+                uv_close((uv_handle_t *)&server->listener, NULL);
+            }
+            if (!uv_is_closing((uv_handle_t *)&server->stop_async)) {
+                uv_close((uv_handle_t *)&server->stop_async, NULL);
+            }
+            server_handle_scan_t scan = {.server = server, .present = false};
+            do {
+                uv_run(server->loop, UV_RUN_NOWAIT);
+                scan.present = false;
+                uv_walk(server->loop, scan_server_handles_cb, &scan);
+            } while (scan.present);
+
             return -1;
         }
         server->thread_joinable = true;
@@ -737,15 +754,18 @@ static void on_connection(uv_stream_t *listener, int status) {
     }
 
     // Get client address for logging
-    struct sockaddr_storage addr;
+    struct sockaddr_storage addr = {0};
     int addr_len = sizeof(addr);
-    uv_tcp_getpeername(&conn->handle, (struct sockaddr *)&addr, &addr_len);
-
-    char ip[64] = {0};
-    if (addr.ss_family == AF_INET) {
-        uv_ip4_name((struct sockaddr_in *)&addr, ip, sizeof(ip));
-    } else if (addr.ss_family == AF_INET6) {
-        uv_ip6_name((struct sockaddr_in6 *)&addr, ip, sizeof(ip));
+    char ip[64] = "unknown";
+    int peer_rc = uv_tcp_getpeername(&conn->handle, (struct sockaddr *)&addr, &addr_len);
+    if (peer_rc == 0) {
+        if (addr.ss_family == AF_INET) {
+            uv_ip4_name((struct sockaddr_in *)&addr, ip, sizeof(ip));
+        } else if (addr.ss_family == AF_INET6) {
+            uv_ip6_name((struct sockaddr_in6 *)&addr, ip, sizeof(ip));
+        }
+    } else {
+        log_debug("on_connection: Failed to get peer address: %s", uv_strerror(peer_rc));
     }
     safe_strcpy(conn->request.client_ip, ip, sizeof(conn->request.client_ip), 0);
 
