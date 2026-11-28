@@ -44,7 +44,10 @@ static void archive_next(archive_stream_t *stream);
 extern int libuv_send_response_ex(libuv_connection_t *, const http_response_t *, write_complete_action_t);
 
 static void archive_release(archive_stream_t *stream) {
-    if (--stream->references == 0) free(stream);
+    if (--stream->references == 0) {
+        free(stream->buffer);
+        free(stream);
+    }
 }
 
 static void archive_timer_closed(uv_handle_t *handle) {
@@ -221,6 +224,16 @@ int recording_archive_start(libuv_connection_t *conn) {
         http_response_add_header(&conn->response, "Content-Range", value);
         conn->archive_stream = NULL;
         archive_free(stream);
+        return -1;
+    }
+    // Allocate only for a valid, admitted stream; the final stream reference
+    // owns this buffer until queued reads and writes have completed.
+    stream->buffer = malloc(ARCHIVE_CHUNK);
+    if (!stream->buffer) {
+        conn->archive_stream = NULL;
+        archive_free(stream);
+        http_response_set_json_error(&conn->response, 503, "Archive streaming is busy; retry later");
+        http_response_add_header(&conn->response, "Retry-After", "5");
         return -1;
     }
     stream->offset = start;
