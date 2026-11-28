@@ -658,6 +658,7 @@ void test_shutdown_waits_for_a_worker_beyond_the_old_ten_second_timeout(void) {
 void test_proxy_preflight_advertises_endpoint_method(void) {
     const char *paths[] = {"/go2rtc/api/streams", "/go2rtc/api/webrtc"};
     const char *endpoint_methods[] = {"GET", "POST"};
+    const char *allow_values[] = {"GET, OPTIONS", "POST, OPTIONS"};
     for (int i = 0; i < 2; i++) {
         http_request_t request;
         http_response_t response;
@@ -665,16 +666,24 @@ void test_proxy_preflight_advertises_endpoint_method(void) {
         http_response_init(&response);
         strcpy(request.path, paths[i]);
         strcpy(request.method_str, "OPTIONS");
-        http_request_add_header(&request, "Origin", "https://example.test");
-        http_request_add_header(&request, "Access-Control-Request-Method", endpoint_methods[i]);
+        strcpy(request.headers[0].name, "Origin");
+        strcpy(request.headers[0].value, "https://example.test");
+        strcpy(request.headers[1].name, "Access-Control-Request-Method");
+        strcpy(request.headers[1].value, endpoint_methods[i]);
+        request.num_headers = 2;
         handle_go2rtc_proxy(&request, &response);
         TEST_ASSERT_EQUAL_INT(204, response.status_code);
         bool found_allow_methods = false;
+        bool found_allow = false;
         bool found_origin = false;
         for (int j = 0; j < response.num_headers; j++) {
             if (!strcmp(response.headers[j].name, "Access-Control-Allow-Methods")) {
-                TEST_ASSERT_NOT_NULL(strstr(response.headers[j].value, endpoint_methods[i]));
+                TEST_ASSERT_EQUAL_STRING(allow_values[i], response.headers[j].value);
                 found_allow_methods = true;
+            }
+            if (!strcmp(response.headers[j].name, "Allow")) {
+                TEST_ASSERT_EQUAL_STRING(allow_values[i], response.headers[j].value);
+                found_allow = true;
             }
             if (!strcmp(response.headers[j].name, "Access-Control-Allow-Origin")) {
                 TEST_ASSERT_EQUAL_STRING("*", response.headers[j].value);
@@ -682,6 +691,7 @@ void test_proxy_preflight_advertises_endpoint_method(void) {
             }
         }
         TEST_ASSERT_TRUE(found_allow_methods);
+        TEST_ASSERT_TRUE(found_allow);
         TEST_ASSERT_TRUE(found_origin);
         http_response_free(&response);
     }
