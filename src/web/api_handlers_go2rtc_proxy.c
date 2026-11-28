@@ -848,6 +848,8 @@ void handle_go2rtc_proxy(const http_request_t *req, http_response_t *res) {
         else
             log_warn("go2rtc proxy: response buffering failed");
         if (ctx.buffer) free(ctx.buffer);
+        if (media_lease[0])
+            go2rtc_media_policy_release_lease(media_lease);
         http_response_set_json_error(res, 502, "Proxy error: go2rtc is not responding");
         return;
     }
@@ -855,11 +857,14 @@ void handle_go2rtc_proxy(const http_request_t *req, http_response_t *res) {
         ctx.http_code < 300 && !ctx.media_policy_ack) {
         log_warn("%s (HTTP %ld)", GO2RTC_MEDIA_POLICY_ERROR, ctx.http_code);
         if (ctx.buffer) free(ctx.buffer);
+        go2rtc_media_policy_release_lease(media_lease);
         http_response_set_json_error(res, 502, GO2RTC_MEDIA_POLICY_ERROR);
         return;
     }
     if (ctx.http_code >= 300 && ctx.http_code < 400) {
         free(ctx.buffer);
+        if (media_lease[0])
+            go2rtc_media_policy_release_lease(media_lease);
         http_response_set_json_error(res, 502,
             "Proxy error: upstream redirect is not supported");
         return;
