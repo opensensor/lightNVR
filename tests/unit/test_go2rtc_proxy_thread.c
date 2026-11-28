@@ -647,6 +647,7 @@ void test_shutdown_waits_for_a_worker_beyond_the_old_ten_second_timeout(void) {
     TEST_ASSERT_EQUAL_INT(0, completed_responses);
     TEST_ASSERT_EQUAL_INT(-1, go2rtc_proxy_thread_submit(&fixture_connection, WRITE_ACTION_CLOSE));
     uv_run(&loop, UV_RUN_DEFAULT);
+    TEST_ASSERT_EQUAL_INT(0, completed_responses);
     TEST_ASSERT_EQUAL_INT(0, go2rtc_proxy_thread_init(&loop));
     http_response_free(&fixture_connection.response);
     fixture_connection_initialized = false;
