@@ -86,10 +86,17 @@ test('timelines filter requested IDs, counts and ranges without revealing hidden
 test('large timeline IDs remain exact through JSON, playback and ZIP export',async({server},info)=>{
   const fixture=seedRecordings(server);
   const exact=['9007199254740991','9007199254740992','9007199254740993','9223372036854775807'];
+  const expectedBytesById=new Map<string,Buffer>();
+  const expectedDigestById=new Map<string,string>();
+  const sourceBytes=readFileSync(fixture.source);
   for(const id of exact) {
-    const file=path.join(fixture.directory,`${id}.mp4`);copyFileSync(fixture.source,file);
+    const file=path.join(fixture.directory,`${id}.mp4`);
+    const bytes=Buffer.concat([sourceBytes,Buffer.from(`\nlarge-id:${id}\n`,'utf8')]);
+    writeFileSync(file,bytes);
+    expectedBytesById.set(id,bytes);
+    expectedDigestById.set(id,createHash('sha256').update(bytes).digest('hex'));
     database(server,`INSERT INTO recordings(id,stream_name,camera_uuid,file_path,start_time,end_time,size_bytes,width,height,fps,codec,is_complete,trigger_type,playback_issue)
-      SELECT ?,stream_name,camera_uuid,?,start_time,end_time,size_bytes,width,height,fps,codec,is_complete,trigger_type,playback_issue FROM recordings WHERE id=?`,[BigInt(id),file,ids.playable]);
+      SELECT ?,stream_name,camera_uuid,?,start_time,end_time,?,width,height,fps,codec,is_complete,trigger_type,playback_issue FROM recordings WHERE id=?`,[BigInt(id),file,bytes.length,ids.playable]);
   }
   const expected=[Number.MAX_SAFE_INTEGER,...exact.slice(1)];
   const contract=await ok(server,'/api/openapi.json',admin);
@@ -101,7 +108,7 @@ test('large timeline IDs remain exact through JSON, playback and ZIP export',asy
   expect(validateRecordingTimeline(timeline)).toBe(true);
   for(const id of expected) expect(timeline.segments.some((row:{id:number|string})=>row.id===id)).toBe(true);
   const playback=await server.request(`/api/recordings/play/${exact[2]}`,{principal:'viewer'});
-  expect(playback.status).toBe(200);expect(Buffer.from(await playback.arrayBuffer())).toEqual(fixture.bytes);
+  expect(playback.status).toBe(200);expect(Buffer.from(await playback.arrayBuffer())).toEqual(expectedBytesById.get(exact[2]));
   const exporter=await createUser(server,'large_id_exporter');
   const exportRole=await role(server,'Large ID camera A exporter',['recordings.export']);
   await policy(server,exporter,[{role_uuid:exportRole,scope:cameraScope(server.cameras.A.camera_uuid)}]);
@@ -118,8 +125,7 @@ test('large timeline IDs remain exact through JSON, playback and ZIP export',asy
   const members=JSON.parse(execFileSync('python3',['-c',
     'import hashlib,json,sys,zipfile; z=zipfile.ZipFile(sys.argv[1]); assert z.testzip() is None; print(json.dumps({n:hashlib.sha256(z.read(n)).hexdigest() for n in z.namelist()}))',archive],{encoding:'utf8'}));
   expect(Object.keys(members).sort()).toEqual(exact.slice(1,3).map(id=>`${id}.mp4`));
-  const expectedDigest=createHash('sha256').update(fixture.bytes).digest('hex');
-  const expectedMembers=Object.fromEntries(exact.slice(1,3).map(id=>[`${id}.mp4`,expectedDigest]));
+  const expectedMembers=Object.fromEntries(exact.slice(1,3).map(id=>[`${id}.mp4`,expectedDigestById.get(id)!]));
   expect(members).toEqual(expectedMembers);
 });
 
