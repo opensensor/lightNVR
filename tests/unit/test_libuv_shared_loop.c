@@ -65,6 +65,7 @@ static void test_stop_preserves_foreign_handle(void) {
     TEST_ASSERT_FALSE(uv_is_closing((uv_handle_t *)&foreign_async));
     TEST_ASSERT_TRUE(uv_loop_alive(&loop));
     http_server_destroy((http_server_handle_t)callback_server);
+    TEST_ASSERT_FALSE(uv_is_closing((uv_handle_t *)&foreign_async));
     callback_server = NULL;
 }
 
