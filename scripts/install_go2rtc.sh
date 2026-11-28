@@ -27,14 +27,26 @@ usage() {
 while [[ $# -gt 0 ]]; do
     case $1 in
         -d|--install-dir)
+            if [[ -z "${2:-}" || "$2" == -* ]]; then
+                echo "Error: --install-dir requires a non-empty value." >&2
+                exit 1
+            fi
             INSTALL_DIR="$2"
             shift 2
             ;;
         -c|--config-dir)
+            if [[ -z "${2:-}" || "$2" == -* ]]; then
+                echo "Error: --config-dir requires a non-empty value." >&2
+                exit 1
+            fi
             CONFIG_DIR="$2"
             shift 2
             ;;
         -a|--arch)
+            if [[ -z "${2:-}" || "$2" == -* ]]; then
+                echo "Error: --arch requires a non-empty value." >&2
+                exit 1
+            fi
             ARCH="$2"
             shift 2
             ;;
