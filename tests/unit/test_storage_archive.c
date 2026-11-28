@@ -172,13 +172,18 @@ static void assert_storage_state(uint64_t id, const char *state, int copies,
     cJSON_Delete(json);
 }
 
-static void sql(const char *value) {
+static int sql_noassert(const char *value) {
     char *error = NULL;
     pthread_mutex_lock(get_db_mutex());
     int result = sqlite3_exec(get_db_handle(), value, NULL, NULL, &error);
     pthread_mutex_unlock(get_db_mutex());
     if (error) fprintf(stderr, "SQL: %s\n", error);
     sqlite3_free(error);
+    return result;
+}
+
+static void sql(const char *value) {
+    int result = sql_noassert(value);
     TEST_ASSERT_EQUAL_INT(SQLITE_OK, result);
 }
 
@@ -2193,7 +2198,7 @@ static void test_stalled_archive_writes_renew_lease_until_completion(void) {
             : "expected both archive streams to stall with queued writes");
     }
     // Advance the database's lease clock without a two-minute wall-clock sleep.
-    sql("UPDATE storage_read_leases SET expires_at=0;");
+    int lease_update1_result = sql_noassert("UPDATE storage_read_leases SET expires_at=0;");
     captured_callbacks[0](captured_timers[0]);
     bool has_lease_after_first = storage_source_has_lease(id);
     int delete_result = storage_recording_delete(id, "delete during stalled playback", NULL);
@@ -2207,7 +2212,7 @@ static void test_stalled_archive_writes_renew_lease_until_completion(void) {
     }
     libuv_connection_close(first);
     for (int i = 0; i < 10; i++) uv_run(&loop, UV_RUN_NOWAIT);
-    sql("UPDATE storage_read_leases SET expires_at=0;");
+    int lease_update2_result = sql_noassert("UPDATE storage_read_leases SET expires_at=0;");
     captured_callbacks[1](captured_timers[1]);
     bool has_lease_after_second = storage_source_has_lease(id);
     int deletion_second = storage_deletion_process_one();
@@ -2244,6 +2249,8 @@ static void test_stalled_archive_writes_renew_lease_until_completion(void) {
     close(clients[1]);
     uv_run(&loop, UV_RUN_DEFAULT);
     TEST_ASSERT_EQUAL_INT(0, uv_loop_close(&loop));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(SQLITE_OK, lease_update1_result, "first lease expiry update failed");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(SQLITE_OK, lease_update2_result, "second lease expiry update failed");
     TEST_ASSERT_EQUAL_INT(0, set_nonblock_result);
     TEST_ASSERT_TRUE(response_alloc_ok);
     TEST_ASSERT_EQUAL_INT(0, recv_unexpected_errno);
