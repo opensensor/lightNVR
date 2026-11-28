@@ -553,10 +553,12 @@ static int file_section_hash(FILE *file, uint64_t offset, uint64_t bytes, char h
     return rc || fseeko(file, (off_t)offset, SEEK_SET) ? -1 : 0;
 }
 
+static const char *xml_local_name(ezxml_t node);
+
 static ezxml_t ezxml_child_local(ezxml_t node, const char *local) {
     if (!node || !local) return NULL;
     for (ezxml_t child = node->child; child; child = child->next) {
-        const char *name = child->name ? xml_local_name(child->name) : NULL;
+        const char *name = xml_local_name(child);
         if (name && !strcmp(name, local)) return child;
     }
     return NULL;
