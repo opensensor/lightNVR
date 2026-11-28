@@ -89,6 +89,13 @@ static void archive_finish(archive_stream_t *stream, bool failed) {
     conn->async_response_pending = false;
     bool headers_sent = stream->headers_sent;
     archive_free(stream);
+    // The TCP close callback retains connections while an archive read/write
+    // is pending. This callback releases the final owner after I/O completes.
+    if (conn->close_completed) {
+        if (!conn->handler_on_worker && conn->file_serve_refs == 0)
+            libuv_connection_destroy(conn);
+        return;
+    }
     if (failed && !headers_sent) {
         http_response_set_json_error(&conn->response, 503, "Archive source is unavailable; retry later");
         http_response_add_header(&conn->response, "Retry-After", "5");
