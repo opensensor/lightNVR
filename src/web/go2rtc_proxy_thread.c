@@ -177,6 +177,7 @@ static size_t proxy_header_cb(char *buffer, size_t size, size_t nitems, void *us
         ctx->header_block_is_informational = code >= 100 && code < 200;
         ctx->media_policy_ack = false;
         ctx->response_content_type[0] = '\0';
+        ctx->response_location[0] = '\0';
         return total;
     }
 
@@ -194,6 +195,17 @@ static size_t proxy_header_cb(char *buffer, size_t size, size_t nitems, void *us
             len = sizeof(ctx->response_content_type) - 1;
         memcpy(ctx->response_content_type, val, len);
         ctx->response_content_type[len] = '\0';
+    }
+    if (!ctx->header_block_is_informational &&
+        total > 10 && strncasecmp(buffer, "Location:", 9) == 0) {
+        const char *val = buffer + 9;
+        while (*val == ' ' || *val == '\t') val++;
+        size_t len = total - (size_t)(val - buffer);
+        while (len > 0 && (val[len - 1] == '\r' || val[len - 1] == '\n')) len--;
+        if (len >= sizeof(ctx->response_location))
+            len = sizeof(ctx->response_location) - 1;
+        memcpy(ctx->response_location, val, len);
+        ctx->response_location[len] = '\0';
     }
     return total;
 }
