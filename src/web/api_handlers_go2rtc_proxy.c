@@ -132,8 +132,9 @@ static size_t buffered_header_cb(char *buffer, size_t size, size_t nitems, void 
     // Parse Content-Type header
     if (total > 14 && strncasecmp(buffer, "Content-Type:", 13) == 0) {
         const char *val = buffer + 13;
-        while (*val == ' ' || *val == '\t') val++;
-        size_t len = total - (val - buffer);
+        const char *end = buffer + total;
+        while (val < end && (*val == ' ' || *val == '\t')) val++;
+        size_t len = (size_t)(end - val);
         // Trim trailing \r\n
         while (len > 0 && (val[len - 1] == '\r' || val[len - 1] == '\n')) len--;
         if (len >= sizeof(ctx->content_type)) len = sizeof(ctx->content_type) - 1;
