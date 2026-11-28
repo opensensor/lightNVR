@@ -631,8 +631,8 @@ static void test_multipart_resume_after_restart(void) {
     unsigned char block[65536];
     uint64_t expected_size = 0;
     uint64_t expected_hash = 14695981039346656037ULL; /* FNV-1a 64-bit offset basis */
-    for (size_t i = 0; i < sizeof(block); i++) block[i] = (unsigned char)(i * 13);
     for (int i = 0; i < 144; i++) {
+        for (size_t j = 0; j < sizeof(block); j++) block[j] = (unsigned char)(((unsigned)i * 131u + (unsigned)j * 13u) & 0xFFu);
         TEST_ASSERT_EQUAL_UINT(sizeof(block), fwrite(block, 1, sizeof(block), file));
         expected_size += sizeof(block);
         for (size_t j = 0; j < sizeof(block); j++) {
@@ -1491,7 +1491,8 @@ static void test_batch_export_waits_for_verified_archive_source(void) {
             struct timespec delay = {.tv_nsec = 10000000};
             nanosleep(&delay, NULL);
         }
-        TEST_ASSERT_TRUE_MESSAGE(terminal, "batch export worker did not reach terminal state before fixture release");
+        TEST_ASSERT_TRUE_MESSAGE(terminal,
+            "batch export worker did not reach terminal state before fixture release");
     }
     TEST_ASSERT_FALSE_MESSAGE(timed_out, "batch export did not complete before polling deadline");
     TEST_ASSERT_TRUE(retrieved);
