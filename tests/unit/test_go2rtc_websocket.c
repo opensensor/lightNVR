@@ -183,7 +183,7 @@ static void *upstream_peer(void *arg) {
         const char unsupported[] = "HTTP/1.1 101 Switching Protocols\r\n"
             "Upgrade: websocket\r\nConnection: Upgrade\r\n"
             "Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n";
-        send_all(peer->fd, unsupported, sizeof(unsupported) - 1);
+        peer->sent_configured_response = send_all(peer->fd, unsupported, sizeof(unsupported) - 1);
         send_all(peer->fd, media_response, sizeof(media_response));
         struct pollfd ready = {.fd = peer->fd, .events = POLLIN};
         if (poll(&ready, 1, 200) > 0 && (ready.revents & POLLIN)) {
