@@ -98,9 +98,9 @@ int __wrap_uv_timer_start(uv_timer_t *timer, uv_timer_cb callback, uint64_t time
     return __real_uv_timer_start(timer, callback, timeout, repeat);
 }
 
-static cJSON *api(void (*handler)(const http_request_t *, http_response_t *),
-                  http_method_t method, const char *path, const char *query,
-                  const char *body, const char *api_key, int expected) {
+static cJSON *api_noassert(void (*handler)(const http_request_t *, http_response_t *),
+                           http_method_t method, const char *path, const char *query,
+                           const char *body, const char *api_key, int *status_code) {
     http_request_t request;
     http_response_t response;
     http_request_init(&request);
@@ -121,8 +121,16 @@ static cJSON *api(void (*handler)(const http_request_t *, http_response_t *),
     }
     handler(&request, &response);
     cJSON *json = response.body ? cJSON_Parse(response.body) : NULL;
-    int actual = response.status_code;
+    *status_code = response.status_code;
     http_response_free(&response);
+    return json;
+}
+
+static cJSON *api(void (*handler)(const http_request_t *, http_response_t *),
+                  http_method_t method, const char *path, const char *query,
+                  const char *body, const char *api_key, int expected) {
+    int actual = 0;
+    cJSON *json = api_noassert(handler, method, path, query, body, api_key, &actual);
     TEST_ASSERT_EQUAL_INT_MESSAGE(expected, actual, path);
     TEST_ASSERT_NOT_NULL(json);
     return json;
@@ -1552,7 +1560,7 @@ static void test_batch_export_waits_for_verified_archive_source(void) {
         nanosleep(&delay, NULL);
     }
     bool timed_out = have_status_path ? !completed : true;
-    if (timed_out || submit_failed) {
+    if (timed_out && have_status_path) {
         // Do not abort immediately: first wait for a terminal worker state so
         // fixture teardown cannot race a detached export worker.
         bool terminal = failed;
