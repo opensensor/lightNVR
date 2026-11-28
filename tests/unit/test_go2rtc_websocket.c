@@ -364,10 +364,12 @@ void test_failed_upstream_handshake_returns_502(void) {
     TEST_ASSERT_EQUAL_INT(0, pthread_create(&thread, NULL, upstream_peer, &peer));
     int client = client_open();
     char origin[64], response[2048];
+    int status = 0;
     snprintf(origin, sizeof(origin), "http://localhost:%d", web_port);
     send_upgrade(client, 0, origin, false);
     TEST_ASSERT_TRUE(read_headers(client, response, sizeof(response)));
-    TEST_ASSERT_NOT_NULL(strstr(response, "502"));
+    TEST_ASSERT_EQUAL_INT(1, sscanf(response, "HTTP/%*d.%*d %d", &status));
+    TEST_ASSERT_EQUAL_INT(502, status);
     close(client);
     pthread_join(thread, NULL);
     TEST_ASSERT_FALSE(peer.received_mse);
@@ -378,10 +380,12 @@ void test_upgrade_without_media_policy_ack_is_rejected(void) {
     TEST_ASSERT_EQUAL_INT(0, pthread_create(&thread, NULL, upstream_peer, &peer));
     int client = client_open();
     char origin[64], response[2048];
+    int status = 0;
     snprintf(origin, sizeof(origin), "http://localhost:%d", web_port);
     send_upgrade(client, 0, origin, false);
     TEST_ASSERT_TRUE(read_headers(client, response, sizeof(response)));
-    TEST_ASSERT_NOT_NULL(strstr(response, "502"));
+    TEST_ASSERT_EQUAL_INT(1, sscanf(response, "HTTP/%*d.%*d %d", &status));
+    TEST_ASSERT_EQUAL_INT(502, status);
     const char *length_header = strstr(response, "Content-Length: ");
     TEST_ASSERT_NOT_NULL(length_header);
     long body_length = strtol(length_header + strlen("Content-Length: "), NULL, 10);
@@ -400,10 +404,12 @@ void test_upgrade_with_wrong_accept_is_rejected(void) {
     TEST_ASSERT_EQUAL_INT(0, pthread_create(&thread, NULL, upstream_peer, &peer));
     int client = client_open();
     char origin[64], response[2048];
+    int status = 0;
     snprintf(origin, sizeof(origin), "http://localhost:%d", web_port);
     send_upgrade(client, 0, origin, false);
     TEST_ASSERT_TRUE(read_headers(client, response, sizeof(response)));
-    TEST_ASSERT_NOT_NULL(strstr(response, "502"));
+    TEST_ASSERT_EQUAL_INT(1, sscanf(response, "HTTP/%*d.%*d %d", &status));
+    TEST_ASSERT_EQUAL_INT(502, status);
     close(client);
     pthread_join(thread, NULL);
 }
