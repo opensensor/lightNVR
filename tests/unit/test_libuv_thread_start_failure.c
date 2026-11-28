@@ -10,6 +10,24 @@ static bool fail_next_thread;
 static http_server_handle_t fixture_server;
 static int fixture_occupied_fd;
 
+static uint16_t acquire_available_loopback_port(void) {
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    TEST_ASSERT_TRUE(fd >= 0);
+
+    struct sockaddr_in address = {
+        .sin_family = AF_INET,
+        .sin_addr.s_addr = htonl(INADDR_LOOPBACK),
+        .sin_port = htons(0)
+    };
+    TEST_ASSERT_EQUAL_INT(0, bind(fd, (struct sockaddr *)&address, sizeof(address)));
+
+    socklen_t length = sizeof(address);
+    TEST_ASSERT_EQUAL_INT(0, getsockname(fd, (struct sockaddr *)&address, &length));
+
+    TEST_ASSERT_EQUAL_INT(0, close(fd));
+    return ntohs(address.sin_port);
+}
+
 int __real_uv_thread_create(uv_thread_t *, void (*)(void *), void *);
 int __wrap_uv_thread_create(uv_thread_t *thread, void (*entry)(void *), void *arg) {
     if (fail_next_thread) {
@@ -42,6 +60,8 @@ void tearDown(void) {
 static void test_failed_thread_start_closes_handles_before_retry(void) {
     http_server_config_t config = {0};
     config.bind_ip = "127.0.0.1";
+    config.port = acquire_available_loopback_port();
+    TEST_ASSERT_TRUE(config.port > 0);
     config.web_root = "/nonexistent-thread-start-fixture";
     config.max_connections = 8;
     fixture_server = libuv_server_init(&config);
