@@ -27,6 +27,7 @@ static http_server_handle_t server;
 static int upstream = -1, web_port;
 static char db_path[80];
 static atomic_bool teardown_started = ATOMIC_VAR_INIT(false);
+static atomic_bool client_teardown_started = ATOMIC_VAR_INIT(false);
 static const char upgrade_headers[] =
     "Upgrade: websocket\r\nConnection: keep-alive, Upgrade\r\n"
     "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n";
@@ -104,6 +105,7 @@ typedef struct {
     bool observed_client_ws_data_after_reject;
     bool observed_upgrade_request;
     bool sent_configured_response;
+    bool wait_for_client_teardown;
     bool omit_media_ack;
     bool bad_accept;
 } peer_t;
@@ -221,7 +223,9 @@ static void *upstream_peer(void *arg) {
     char byte;
     struct timespec start, now;
     const long teardown_budget_ms = 5000;
-    while (!atomic_load(&teardown_started)) {
+    atomic_bool *start_flag = peer->wait_for_client_teardown
+        ? &client_teardown_started : &teardown_started;
+    while (!atomic_load(start_flag)) {
         struct timespec pause = {.tv_sec = 0, .tv_nsec = 10 * 1000 * 1000}; // 10ms
         nanosleep(&pause, NULL);
     }
@@ -261,6 +265,7 @@ done:
 }
 void setUp(void) {
     atomic_store(&teardown_started, false);
+    atomic_store(&client_teardown_started, false);
     for (int i = 0; i < 4; i++) {
         tracked_clients[i] = -1;
         tracked_thread_started[i] = false;
@@ -308,6 +313,7 @@ void setUp(void) {
 }
 void tearDown(void) {
     atomic_store(&teardown_started, true);
+    atomic_store(&client_teardown_started, true);
     for (int i = 0; i < 5; i++) {
         if (tracked_clients[i] >= 0) {
             close(tracked_clients[i]);
@@ -350,6 +356,7 @@ void test_four_websockets_relay_media_on_the_web_port_and_close_cleanly(void) {
     snprintf(origin, sizeof(origin), "http://localhost:%d", web_port);
     for (int i = 0; i < 4; i++) {
         tracked_peers[i].status = 101;
+        tracked_peers[i].wait_for_client_teardown = i < 2;
         TEST_ASSERT_EQUAL_INT(0, pthread_create(&tracked_threads[i], NULL, upstream_peer, &tracked_peers[i]));
         tracked_thread_started[i] = true;
         tracked_clients[i] = client_open();
@@ -380,6 +387,7 @@ void test_four_websockets_relay_media_on_the_web_port_and_close_cleanly(void) {
         TEST_ASSERT_EQUAL_MEMORY(media_response, media, sizeof(media));
     }
     // First verify client-initiated disconnect propagation for two peers.
+    atomic_store(&client_teardown_started, true);
     close(tracked_clients[0]); tracked_clients[0] = -1;
     close(tracked_clients[1]); tracked_clients[1] = -1;
     for (int i = 0; i < 2; i++) {
