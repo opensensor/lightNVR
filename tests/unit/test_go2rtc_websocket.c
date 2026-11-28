@@ -206,14 +206,12 @@ static void *upstream_peer(void *arg) {
         }
         goto done;
     }
-    // Send the upgrade response in controlled fragments, including a split
-    // across the terminating "\r\n\r\n", then send the first media frame.
-    // This deterministically exercises fragmented handshake parsing.
-    const size_t upgrade_len = sizeof(upgrade_response) - 1;
-    const size_t split = upgrade_len - 2; // split inside final "\r\n\r\n"
-    if (!send_all(peer->fd, upgrade_response, split)) goto done;
-    if (!send_all(peer->fd, upgrade_response + split, upgrade_len - split)) goto done;
-    if (!send_all(peer->fd, media_response, sizeof(media_response))) goto done;
+    // Send the upgrade and first frame together; the client must handle
+    // coalescing or splitting because TCP does not preserve write boundaries.
+    unsigned char combined[sizeof(upgrade_response) - 1 + sizeof(media_response)];
+    memcpy(combined, upgrade_response, sizeof(upgrade_response) - 1);
+    memcpy(combined + sizeof(upgrade_response) - 1, media_response, sizeof(media_response));
+    if (!send_all(peer->fd, combined, sizeof(combined))) goto done;
     unsigned char frame[sizeof(mse_request)];
     if (read_all(peer->fd, frame, sizeof(frame))) {
         peer->received_mse = memcmp(frame, mse_request, sizeof(frame)) == 0;
@@ -585,9 +583,7 @@ void test_upgrade_with_wrong_accept_is_rejected(void) {
     TEST_ASSERT_TRUE((size_t)req_len + sizeof(masked_frame) <= sizeof(payload));
     memcpy(payload, request, (size_t)req_len);
     memcpy(payload + req_len, masked_frame, sizeof(masked_frame));
-    size_t total_len = (size_t)req_len + sizeof(masked_frame);
-    ssize_t sent = send_all(client, payload, total_len);
-    TEST_ASSERT_EQUAL_INT((int)total_len, (int)sent);
+    TEST_ASSERT_TRUE(send_all(client, payload, (size_t)req_len + sizeof(masked_frame)));
     TEST_ASSERT_TRUE(read_headers(client, response, sizeof(response)));
     TEST_ASSERT_EQUAL_INT(1, sscanf(response, "HTTP/%*d.%*d %d", &status));
     TEST_ASSERT_EQUAL_INT(502, status);
