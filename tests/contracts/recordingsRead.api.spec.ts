@@ -208,7 +208,7 @@ test('timeline manifests and playback keep captured ownership across reused and 
 test('real playable bytes support prefix, suffix, open and clamped ranges; invalid ranges match current protocol',async({server})=>{
   const fixture=seedRecordings(server);expect(fixture.probe).toMatchObject({streams:[{codec_name:'h264',codec_type:'video',width:96,height:64}]});
   const full=await media(server,ids.playable);expect(full.status).toBe(200);expect(full.headers.get('content-type')).toBe('video/mp4');expect(full.headers.get('accept-ranges')).toBe('bytes, bytes');expect(Number(full.headers.get('content-length'))).toBe(fixture.bytes.length);expect(Buffer.from(await full.arrayBuffer())).toEqual(fixture.bytes);
-  const size=fixture.bytes.length;const cases:[string,number,number][]=[['bytes=0-127',0,127],['bytes=128-',128,size-1],['bytes=-64',size-64,size-1],[`bytes=${size-4}-${size+100}`,size-4,size-1],[`bytes=-${size+100}`,0,size-1],['bytes=0',0,size-1],['bytes=0-3,8-9',0,3]];
+  const size=fixture.bytes.length;const cases:[string,number,number][]=[['bytes=0-127',0,127],['bytes=128-',128,size-1],['bytes=-64',size-64,size-1],[`bytes=${size-4}-${size+100}`,size-4,size-1],[`bytes=-${size+100}`,0,size-1]];
   const fragments:Buffer[]=[];
   for(const [range,start,end] of cases) {
     const response=await media(server,ids.playable,viewer,{Range:range});expect(response.status).toBe(206);expect(response.headers.get('content-range')).toBe(`bytes ${start}-${end}/${size}`);expect(Number(response.headers.get('content-length'))).toBe(end-start+1);
@@ -217,7 +217,7 @@ test('real playable bytes support prefix, suffix, open and clamped ranges; inval
   const reconstructed=path.join(fixture.directory,'reconstructed.mp4');writeFileSync(reconstructed,Buffer.concat(fragments));expect(readFileSync(reconstructed)).toEqual(fixture.bytes);
   const probe=JSON.parse(execFileSync('ffprobe',['-v','error','-show_entries','format=duration','-of','json',reconstructed],{encoding:'utf8'}));expect(Number(probe.format.duration)).toBeGreaterThan(1);
   execFileSync('ffmpeg',['-nostdin','-hide_banner','-loglevel','error','-i',reconstructed,'-f','null','-'],{timeout:10000});
-  for(const range of [`bytes=${size}-`,'bytes=5-1','items=0-1','bytes=-0']) {
+  for(const range of [`bytes=${size}-`,'bytes=5-1','items=0-1','bytes=-0','bytes=0','bytes=0-3,8-9']) {
     const response=await media(server,ids.playable,viewer,{Range:range});expect(response.status).toBe(416);expect(response.headers.get('content-range')).toBeNull();expect(validateApiError(await response.json())).toBe(true);
   }
 });
