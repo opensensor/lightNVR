@@ -43,6 +43,8 @@
 static char root[] = "/tmp/lightnvr-archive-test-XXXXXX";
 static char db_path[512], source_path[512], source_uuid[37];
 static const char *payload = "a finalized recording preserved across storage tiers";
+static bool env_archive_cache_mb_had_value;
+static char env_archive_cache_mb_value[64];
 
 /* Instrument private background readers, including instruction budgets and
  * a deterministic pause while a SELECT is in progress. */
@@ -821,7 +823,6 @@ static void test_archive_restore_without_retrieval_cache(void) {
     storage_migration_job_t restore;
     TEST_ASSERT_EQUAL_INT(DB_STORAGE_MIGRATION_OK, db_storage_migration_create(id, source_uuid, 0, &restore));
     TEST_ASSERT_EQUAL_INT(1, storage_migration_process_one());
-    unsetenv("LIGHTNVR_ARCHIVE_CACHE_MB");
     TEST_ASSERT_EQUAL_INT(DB_STORAGE_MIGRATION_OK, db_storage_migration_get(restore.uuid, &restore));
     TEST_ASSERT_EQUAL_STRING("completed", restore.state);
     recording_metadata_t metadata;
