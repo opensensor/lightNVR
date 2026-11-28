@@ -8,6 +8,7 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/time.h>
+#include <time.h>
 #include <unistd.h>
 #include <curl/curl.h>
 
@@ -213,7 +214,25 @@ static void *upstream_peer(void *arg) {
     // Allow a few receive timeouts on slow test hosts, but keep teardown bounded.
     peer->observed_disconnect = false;
     char byte;
-    for (int timeouts = 0; timeouts < 5;) {
+    struct timespec start, now;
+    const long teardown_budget_ms = 5000;
+    if (clock_gettime(CLOCK_MONOTONIC, &start) != 0) goto done;
+    for (;;) {
+        if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) break;
+        long elapsed_ms = (now.tv_sec - start.tv_sec) * 1000L +
+            (now.tv_nsec - start.tv_nsec) / 1000000L;
+        long remaining_ms = teardown_budget_ms - elapsed_ms;
+        if (remaining_ms <= 0) break;
+
+        struct pollfd pfd = {.fd = peer->fd, .events = POLLIN};
+        int pr = poll(&pfd, 1, (int)remaining_ms);
+        if (pr == 0) break; // deadline reached without further events
+        if (pr < 0) {
+            if (errno == EINTR) continue;
+            break;
+        }
+        if (!(pfd.revents & (POLLIN | POLLERR | POLLHUP | POLLNVAL))) continue;
+
         ssize_t n = recv(peer->fd, &byte, 1, 0);
         if (n == 0) {
             peer->observed_disconnect = true; // remote closed
@@ -221,10 +240,7 @@ static void *upstream_peer(void *arg) {
         }
         if (n > 0) continue;
         if (errno == EINTR) continue;
-        if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            timeouts++;
-            continue;
-        }
+        if (errno == EAGAIN || errno == EWOULDBLOCK) continue;
         if (errno == ECONNRESET || errno == ENOTCONN || errno == EPIPE) {
             peer->observed_disconnect = true;
         }
