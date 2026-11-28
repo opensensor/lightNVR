@@ -102,10 +102,13 @@ test('large timeline IDs remain exact through JSON, playback and ZIP export',asy
   for(const id of expected) expect(timeline.segments.some((row:{id:number|string})=>row.id===id)).toBe(true);
   const playback=await server.request(`/api/recordings/play/${exact[2]}`,{principal:'viewer'});
   expect(playback.status).toBe(200);expect(Buffer.from(await playback.arrayBuffer())).toEqual(fixture.bytes);
-  const forbiddenExport=await server.request('/api/recordings/batch-download',{principal:'cameraScope',method:'POST',body:{ids:[ids.playable,ids.hidden],filename:'forbidden.zip'}});
-  expect(forbiddenExport.status).toBe(403);
-  const forbiddenExportBody=await forbiddenExport.json().catch(()=>undefined);
-  expect(forbiddenExportBody?.token).toBeUndefined();
+  const exporter=await createUser(server,'large_id_exporter');
+  const exportRole=await role(server,'Large ID camera A exporter',['recordings.export']);
+  await policy(server,exporter,[{role_uuid:exportRole,scope:cameraScope(server.cameras.A.camera_uuid)}]);
+  const forbiddenExport=await wire(server,'/api/recordings/batch-download',exporter,'POST',{ids:[exact[2],ids.hidden],filename:'forbidden.zip'});
+  expect(forbiddenExport.response.status).toBe(403);
+  expect(forbiddenExport.body).not.toHaveProperty('token');
+  safeDenied(forbiddenExport.body,server,fixture);
   const accepted=await ok(server,'/api/recordings/batch-download',admin,'POST',{ids:exact.slice(1,3),filename:'exact.zip'});
   await expect.poll(async()=> (await ok(server,`/api/recordings/batch-download/status/${accepted.token}`,admin)).status,
     {timeout:15000,intervals:[50,100,200]}).toBe('complete');
