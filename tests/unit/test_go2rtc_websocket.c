@@ -194,15 +194,22 @@ static void *upstream_peer(void *arg) {
     }
     // Keep the socket alive until its consumer or the server disconnects.
     // Allow a few receive timeouts on slow test hosts, but keep teardown bounded.
+    peer->observed_disconnect = false;
     char byte;
     for (int timeouts = 0; timeouts < 5;) {
         ssize_t n = recv(peer->fd, &byte, 1, 0);
-        if (n == 0) break; // remote closed
+        if (n == 0) {
+            peer->observed_disconnect = true; // remote closed
+            break;
+        }
         if (n > 0) continue;
         if (errno == EINTR) continue;
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
             timeouts++;
             continue;
+        }
+        if (errno == ECONNRESET || errno == ENOTCONN || errno == EPIPE) {
+            peer->observed_disconnect = true;
         }
         break; // other socket error
     }
