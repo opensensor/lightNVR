@@ -377,6 +377,21 @@ void test_four_websockets_relay_media_on_the_web_port_and_close_cleanly(void) {
         tracked_thread_started[i] = true;
         tracked_clients[i] = client_open();
         if (i == 0) {
+            char req[1024];
+            int n = snprintf(req, sizeof(req),
+                             "GET /go2rtc/api/ws?src=Camera%%20%d_sub HTTP/1.1\r\n"
+                             "Host: localhost:%d\r\n"
+                             "Origin: %s\r\n"
+                             "%s"
+                             "Cookie: dummy_cookie=1\r\n"
+                             "Authorization: Basic ZHVtbXk6ZHVtbXk=\r\n",
+                             i, web_port, origin, upgrade_headers);
+            TEST_ASSERT_TRUE(n > 0 && (size_t)n < sizeof(req));
+            TEST_ASSERT_TRUE((size_t)n + 2 + sizeof(mse_request) <= sizeof(req));
+            memcpy(req + n, "\r\n", 2);
+            memcpy(req + n + 2, mse_request, sizeof(mse_request));
+            TEST_ASSERT_TRUE(send_all(tracked_clients[i], req, (size_t)n + 2 + sizeof(mse_request)));
+        } else if (i == 1) {
             send_upgrade(tracked_clients[i], i, origin, true);
         } else {
             char req[1024];
