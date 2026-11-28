@@ -1219,9 +1219,9 @@ static void test_archive_credentials_reject_symlinked_directory_components(void)
 
 static void write_lifecycle_attestation(const storage_target_t *target, double checked_at,
                                         const char *xml, char path[1024]) {
-    const char *credentials_dir =
-        isolated_attestation_dir[0] ? isolated_attestation_dir
-                                    : getenv("LIGHTNVR_ARCHIVE_CREDENTIALS_DIR");
+    TEST_ASSERT_TRUE_MESSAGE(isolated_attestation_dir[0] != '\0',
+                             "isolated_attestation_dir must be initialized for attestation tests");
+    const char *credentials_dir = isolated_attestation_dir;
     snprintf(path, 1024, "%s/%s.lifecycle.json", credentials_dir, target->credential_ref);
     cJSON *json = cJSON_CreateObject();
     cJSON_AddStringToObject(json, "endpoint", target->endpoint);
