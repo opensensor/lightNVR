@@ -799,8 +799,6 @@ static void test_archive_range_proxy_and_disconnect(void) {
             size_t total = 0;
             ssize_t count;
             bool timed_out = false;
-            bool socket_error = false;
-            int socket_errno = 0;
             struct timespec start_ts, now_ts;
             const long timeout_ms = 5000;
             int flags = fcntl(client, F_GETFL, 0);
@@ -821,9 +819,9 @@ static void test_archive_range_proxy_and_disconnect(void) {
                 }
                 if (count == 0) break;
                 if (count < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
-                    socket_error = true;
-                    socket_errno = errno;
-                    break;
+                    /* The async stream may still own this stack loop and connection. */
+                    perror("FATAL: recv() failed while waiting for archive response");
+                    abort();
                 }
                 if (clock_gettime(CLOCK_MONOTONIC, &now_ts) != 0) {
                     perror("FATAL: reading archive response timer");
@@ -837,14 +835,6 @@ static void test_archive_range_proxy_and_disconnect(void) {
                 }
                 struct timespec pause = {.tv_nsec = 1000000};
                 nanosleep(&pause, NULL);
-            }
-
-            if (socket_error) {
-                /* The async stream may still own this stack loop and connection. */
-                fprintf(stderr,
-                        "FATAL: recv() failed while waiting for archive response (errno=%d: %s); aborting before fixture teardown\n",
-                        socket_errno, strerror(socket_errno));
-                abort();
             }
 
             if (timed_out) {
