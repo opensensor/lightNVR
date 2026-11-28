@@ -47,6 +47,7 @@ typedef struct {
     mbedtls_sha256_context *digest;
     uint64_t bytes;
     uint64_t limit;
+    bool limit_exceeded;
     const storage_transfer_control_t *control;
     long status;
     char etag[192];
@@ -238,7 +239,10 @@ static size_t receive_bytes(char *buffer, size_t size, size_t count, void *conte
     if (size && count > SIZE_MAX / size) return 0;
     size_t length = size * count;
     if (io->status < 200 || io->status >= 300) return length; /* never persist error documents as video */
-    if (io->bytes > io->limit || length > io->limit - io->bytes) return 0;
+    if (io->bytes > io->limit || length > io->limit - io->bytes) {
+        io->limit_exceeded = true;
+        return 0;
+    }
     if (io->data) memcpy(io->data + io->bytes, buffer, length);
     if (io->file && fwrite(buffer, 1, length, io->file) != length) return 0;
     if (io->digest && mbedtls_sha256_update(io->digest, (unsigned char *)buffer, length) != 0) return 0;
