@@ -101,6 +101,9 @@ static void close_on_loop(uv_async_t *handle) {
 
 static void *release_after_four_seconds(void *unused) {
     (void)unused;
+    pthread_mutex_lock(&release_start_mutex);
+    while (!release_start_open) pthread_cond_wait(&release_start_cond, &release_start_mutex);
+    pthread_mutex_unlock(&release_start_mutex);
     struct timespec duration = {.tv_sec = 4};
     while (nanosleep(&duration, &duration) != 0 && errno == EINTR) {}
     release_handler();
@@ -113,7 +116,9 @@ void setUp(void) {
     g_config.web_compression_enabled = false;
     g_config.web_thread_pool_size = 2;
     entered = released = finished = expired = server_state_valid = false;
+    pthread_mutex_lock(&release_start_mutex);
     release_start_open = false;
+    pthread_mutex_unlock(&release_start_mutex);
     connection = NULL;
     http_server_config_t config = {0};
     config.bind_ip = "127.0.0.1";
