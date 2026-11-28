@@ -271,6 +271,14 @@ static void on_file_open(uv_fs_t *req) {
     int r = uv_fs_fstat(ctx->conn->server->loop, &ctx->stat_req, ctx->fd, on_file_stat);
     if (r != 0) {
         log_error("on_file_open: Failed to start stat: %s", uv_strerror(r));
+
+        http_response_set_json_error(&conn->response, 500, "Internal Server Error");
+        write_complete_action_t action =
+            (conn->keep_alive && llhttp_should_keep_alive(&conn->parser))
+                ? WRITE_ACTION_KEEP_ALIVE
+                : WRITE_ACTION_CLOSE;
+        libuv_send_response_ex(conn, &conn->response, action);
+
         uv_fs_close(ctx->conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
         return;
     }
