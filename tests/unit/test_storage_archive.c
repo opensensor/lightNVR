@@ -501,7 +501,7 @@ static void test_historical_policy_survives_current_policy_deletion(void) {
 
 static pthread_mutex_t scan_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t scan_condition = PTHREAD_COND_INITIALIZER;
-static bool scan_paused, release_scan;
+static bool scan_paused, release_scan, scan_finished;
 static int pause_scan(void *unused) {
     (void)unused;
     pthread_mutex_lock(&scan_mutex);
@@ -517,6 +517,10 @@ static int pause_scan(void *unused) {
 static void *run_background_lifecycle(void *context) {
     int *result = context;
     *result = db_storage_lifecycle_reconcile();
+    pthread_mutex_lock(&scan_mutex);
+    scan_finished = true;
+    pthread_cond_broadcast(&scan_condition);
+    pthread_mutex_unlock(&scan_mutex);
     return NULL;
 }
 
@@ -525,6 +529,7 @@ static void test_api_responsive_during_lifecycle_scan(void) {
     create_history_policy();
     scan_paused = false;
     release_scan = false;
+    scan_finished = false;
     reader_progress = pause_scan;
     reader_progress_context = NULL;
     int result = -1;
@@ -557,7 +562,22 @@ static void test_api_responsive_during_lifecycle_scan(void) {
     release_scan = true;
     pthread_cond_broadcast(&scan_condition);
     pthread_mutex_unlock(&scan_mutex);
-    pthread_join(background, NULL);
+    struct timespec join_deadline;
+    if (clock_gettime(CLOCK_REALTIME, &join_deadline) != 0) {
+        perror("FATAL: starting lifecycle join timer");
+        abort();
+    }
+    join_deadline.tv_sec += 10;
+    pthread_mutex_lock(&scan_mutex);
+    while (!scan_finished &&
+           pthread_cond_timedwait(&scan_condition, &scan_mutex, &join_deadline) == 0) {}
+    bool finished = scan_finished;
+    pthread_mutex_unlock(&scan_mutex);
+    if (!finished) {
+        fprintf(stderr, "FATAL: timed out waiting for lifecycle thread completion\n");
+        abort();
+    }
+    TEST_ASSERT_EQUAL_INT(0, pthread_join(background, NULL));
     reader_progress = NULL;
     TEST_ASSERT_TRUE_MESSAGE(paused, "Background read must run on a private connection");
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, lock_result, "API mutex must remain available during scan");
