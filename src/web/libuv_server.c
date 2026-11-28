@@ -483,12 +483,16 @@ static void server_thread_func(void *arg) {
  * @brief Walk callback to close all handles
  */
 static void close_walk_cb(uv_handle_t *handle, void *arg) {
-    (void)arg;
+    libuv_server_t *server = (libuv_server_t *)arg;
     if (!uv_is_closing(handle)) {
         if (recording_archive_close_timer(handle)) return;
         log_debug("close_walk_cb: Closing handle type %d", handle->type);
-        // Use proper close callback for connection handles
-        if (handle->type == UV_TCP && handle->data) {
+
+        /* Listener is also UV_TCP with non-NULL data, but must not use
+         * connection close callback. */
+        if (server && handle == (uv_handle_t *)&server->tcp_server) {
+            uv_close(handle, NULL);
+        } else if (handle->type == UV_TCP && handle->data) {
             uv_close(handle, libuv_close_cb);
         } else {
             uv_close(handle, NULL);
