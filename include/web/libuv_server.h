@@ -54,6 +54,7 @@ typedef struct libuv_server {
     atomic_bool thread_joinable;       // True after successful create, false after join
     unsigned init_close_pending;       // Failed-init handles awaiting close callbacks
     struct libuv_connection *connections; // Connections owned by this server
+    bool destroy_pending;               // Shared-loop destruction awaits close callbacks
 } libuv_server_t;
 
 /**
@@ -132,7 +133,8 @@ http_server_handle_t libuv_server_init(const http_server_config_t *config);
  * Use this when you want to share the event loop with other subsystems
  * (e.g., RTSP handling, file I/O, timers).
  * Stop and destroy this server on the shared loop's owner thread, while no
- * other thread is running uv_run() on that loop.
+ * other thread is running uv_run() on that loop. The owner must continue
+ * running the loop after stop/destroy so close callbacks can finish.
  * 
  * @param config Server configuration
  * @param loop Existing uv_loop_t to use (not owned, not freed on destroy)
