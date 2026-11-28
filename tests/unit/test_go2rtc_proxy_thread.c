@@ -640,9 +640,9 @@ void test_shutdown_waits_for_a_worker_beyond_the_old_ten_second_timeout(void) {
     TEST_ASSERT_TRUE_MESSAGE(worker_in_curl_snapshot, "Timed out waiting for worker to enter curl");
     pthread_t releaser;
     TEST_ASSERT_EQUAL_INT(0, pthread_create(&releaser, NULL, release_delayed_worker, NULL));
-    long started = monotonic_ms();
+    int64_t started = monotonic_ms();
     go2rtc_proxy_thread_shutdown();
-    long elapsed = monotonic_ms() - started;
+    int64_t elapsed = monotonic_ms() - started;
     pthread_join(releaser, NULL);
     TEST_ASSERT_GREATER_OR_EQUAL_INT64(10500, elapsed);
     TEST_ASSERT_EQUAL_INT(0, completed_responses);
