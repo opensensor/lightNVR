@@ -1262,6 +1262,7 @@ static void test_multipart_cancellation_aborts_owned_upload_and_preserves_source
     uint64_t bytes;
     char error[256];
     TEST_ASSERT_EQUAL_INT(STORAGE_S3_MISSING, storage_s3_stat(&target, job.destination_object_key, &bytes, error));
+    TEST_ASSERT_FALSE(storage_fixture_multipart_upload_exists(&target, job.destination_object_key, original_upload_id));
     /* Do not issue an extra abort here: it can mask a worker-side failure to abort multipart upload. */
 }
 
