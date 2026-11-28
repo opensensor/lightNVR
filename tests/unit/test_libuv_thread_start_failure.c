@@ -127,9 +127,21 @@ static void test_duplicate_start_is_rejected_without_disrupting_server(void) {
         send(fixture_client_fd, request, sizeof(request) - 1, 0));
 
     char response[256];
-    ssize_t received = recv(fixture_client_fd, response, sizeof(response) - 1, 0);
-    TEST_ASSERT_TRUE(received > 0);
-    response[received] = '\0';
+    size_t total_received = 0;
+    bool status_line_complete = false;
+    while (total_received < sizeof(response) - 1 && !status_line_complete) {
+        ssize_t chunk = recv(fixture_client_fd, response + total_received,
+            (sizeof(response) - 1) - total_received, 0);
+        if (chunk <= 0) {
+            break;
+        }
+        total_received += (size_t)chunk;
+        response[total_received] = '\0';
+        if (strstr(response, "\r\n") != NULL) {
+            status_line_complete = true;
+        }
+    }
+    TEST_ASSERT_TRUE(total_received > 0);
     TEST_ASSERT_NOT_NULL(strstr(response, "HTTP/1.1 200"));
 }
 
