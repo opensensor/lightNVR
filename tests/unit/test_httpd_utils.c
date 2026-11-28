@@ -45,35 +45,6 @@
 /* ---- external globals from lightnvr_lib ---- */
 extern config_t g_config;
 
-static char g_test_db_dir[] = "/tmp/lightnvr_test_httpd_utils.XXXXXX";
-static char g_test_db_path[512] = {0};
-static bool g_test_db_path_initialized = false;
-
-static void init_test_db_path_once(void) {
-    if (g_test_db_path_initialized) return;
-
-    char *dir = mkdtemp(g_test_db_dir);
-    TEST_ASSERT_NOT_NULL_MESSAGE(dir, "mkdtemp failed for test DB directory");
-
-    int n = snprintf(g_test_db_path, sizeof(g_test_db_path), "%s/lightnvr_test_httpd_utils.db", dir);
-    TEST_ASSERT_TRUE_MESSAGE(n > 0 && (size_t)n < sizeof(g_test_db_path), "Failed to build test DB path");
-
-    g_test_db_path_initialized = true;
-}
-
-static const char *get_test_db_path(void) {
-    init_test_db_path_once();
-    return g_test_db_path;
-}
-
-static void cleanup_test_db_path(void) {
-    if (!g_test_db_path_initialized) return;
-    (void)unlink(g_test_db_path);
-    (void)rmdir(g_test_db_dir);
-    g_test_db_path_initialized = false;
-    g_test_db_path[0] = '\0';
-}
-
 /* ---- header helper ---- */
 static void add_header(http_request_t *req, const char *name, const char *value) {
     if (req->num_headers >= MAX_HEADERS) return;
@@ -116,8 +87,6 @@ static void clear_auth_data(void) {
 
 /* ---- Unity boilerplate ---- */
 void setUp(void) {
-    init_test_db_path_once();
-    (void)get_test_db_path();
     /* Ensure auth is enabled by default so we control path in each test */
     g_config.web_auth_enabled = true;
     g_config.demo_mode = false;
@@ -126,9 +95,7 @@ void setUp(void) {
     g_config.trusted_proxy_cidrs[0] = '\0';
     clear_auth_data();
 }
-void tearDown(void) {
-    cleanup_test_db_path();
-}
+void tearDown(void) {}
 
 static void set_must_change_password(int64_t user_id, bool required) {
     sqlite3 *db = get_db_handle();
@@ -1171,12 +1138,18 @@ void test_percent_encoded_source_cannot_authorize_a_shorter_camera(void) {
 
 int main(void) {
     int rc;
+    char test_db_path[] = "/tmp/lightnvr_test_httpd_utils.XXXXXX";
+    int db_fd = mkstemp(test_db_path);
+    if (db_fd < 0) {
+        perror("mkstemp for test DB failed");
+        return 1;
+    }
+    close(db_fd);
 
-    unlink(TEST_DB_PATH);
-
-    rc = init_database(TEST_DB_PATH);
+    rc = init_database(test_db_path);
     if (rc != 0) {
         fprintf(stderr, "init_database failed: %d\n", rc);
+        unlink(test_db_path);
         return 1;
     }
 
@@ -1184,7 +1157,7 @@ int main(void) {
     if (rc != 0) {
         fprintf(stderr, "db_auth_init failed: %d\n", rc);
         shutdown_database();
-        unlink(TEST_DB_PATH);
+        unlink(test_db_path);
         return 1;
     }
 
@@ -1236,6 +1209,6 @@ int main(void) {
     RUN_TEST(test_percent_encoded_source_cannot_authorize_a_shorter_camera);
     int result = UNITY_END();
     shutdown_database();
-    unlink(TEST_DB_PATH);
+    unlink(test_db_path);
     return result;
 }

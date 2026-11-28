@@ -245,8 +245,11 @@ void test_raw_go2rtc_requests_enforce_methods_before_static_fallback(void) {
         for (size_t j = 0; j < sizeof(methods) / sizeof(methods[0]); j++) {
             if (strcmp(methods[j], allowed) == 0) continue;
             char response[4096], allow_header[32];
-            snprintf(allow_header, sizeof(allow_header), "Allow: %s\r\n", allowed);
-            TEST_ASSERT_EQUAL_INT_MESSAGE(405, raw_request(methods[j], paths[i], response), paths[i]);
+            bool preflight = strcmp(methods[j], "OPTIONS") == 0;
+            snprintf(allow_header, sizeof(allow_header), "Allow: %s%s\r\n",
+                     allowed, preflight ? ", OPTIONS" : "");
+            TEST_ASSERT_EQUAL_INT_MESSAGE(preflight ? 204 : 405,
+                                          raw_request(methods[j], paths[i], response), paths[i]);
             TEST_ASSERT_NOT_NULL(strstr(response, allow_header));
         }
     }
