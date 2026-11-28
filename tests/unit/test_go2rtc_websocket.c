@@ -455,7 +455,7 @@ void test_upgrade_without_media_policy_ack_is_rejected(void) {
     };
     snprintf(origin, sizeof(origin), "http://localhost:%d", web_port);
     send_upgrade(client, 0, origin, true);
-    TEST_ASSERT_EQUAL_INT((int)sizeof(masked_frame), (int)send(client, masked_frame, sizeof(masked_frame), 0));
+    (void)send_all(client, masked_frame, sizeof(masked_frame));
     TEST_ASSERT_TRUE(read_headers(client, response, sizeof(response)));
     TEST_ASSERT_EQUAL_INT(1, sscanf(response, "HTTP/%*d.%*d %d", &status));
     TEST_ASSERT_EQUAL_INT(502, status);
@@ -486,7 +486,7 @@ void test_upgrade_with_wrong_accept_is_rejected(void) {
     };
     snprintf(origin, sizeof(origin), "http://localhost:%d", web_port);
     send_upgrade(client, 0, origin, true);
-    TEST_ASSERT_EQUAL_INT((int)sizeof(masked_frame), (int)send(client, masked_frame, sizeof(masked_frame), 0));
+    (void)send_all(client, masked_frame, sizeof(masked_frame));
     TEST_ASSERT_TRUE(read_headers(client, response, sizeof(response)));
     TEST_ASSERT_EQUAL_INT(1, sscanf(response, "HTTP/%*d.%*d %d", &status));
     TEST_ASSERT_EQUAL_INT(502, status);
