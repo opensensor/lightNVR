@@ -1,4 +1,4 @@
-/* Real libuv worker/connection ownership regressions. Handler/completion condition-variable waits in this test are bounded by explicit timeouts (excluding the release-start gate). */
+/* Real libuv worker/connection ownership regressions. All condition-variable waits have deadlines. */
 #define _POSIX_C_SOURCE 200809L
 #include <arpa/inet.h>
 #include <errno.h>
@@ -110,8 +110,16 @@ static void close_on_loop(uv_async_t *handle) {
 
 static void *release_after_four_seconds(void *unused) {
     (void)unused;
+    struct timespec gate_deadline = deadline(8);
     pthread_mutex_lock(&release_start_mutex);
-    while (!release_start_open) pthread_cond_wait(&release_start_cond, &release_start_mutex);
+    while (!release_start_open) {
+        if (pthread_cond_timedwait(&release_start_cond, &release_start_mutex,
+                                   &gate_deadline) == ETIMEDOUT) {
+            pthread_mutex_unlock(&release_start_mutex);
+            release_handler();
+            return NULL;
+        }
+    }
     pthread_mutex_unlock(&release_start_mutex);
     struct timespec duration = {.tv_sec = 4};
     while (nanosleep(&duration, &duration) != 0 && errno == EINTR) {}
