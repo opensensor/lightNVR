@@ -2,6 +2,7 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include <pthread.h>
+#include <stdatomic.h>
 #include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -25,7 +26,7 @@
 static http_server_handle_t server;
 static int upstream = -1, web_port;
 static char db_path[80];
-static volatile bool teardown_started = false;
+static atomic_bool teardown_started = ATOMIC_VAR_INIT(false);
 static const char upgrade_headers[] =
     "Upgrade: websocket\r\nConnection: keep-alive, Upgrade\r\n"
     "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n";
@@ -217,7 +218,7 @@ static void *upstream_peer(void *arg) {
     char byte;
     struct timespec start, now;
     const long teardown_budget_ms = 5000;
-    while (!teardown_started) {
+    while (!atomic_load(&teardown_started)) {
         struct timespec pause = {.tv_sec = 0, .tv_nsec = 10 * 1000 * 1000}; // 10ms
         nanosleep(&pause, NULL);
     }
@@ -256,6 +257,7 @@ done:
     return NULL;
 }
 void setUp(void) {
+    atomic_store(&teardown_started, false);
     for (int i = 0; i < 4; i++) {
         tracked_clients[i] = -1;
         tracked_thread_started[i] = false;
@@ -302,6 +304,7 @@ void setUp(void) {
     web_port = ntohs(address.sin_port);
 }
 void tearDown(void) {
+    atomic_store(&teardown_started, true);
     for (int i = 0; i < 5; i++) {
         if (tracked_clients[i] >= 0) {
             close(tracked_clients[i]);
@@ -374,6 +377,7 @@ void test_four_websockets_relay_media_on_the_web_port_and_close_cleanly(void) {
         TEST_ASSERT_EQUAL_MEMORY(media_response, media, sizeof(media));
     }
     // Two peer disconnects plus shutdown with two streams still active.
+    atomic_store(&teardown_started, true);
     close(tracked_clients[0]); tracked_clients[0] = -1;
     close(tracked_clients[1]); tracked_clients[1] = -1;
     http_server_stop(server);
@@ -461,7 +465,7 @@ void test_failed_upstream_handshake_returns_502(void) {
     send_upgrade(client, 0, origin, false);
     /* Send a masked client WebSocket frame so forwarding-after-reject regressions are detectable. */
     const unsigned char frame[] = {0x81, 0x81, 0x12, 0x34, 0x56, 0x78, (unsigned char)('x' ^ 0x12)};
-    TEST_ASSERT_EQUAL_INT((int)sizeof(frame), send_all(client, frame, sizeof(frame)));
+    (void)send_all(client, frame, sizeof(frame));
     TEST_ASSERT_TRUE(read_headers(client, response, sizeof(response)));
     TEST_ASSERT_EQUAL_INT(1, sscanf(response, "HTTP/%*d.%*d %d", &status));
     TEST_ASSERT_EQUAL_INT(502, status);
