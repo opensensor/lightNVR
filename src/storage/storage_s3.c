@@ -34,6 +34,7 @@
 #define S3_REPLY_LIMIT (128U * 1024U)
 #define S3_SECRET_LIMIT 8192
 #define S3_ERROR_BODY_LIMIT (64U * 1024U)
+#define S3_SINGLE_PUT_MAX_BYTES (5ULL * 1024ULL * 1024ULL * 1024ULL)
 
 typedef struct {
     char access[256];
@@ -728,8 +729,14 @@ int storage_s3_upload(const storage_target_t *target, const char *key, const cha
     }
     FILE *file = fdopen(descriptor, "rb");
     if (!file) { close(descriptor); return STORAGE_S3_ERROR; }
+    const bool can_multipart = control && control->job_uuid;
+    if (!can_multipart && (uint64_t)status.st_size > S3_SINGLE_PUT_MAX_BYTES) {
+        fclose(file);
+        error_set(error, "Archive is larger than 5 GiB; a job UUID is required for multipart upload");
+        return STORAGE_S3_ERROR;
+    }
     s3_io_t io = {.limit = S3_REPLY_LIMIT, .control = control};
-    int result = control && control->job_uuid && (uint64_t)status.st_size >= S3_PART_BYTES
+    int result = can_multipart && (uint64_t)status.st_size >= S3_PART_BYTES
         ? multipart_upload(target, key, file, (uint64_t)status.st_size, checksum, control, error)
         : request(target, key, NULL, "PUT", file, (uint64_t)status.st_size, checksum, &io, NULL, error);
     fclose(file);
