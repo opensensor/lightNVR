@@ -51,7 +51,12 @@ class S3Handler(BaseHTTPRequestHandler):
         date, region, service, terminator = scope_parts
         if service != 's3' or terminator != 'aws4_request':
             return False
-        if not self.headers.get('x-amz-date'):
+        amz_date = self.headers.get('x-amz-date')
+        if not amz_date:
+            return False
+        if not re.fullmatch(r'\d{8}T\d{6}Z', amz_date):
+            return False
+        if amz_date[:8] != date:
             return False
         signed_headers = match[3].split(';')
         if not signed_headers:
@@ -78,7 +83,7 @@ class S3Handler(BaseHTTPRequestHandler):
         canonical_headers = ''.join(f'{key}:{" ".join(self.headers.get(key, "").split())}\n'
                                     for key in signed_headers)
         canonical = '\n'.join([self.command, url.path, query, canonical_headers, match[3], payload_hash])
-        string_to_sign = '\n'.join(['AWS4-HMAC-SHA256', self.headers['x-amz-date'], scope,
+        string_to_sign = '\n'.join(['AWS4-HMAC-SHA256', amz_date, scope,
                                     hashlib.sha256(canonical.encode()).hexdigest()])
         key = b'AWS4fixture-secret'
         for component in [date, region, service, terminator]:
