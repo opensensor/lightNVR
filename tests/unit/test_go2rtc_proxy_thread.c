@@ -189,7 +189,7 @@ static void *slow_snapshot_peer(void *arg) {
         .fd = *(int *)arg,
         .events = POLLIN
     };
-    if (poll(&pfd, 1, 3000) <= 0) return NULL;
+    if (poll(&pfd, 1, 3000) <= 0 || !(pfd.revents & POLLIN)) return NULL;
 
     int client = accept(*(int *)arg, NULL, NULL);
     if (client < 0) return NULL;
