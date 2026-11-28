@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <time.h>
 #include <unistd.h>
 #include "unity.h"
@@ -79,6 +80,11 @@ static void blocked_handler(const http_request_t *req, http_response_t *res) {
     finished = true;
     pthread_cond_broadcast(&changed);
     pthread_mutex_unlock(&mutex);
+}
+
+static void quick_ok_handler(const http_request_t *req, http_response_t *res) {
+    (void)req;
+    http_response_set_json(res, 200, "{\"ok\":true}");
 }
 
 static void after_close_iteration(uv_prepare_t *handle) {
@@ -219,7 +225,7 @@ static void test_tls_request_does_not_start_plain_http(void) {
 static void test_clean_stop_can_restart_on_same_loop(void) {
     tearDown();
     http_server_config_t config = {0};
-    char response[512];
+    char response[2048];
     ssize_t nread;
     config.bind_ip = "127.0.0.1";
     config.web_root = "/nonexistent-lifecycle-fixture";
@@ -232,15 +238,26 @@ static void test_clean_stop_can_restart_on_same_loop(void) {
     libuv_server_stop((http_server_handle_t)server);
     TEST_ASSERT_EQUAL_INT(0, uv_loop_alive(server->loop));
     TEST_ASSERT_EQUAL_INT(0, libuv_server_start((http_server_handle_t)server));
-    client = open_client_fd_with_timeout(server->port, 1500);
+    struct sockaddr_in address;
+    int address_size = sizeof(address);
+    TEST_ASSERT_EQUAL_INT(0, uv_tcp_getsockname(&server->listener,
+        (struct sockaddr *)&address, &address_size));
+    client = socket(AF_INET, SOCK_STREAM, 0);
     TEST_ASSERT_TRUE(client >= 0);
-    write_all_or_fail(client,
-        "GET /lifecycle HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
-    nread = recv_with_timeout(client, response, (int)sizeof(response) - 1, 1500);
-    TEST_ASSERT_TRUE(nread > 0);
-    response[nread] = '\0';
-    TEST_ASSERT_NOT_NULL(strstr(response, "200"));
-    TEST_ASSERT_NOT_NULL(strstr(response, "ok"));
+    struct timeval timeout = {.tv_sec = 2};
+    TEST_ASSERT_EQUAL_INT(0, setsockopt(client, SOL_SOCKET, SO_RCVTIMEO,
+        &timeout, sizeof(timeout)));
+    TEST_ASSERT_EQUAL_INT(0, connect(client, (struct sockaddr *)&address, sizeof(address)));
+    const char request[] = "GET /lifecycle HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n";
+    TEST_ASSERT_EQUAL_INT(sizeof(request) - 1, send(client, request, sizeof(request) - 1, 0));
+    size_t used = 0;
+    while (used < sizeof(response) - 1 &&
+           (nread = recv(client, response + used, sizeof(response) - 1 - used, 0)) > 0)
+        used += (size_t)nread;
+    TEST_ASSERT_TRUE(used > 0);
+    response[used] = '\0';
+    TEST_ASSERT_NOT_NULL(strstr(response, "HTTP/1.1 200"));
+    TEST_ASSERT_NOT_NULL(strstr(response, "\"ok\":true"));
     close(client);
     client = -1;
     libuv_server_stop((http_server_handle_t)server);
