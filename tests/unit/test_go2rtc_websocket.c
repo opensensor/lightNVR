@@ -97,6 +97,8 @@ typedef struct {
     int status;
     char request[4096];
     bool received_mse;
+    bool observed_disconnect;
+    bool observed_client_ws_data_after_reject;
     bool omit_media_ack;
     bool bad_accept;
 } peer_t;
@@ -172,6 +174,11 @@ static void *upstream_peer(void *arg) {
             "Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n";
         send_all(peer->fd, unsupported, sizeof(unsupported) - 1);
         send_all(peer->fd, media_response, sizeof(media_response));
+        struct pollfd ready = {.fd = peer->fd, .events = POLLIN};
+        if (poll(&ready, 1, 200) > 0 && (ready.revents & POLLIN)) {
+            unsigned char byte;
+            peer->observed_client_ws_data_after_reject = recv(peer->fd, &byte, 1, MSG_DONTWAIT) > 0;
+        }
         goto done;
     }
     if (peer->bad_accept) {
@@ -179,6 +186,11 @@ static void *upstream_peer(void *arg) {
             "Upgrade: websocket\r\nConnection: Upgrade\r\n"
             "Sec-WebSocket-Accept: invalid\r\nX-LightNVR-Media-Policy: 1\r\n\r\n";
         send_all(peer->fd, invalid, sizeof(invalid) - 1);
+        struct pollfd ready = {.fd = peer->fd, .events = POLLIN};
+        if (poll(&ready, 1, 200) > 0 && (ready.revents & POLLIN)) {
+            unsigned char byte;
+            peer->observed_client_ws_data_after_reject = recv(peer->fd, &byte, 1, MSG_DONTWAIT) > 0;
+        }
         goto done;
     }
     // Send the upgrade and first frame together; the client must handle
@@ -194,15 +206,22 @@ static void *upstream_peer(void *arg) {
     }
     // Keep the socket alive until its consumer or the server disconnects.
     // Allow a few receive timeouts on slow test hosts, but keep teardown bounded.
+    peer->observed_disconnect = false;
     char byte;
     for (int timeouts = 0; timeouts < 5;) {
         ssize_t n = recv(peer->fd, &byte, 1, 0);
-        if (n == 0) break; // remote closed
+        if (n == 0) {
+            peer->observed_disconnect = true; // remote closed
+            break;
+        }
         if (n > 0) continue;
         if (errno == EINTR) continue;
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
             timeouts++;
             continue;
+        }
+        if (errno == ECONNRESET || errno == ENOTCONN || errno == EPIPE) {
+            peer->observed_disconnect = true;
         }
         break; // other socket error
     }
@@ -350,6 +369,7 @@ void test_four_websockets_relay_media_on_the_web_port_and_close_cleanly(void) {
         pthread_join(tracked_threads[i], NULL);
         tracked_thread_started[i] = false;
         TEST_ASSERT_TRUE(tracked_peers[i].received_mse);
+        TEST_ASSERT_TRUE(tracked_peers[i].observed_disconnect);
         char target[128];
         snprintf(target, sizeof(target), "GET %s/api/ws?src=Camera%%20%d_sub HTTP/1.1", go2rtc_api_get_base_path(), i);
         TEST_ASSERT_NOT_NULL(strstr(tracked_peers[i].request, target));
@@ -447,7 +467,7 @@ void test_upgrade_without_media_policy_ack_is_rejected(void) {
     tracked_clients[0] = -1;
     pthread_join(tracked_threads[0], NULL);
     tracked_thread_started[0] = false;
-    TEST_ASSERT_FALSE(tracked_peers[0].received_mse);
+    TEST_ASSERT_FALSE(tracked_peers[0].observed_client_ws_data_after_reject);
 }
 void test_upgrade_with_wrong_accept_is_rejected(void) {
     tracked_peers[0] = (peer_t){.status = 101, .bad_accept = true};
@@ -466,6 +486,7 @@ void test_upgrade_with_wrong_accept_is_rejected(void) {
     tracked_clients[0] = -1;
     pthread_join(tracked_threads[0], NULL);
     tracked_thread_started[0] = false;
+    TEST_ASSERT_FALSE(tracked_peers[0].observed_client_ws_data_after_reject);
 }
 int main(void) {
     UNITY_BEGIN();
