@@ -204,9 +204,9 @@ RUN if [ "$DEB_BUILD" != "true" ]; then \
     else \
       TARGET_CC=cc; \
     fi && \
-    "$TARGET_CC" -fPIC -I/tmp/llhttp -c /tmp/llhttp/llhttp.c -o /tmp/llhttp/llhttp.o && \
-    "$TARGET_CC" -fPIC -I/tmp/llhttp -c /tmp/llhttp/api.c -o /tmp/llhttp/api.o && \
-    "$TARGET_CC" -fPIC -I/tmp/llhttp -c /tmp/llhttp/http.c -o /tmp/llhttp/http.o && \
+    "$TARGET_CC" -O2 -fPIC -I/tmp/llhttp -c /tmp/llhttp/llhttp.c -o /tmp/llhttp/llhttp.o && \
+    "$TARGET_CC" -O2 -fPIC -I/tmp/llhttp -c /tmp/llhttp/api.c -o /tmp/llhttp/api.o && \
+    "$TARGET_CC" -O2 -fPIC -I/tmp/llhttp -c /tmp/llhttp/http.c -o /tmp/llhttp/http.o && \
     "$TARGET_CC" -shared -Wl,-soname,libllhttp.so.9 -o /usr/lib/libllhttp.so.${LLHTTP_VERSION} /tmp/llhttp/llhttp.o /tmp/llhttp/api.o /tmp/llhttp/http.o && \
     ln -sf /usr/lib/libllhttp.so.${LLHTTP_VERSION} /usr/lib/libllhttp.so.9 && \
     ln -sf /usr/lib/libllhttp.so.${LLHTTP_VERSION} /usr/lib/libllhttp.so && \
