@@ -1940,21 +1940,41 @@ static void test_stalled_archive_writes_renew_lease_until_completion(void) {
     // Advance the database's lease clock without a two-minute wall-clock sleep.
     sql("UPDATE storage_read_leases SET expires_at=0;");
     captured_callbacks[0](captured_timers[0]);
-    TEST_ASSERT_TRUE(storage_source_has_lease(id));
-    TEST_ASSERT_EQUAL_INT(1, storage_recording_delete(id, "delete during stalled playback", NULL));
-    TEST_ASSERT_EQUAL_INT(0, storage_deletion_process_one());
+    bool has_lease_after_first = storage_source_has_lease(id);
+    int delete_result = storage_recording_delete(id, "delete during stalled playback", NULL);
+    int deletion_first = storage_deletion_process_one();
     // Exercise server shutdown's timer close callback while a write is pending.
-    TEST_ASSERT_FALSE(recording_archive_close_timer((uv_handle_t *)&first->handle));
-    TEST_ASSERT_TRUE(recording_archive_close_timer((uv_handle_t *)captured_timers[0]));
-    close(clients[0]);
+    bool close_timer_first_handle = recording_archive_close_timer((uv_handle_t *)&first->handle);
+    bool close_timer_first_lease = recording_archive_close_timer((uv_handle_t *)captured_timers[0]);
+    if (clients[0] >= 0) {
+        close(clients[0]);
+        clients[0] = -1;
+    }
     libuv_connection_close(first);
     for (int i = 0; i < 10; i++) uv_run(&loop, UV_RUN_NOWAIT);
     sql("UPDATE storage_read_leases SET expires_at=0;");
     captured_callbacks[1](captured_timers[1]);
-    TEST_ASSERT_TRUE(storage_source_has_lease(id));
-    TEST_ASSERT_EQUAL_INT(0, storage_deletion_process_one());
+    bool has_lease_after_second = storage_source_has_lease(id);
+    int deletion_second = storage_deletion_process_one();
     storage_remote_source_t rejected;
-    TEST_ASSERT_EQUAL_INT(STORAGE_SOURCE_DELETING, storage_source_remote(id, &rejected));
+    int remote_state = storage_source_remote(id, &rejected);
+
+    if (clients[1] >= 0) {
+        close(clients[1]);
+        clients[1] = -1;
+    }
+    libuv_connection_close(second);
+    uv_run(&loop, UV_RUN_DEFAULT);
+    TEST_ASSERT_EQUAL_INT(0, uv_loop_close(&loop));
+
+    TEST_ASSERT_TRUE(has_lease_after_first);
+    TEST_ASSERT_EQUAL_INT(1, delete_result);
+    TEST_ASSERT_EQUAL_INT(0, deletion_first);
+    TEST_ASSERT_FALSE(close_timer_first_handle);
+    TEST_ASSERT_TRUE(close_timer_first_lease);
+    TEST_ASSERT_TRUE(has_lease_after_second);
+    TEST_ASSERT_EQUAL_INT(0, deletion_second);
+    TEST_ASSERT_EQUAL_INT(STORAGE_SOURCE_DELETING, remote_state);
 
     // The remaining reader may finish even though new readers are excluded.
     TEST_ASSERT_EQUAL_INT(0, fcntl(clients[1], F_SETFL, O_NONBLOCK));
