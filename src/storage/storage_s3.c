@@ -334,9 +334,38 @@ static int request(const storage_target_t *target, const char *key, const char *
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 0L);
     curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 10L);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, upload || io->digest || io->file ? 3600L : 20L);
-    curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, 1024L);
-    curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, 30L);
+
+    long timeout_s = (upload || io->digest || io->file) ? 3600L : 20L;
+    long low_speed_limit = 1024L;
+    long low_speed_time = 30L;
+
+    if (io->control && io->control->bandwidth_bps) {
+        uint64_t bw = io->control->bandwidth_bps;
+        uint64_t expected_bytes = 0;
+        if (upload) {
+            expected_bytes = upload_size;
+        } else if (io->limit) {
+            expected_bytes = io->limit;
+        }
+
+        if (bw > 0 && bw < (uint64_t)low_speed_limit) {
+            low_speed_limit = (long)bw;
+            if (low_speed_limit < 1L) {
+                low_speed_limit = 1L;
+            }
+        }
+
+        if (bw > 0 && expected_bytes > 0) {
+            long required = (long)((expected_bytes + bw - 1) / bw) + 15L;
+            if (required > timeout_s) {
+                timeout_s = required;
+            }
+        }
+    }
+
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeout_s);
+    curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, low_speed_limit);
+    curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, low_speed_time);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, receive_bytes);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, io);
     curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, response_header);
