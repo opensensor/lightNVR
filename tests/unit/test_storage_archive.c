@@ -2088,6 +2088,7 @@ static libuv_connection_t *stalled_archive_connection(libuv_server_t *server, in
     return conn;
 
 fail:
+    if (conn != NULL) libuv_connection_close(conn);
     if (peer >= 0) close(peer);
     if (listener >= 0) close(listener);
     if (*client >= 0) {
