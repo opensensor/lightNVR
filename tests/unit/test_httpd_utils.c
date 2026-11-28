@@ -45,8 +45,6 @@
 /* ---- external globals from lightnvr_lib ---- */
 extern config_t g_config;
 
-#define TEST_DB_PATH "/tmp/lightnvr_test_httpd_utils.db"
-
 /* ---- header helper ---- */
 static void add_header(http_request_t *req, const char *name, const char *value) {
     if (req->num_headers >= MAX_HEADERS) return;
@@ -1139,9 +1137,29 @@ void test_percent_encoded_source_cannot_authorize_a_shorter_camera(void) {
 }
 
 int main(void) {
-    unlink(TEST_DB_PATH);
-    TEST_ASSERT_EQUAL_INT(0, init_database(TEST_DB_PATH));
-    TEST_ASSERT_EQUAL_INT(0, db_auth_init());
+    int rc;
+    char test_db_path[] = "/tmp/lightnvr_test_httpd_utils.XXXXXX";
+    int db_fd = mkstemp(test_db_path);
+    if (db_fd < 0) {
+        perror("mkstemp for test DB failed");
+        return 1;
+    }
+    close(db_fd);
+
+    rc = init_database(test_db_path);
+    if (rc != 0) {
+        fprintf(stderr, "init_database failed: %d\n", rc);
+        unlink(test_db_path);
+        return 1;
+    }
+
+    rc = db_auth_init();
+    if (rc != 0) {
+        fprintf(stderr, "db_auth_init failed: %d\n", rc);
+        shutdown_database();
+        unlink(test_db_path);
+        return 1;
+    }
 
     UNITY_BEGIN();
     RUN_TEST(test_parse_json_valid_body);
@@ -1191,6 +1209,6 @@ int main(void) {
     RUN_TEST(test_percent_encoded_source_cannot_authorize_a_shorter_camera);
     int result = UNITY_END();
     shutdown_database();
-    unlink(TEST_DB_PATH);
+    unlink(test_db_path);
     return result;
 }
