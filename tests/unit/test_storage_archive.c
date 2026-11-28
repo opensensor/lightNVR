@@ -1410,7 +1410,14 @@ static void test_batch_export_waits_for_verified_archive_source(void) {
         struct timespec delay = {.tv_nsec = 10000000};
         nanosleep(&delay, NULL);
     }
-    TEST_ASSERT_TRUE(completed);
+    if (!completed) {
+        // Timeout: quiesce any in-flight archive/batch-export work before failing,
+        // to avoid leaking async activity into subsequent tests.
+        for (int drain = 0; drain < 500; drain++) {
+            if (storage_source_process_one() != 1) break;
+        }
+        TEST_FAIL_MESSAGE("batch export did not complete before polling deadline");
+    }
     TEST_ASSERT_TRUE(retrieved);
     // Inspect the ZIP produced through the real handler's deferred-file contract.
     uv_loop_t loop;
