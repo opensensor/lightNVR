@@ -442,23 +442,28 @@ static void proxy_async_cb(uv_async_t *handle) {
                 ctx->incompatible_media_policy ? GO2RTC_MEDIA_POLICY_ERROR :
                 "Proxy error: go2rtc is not responding");
         } else {
-            conn->response.status_code = (int)ctx->http_code;
-            if (ctx->response_content_type[0] != '\0') {
-                safe_strcpy(conn->response.content_type, ctx->response_content_type,
-                        sizeof(conn->response.content_type), 0);
+            if (ctx->http_code >= 300 && ctx->http_code < 400) {
+                http_response_set_json_error(&conn->response, 502,
+                    "Proxy error: upstream redirect is not supported");
+            } else {
+                conn->response.status_code = (int)ctx->http_code;
+                if (ctx->response_content_type[0] != '\0') {
+                    safe_strcpy(conn->response.content_type, ctx->response_content_type,
+                            sizeof(conn->response.content_type), 0);
+                }
+                http_response_add_header(&conn->response, "Access-Control-Allow-Origin", "*");
+                http_response_add_header(&conn->response, "Access-Control-Allow-Methods",
+                                         "GET, POST, PUT, DELETE, OPTIONS");
+                http_response_add_header(&conn->response, "Access-Control-Allow-Headers",
+                                         "Content-Type, Authorization");
+                // Transfer buffer ownership to the response (freed by http_response_free)
+                conn->response.body = ctx->response_buffer;
+                conn->response.body_length = ctx->response_size;
+                conn->response.body_allocated = true;
+                ctx->response_buffer = NULL;  // ownership transferred
+                log_debug("go2rtc proxy thread: %s -> %ld (%zu bytes)",
+                          ctx->url, ctx->http_code, ctx->response_size);
             }
-            http_response_add_header(&conn->response, "Access-Control-Allow-Origin", "*");
-            http_response_add_header(&conn->response, "Access-Control-Allow-Methods",
-                                     "GET, POST, PUT, DELETE, OPTIONS");
-            http_response_add_header(&conn->response, "Access-Control-Allow-Headers",
-                                     "Content-Type, Authorization");
-            // Transfer buffer ownership to the response (freed by http_response_free)
-            conn->response.body = ctx->response_buffer;
-            conn->response.body_length = ctx->response_size;
-            conn->response.body_allocated = true;
-            ctx->response_buffer = NULL;  // ownership transferred
-            log_debug("go2rtc proxy thread: %s -> %ld (%zu bytes)",
-                      ctx->url, ctx->http_code, ctx->response_size);
         }
 
         conn->async_response_pending = false;
