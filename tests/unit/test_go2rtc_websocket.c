@@ -476,6 +476,8 @@ void test_failed_upstream_handshake_returns_502(void) {
     tracked_clients[0] = -1;
     pthread_join(tracked_threads[0], NULL);
     tracked_thread_started[0] = false;
+    TEST_ASSERT_TRUE(tracked_peers[0].observed_upgrade_request);
+    TEST_ASSERT_TRUE(tracked_peers[0].response_send_ok);
     TEST_ASSERT_FALSE(tracked_peers[0].observed_client_ws_data_after_reject);
 }
 void test_upgrade_without_media_policy_ack_is_rejected(void) {
