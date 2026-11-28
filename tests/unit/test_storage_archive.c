@@ -2096,7 +2096,7 @@ static void test_stalled_archive_writes_renew_lease_until_completion(void) {
     bool stalled = false;
     if (captured_timer_count == 2) for (int i = 0; i < 5000; i++) {
         uv_run(&loop, UV_RUN_NOWAIT);
-        if (clients[0] < 0 || clients[1] < 0) {
+        if (first == NULL || second == NULL) {
             stalled = false;
             break;
         }
@@ -2106,11 +2106,11 @@ static void test_stalled_archive_writes_renew_lease_until_completion(void) {
         struct timespec pause = {.tv_nsec = 1000000}; nanosleep(&pause, NULL);
     }
     if (captured_timer_count != 2 || !stalled) {
-        if (clients[0] >= 0 && first != NULL) {
+        if (first != NULL) {
             libuv_connection_close(first);
             first = NULL;
         }
-        if (clients[1] >= 0 && second != NULL) {
+        if (second != NULL) {
             libuv_connection_close(second);
             second = NULL;
         }
