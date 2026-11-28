@@ -101,6 +101,11 @@ typedef struct {
     bool bad_accept;
 } peer_t;
 
+static int tracked_clients[4];
+static pthread_t tracked_threads[4];
+static bool tracked_thread_started[4];
+static peer_t tracked_peers[4];
+
 static void socket_timeout(int fd) {
     struct timeval timeout = {.tv_sec = 3};
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
@@ -193,6 +198,11 @@ done:
     return NULL;
 }
 void setUp(void) {
+    for (int i = 0; i < 4; i++) {
+        tracked_clients[i] = -1;
+        tracked_thread_started[i] = false;
+        memset(&tracked_peers[i], 0, sizeof(tracked_peers[i]));
+    }
     load_default_config(&g_config);
     g_config.web_auth_enabled = false;
     g_config.demo_mode = false;
@@ -233,8 +243,20 @@ void setUp(void) {
     web_port = ntohs(address.sin_port);
 }
 void tearDown(void) {
+    for (int i = 0; i < 4; i++) {
+        if (tracked_clients[i] >= 0) {
+            close(tracked_clients[i]);
+            tracked_clients[i] = -1;
+        }
+    }
     if (server) { http_server_stop(server); http_server_destroy(server); server = NULL; }
     close(upstream);
+    for (int i = 0; i < 4; i++) {
+        if (tracked_thread_started[i]) {
+            pthread_join(tracked_threads[i], NULL);
+            tracked_thread_started[i] = false;
+        }
+    }
     shutdown_database();
     unlink(db_path);
     go2rtc_api_apply_base_path_override(NULL, 0);
@@ -256,43 +278,42 @@ static void send_upgrade(int fd, int camera, const char *origin, bool fragmented
 }
 
 void test_four_websockets_relay_media_on_the_web_port_and_close_cleanly(void) {
-    int clients[4];
-    pthread_t threads[4];
-    peer_t peers[4] = {0};
     char origin[64];
     snprintf(origin, sizeof(origin), "http://localhost:%d", web_port);
     for (int i = 0; i < 4; i++) {
-        peers[i].status = 101;
-        TEST_ASSERT_EQUAL_INT(0, pthread_create(&threads[i], NULL, upstream_peer, &peers[i]));
-        clients[i] = client_open();
-        send_upgrade(clients[i], i, origin, i == 0);
+        tracked_peers[i].status = 101;
+        TEST_ASSERT_EQUAL_INT(0, pthread_create(&tracked_threads[i], NULL, upstream_peer, &tracked_peers[i]));
+        tracked_thread_started[i] = true;
+        tracked_clients[i] = client_open();
+        send_upgrade(tracked_clients[i], i, origin, i == 0);
         char headers[1024];
-        TEST_ASSERT_TRUE(read_headers(clients[i], headers, sizeof(headers)));
+        TEST_ASSERT_TRUE(read_headers(tracked_clients[i], headers, sizeof(headers)));
         TEST_ASSERT_EQUAL_STRING(upgrade_response, headers);
         unsigned char media[sizeof(media_response)];
-        TEST_ASSERT_TRUE(read_all(clients[i], media, sizeof(media)));
+        TEST_ASSERT_TRUE(read_all(tracked_clients[i], media, sizeof(media)));
         TEST_ASSERT_EQUAL_MEMORY(media_response, media, sizeof(media));
-        TEST_ASSERT_TRUE(send_all(clients[i], mse_request, sizeof(mse_request)));
-        TEST_ASSERT_TRUE(read_all(clients[i], media, sizeof(media)));
+        TEST_ASSERT_TRUE(send_all(tracked_clients[i], mse_request, sizeof(mse_request)));
+        TEST_ASSERT_TRUE(read_all(tracked_clients[i], media, sizeof(media)));
         TEST_ASSERT_EQUAL_MEMORY(media_response, media, sizeof(media));
     }
     // Two peer disconnects plus shutdown with two streams still active.
-    close(clients[0]);
-    close(clients[1]);
+    close(tracked_clients[0]); tracked_clients[0] = -1;
+    close(tracked_clients[1]); tracked_clients[1] = -1;
     http_server_stop(server);
     http_server_destroy(server);
     server = NULL;
-    close(clients[2]);
-    close(clients[3]);
+    close(tracked_clients[2]); tracked_clients[2] = -1;
+    close(tracked_clients[3]); tracked_clients[3] = -1;
     for (int i = 0; i < 4; i++) {
-        pthread_join(threads[i], NULL);
-        TEST_ASSERT_TRUE(peers[i].received_mse);
+        pthread_join(tracked_threads[i], NULL);
+        tracked_thread_started[i] = false;
+        TEST_ASSERT_TRUE(tracked_peers[i].received_mse);
         char target[128];
         snprintf(target, sizeof(target), "GET %s/api/ws?src=Camera%%20%d_sub HTTP/1.1", go2rtc_api_get_base_path(), i);
-        TEST_ASSERT_NOT_NULL(strstr(peers[i].request, target));
-        TEST_ASSERT_NULL(strstr(peers[i].request, "Origin:"));
-        TEST_ASSERT_NULL(strstr(peers[i].request, "Cookie:"));
-        TEST_ASSERT_NULL(strstr(peers[i].request, "Authorization:"));
+        TEST_ASSERT_NOT_NULL(strstr(tracked_peers[i].request, target));
+        TEST_ASSERT_NULL(strstr(tracked_peers[i].request, "Origin:"));
+        TEST_ASSERT_NULL(strstr(tracked_peers[i].request, "Cookie:"));
+        TEST_ASSERT_NULL(strstr(tracked_peers[i].request, "Authorization:"));
     }
 }
 
@@ -349,6 +370,7 @@ void test_failed_upstream_handshake_returns_502(void) {
     TEST_ASSERT_NOT_NULL(strstr(response, "502"));
     close(client);
     pthread_join(thread, NULL);
+    TEST_ASSERT_FALSE(peer.received_mse);
 }
 void test_upgrade_without_media_policy_ack_is_rejected(void) {
     peer_t peer = {.status = 101, .omit_media_ack = true};
