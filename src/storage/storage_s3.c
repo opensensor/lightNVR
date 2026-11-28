@@ -762,7 +762,8 @@ static bool safe_lifecycle(char *body) {
 /* Some providers deny lifecycle GET to bucket-scoped object credentials.
  * A trusted operator may supply a fresh, bucket-bound inspection beside the
  * credentials. Never infer safety from a 403 or bypass a readable unsafe rule.
- * Refresh at least every 30 minutes; stale/malformed files fail closed. */
+ * Refresh at least every 30 minutes; attestations are accepted for <1 hour,
+ * and stale/malformed files fail closed. */
 static bool lifecycle_attested(const storage_target_t *target) {
     cJSON *json = private_json_read(target, ".lifecycle.json");
     const cJSON *endpoint = cJSON_GetObjectItemCaseSensitive(json, "endpoint");
