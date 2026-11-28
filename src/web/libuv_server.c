@@ -360,6 +360,20 @@ int libuv_server_start(http_server_handle_t handle) {
             server->thread_running = false;
             server->running = false;
             log_error("libuv_server_start: Failed to create server thread");
+
+            /* Roll back partially started server state: close active handles
+             * and drive the loop so close completion is guaranteed before
+             * a future restart/reinitialization attempt. */
+            if (!uv_is_closing((uv_handle_t *)&server->listener)) {
+                uv_close((uv_handle_t *)&server->listener, NULL);
+            }
+            if (!uv_is_closing((uv_handle_t *)&server->stop_async)) {
+                uv_close((uv_handle_t *)&server->stop_async, NULL);
+            }
+            while (uv_loop_alive(server->loop)) {
+                uv_run(server->loop, UV_RUN_DEFAULT);
+            }
+
             return -1;
         }
         server->thread_joinable = true;
