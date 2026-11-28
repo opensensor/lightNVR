@@ -116,7 +116,7 @@ class S3Handler(BaseHTTPRequestHandler):
                 upload_id = query['uploadId']
                 upload = self.uploads.get(upload_id)
                 if upload is None or upload['identity'] != identity:
-                    return self.respond(404)
+                    return self.respond(404, b'<Error><Code>NoSuchUpload</Code></Error>')
                 if self.command == 'DELETE':
                     del self.uploads[upload_id]
                     return self.respond(204)
