@@ -102,6 +102,8 @@ typedef struct {
     bool received_mse;
     bool observed_disconnect;
     bool observed_client_ws_data_after_reject;
+    bool observed_upgrade_request;
+    bool sent_configured_response;
     bool omit_media_ack;
     bool bad_accept;
 } peer_t;
@@ -166,6 +168,7 @@ static void *upstream_peer(void *arg) {
     if (peer->fd < 0) return NULL;
     socket_timeout(peer->fd);
     if (!read_headers(peer->fd, peer->request, sizeof(peer->request))) goto done;
+    peer->observed_upgrade_request = true;
     if (peer->status != 101) {
         const char error[] = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n";
         send_all(peer->fd, error, sizeof(error) - 1);
@@ -193,7 +196,7 @@ static void *upstream_peer(void *arg) {
         const char invalid[] = "HTTP/1.1 101 Switching Protocols\r\n"
             "Upgrade: websocket\r\nConnection: Upgrade\r\n"
             "Sec-WebSocket-Accept: invalid\r\nX-LightNVR-Media-Policy: 1\r\n\r\n";
-        send_all(peer->fd, invalid, sizeof(invalid) - 1);
+        peer->sent_configured_response = send_all(peer->fd, invalid, sizeof(invalid) - 1);
         struct pollfd ready = {.fd = peer->fd, .events = POLLIN};
         if (poll(&ready, 1, 200) > 0 && (ready.revents & POLLIN)) {
             unsigned char byte;
@@ -410,19 +413,24 @@ void test_four_websockets_relay_media_on_the_web_port_and_close_cleanly(void) {
 }
 
 void test_websocket_auth_origin_and_query_failures_never_reach_upstream(void) {
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 5; i++) {
         int client = client_open();
         tracked_clients[i] = client;
         char origin[64];
         snprintf(origin, sizeof(origin), "http://localhost:%d", web_port);
         if (i == 0) {
-            send_upgrade(client, 0, "https://attacker.invalid", false);
+            g_config.web_auth_enabled = true;
+            send_upgrade(client, 0, origin, false);
         } else if (i == 1) {
+            g_config.web_auth_enabled = false;
+            send_upgrade(client, 0, "https://attacker.invalid", false);
+        } else if (i == 2) {
+            g_config.web_auth_enabled = false;
             char request[1024];
             snprintf(request, sizeof(request), "GET /go2rtc/api/ws?src=Camera%%200&src=other HTTP/1.1\r\n"
                 "Host: localhost:%d\r\nOrigin: %s\r\n%s\r\n", web_port, origin, upgrade_headers);
             TEST_ASSERT_TRUE(send_all(client, request, strlen(request)));
-        } else if (i == 2) {
+        } else if (i == 3) {
             char request[1024];
             snprintf(request, sizeof(request), "GET /go2rtc/api/ws?src=Camera%%200 HTTP/1.1\r\n"
                 "Host: localhost:%d\r\nOrigin: %s\r\nOrigin: %s\r\n%s\r\n",
@@ -439,7 +447,7 @@ void test_websocket_auth_origin_and_query_failures_never_reach_upstream(void) {
         TEST_ASSERT_TRUE(read_headers(client, response, sizeof(response)));
         int code;
         TEST_ASSERT_EQUAL_INT(1, sscanf(response, "HTTP/1.1 %d", &code));
-        TEST_ASSERT_EQUAL_INT((i == 0 || i == 2) ? 403 : 400, code);
+        TEST_ASSERT_EQUAL_INT(i == 0 ? 401 : (i == 1 || i == 3) ? 403 : 400, code);
         close(client);
         tracked_clients[i] = -1;
     }
