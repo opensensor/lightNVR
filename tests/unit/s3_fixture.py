@@ -72,7 +72,9 @@ class S3Handler(BaseHTTPRequestHandler):
         # using encoded separators even though the decoded object key matches.
         if '%2F' in url.path.upper():
             return self.respond(403, b'<Error><Code>SignatureDoesNotMatch</Code></Error>')
-        path = unquote(url.path).strip('/')
+        path = unquote(url.path)
+        if path.startswith('/'):
+            path = path[1:]
         bucket, _, key = path.partition('/')
         anonymous_public = bucket == 'public' and self.command == 'GET' and not self.headers.get('Authorization')
         if not self.authorized(body) and not anonymous_public:
