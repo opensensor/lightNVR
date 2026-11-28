@@ -288,7 +288,22 @@ void test_four_websockets_relay_media_on_the_web_port_and_close_cleanly(void) {
         TEST_ASSERT_EQUAL_INT(0, pthread_create(&tracked_threads[i], NULL, upstream_peer, &tracked_peers[i]));
         tracked_thread_started[i] = true;
         tracked_clients[i] = client_open();
-        send_upgrade(tracked_clients[i], i, origin, i == 0);
+        if (i == 0) {
+            send_upgrade(tracked_clients[i], i, origin, true);
+        } else {
+            char req[1024];
+            int n = snprintf(req, sizeof(req),
+                             "GET /go2rtc/api/ws?src=Camera%%20%d_sub HTTP/1.1\r\n"
+                             "Host: localhost:%d\r\n"
+                             "Origin: %s\r\n"
+                             "%s"
+                             "Cookie: dummy_cookie=1\r\n"
+                             "Authorization: Basic ZHVtbXk6ZHVtbXk=\r\n"
+                             "\r\n",
+                             i, web_port, origin, upgrade_headers);
+            TEST_ASSERT_TRUE(n > 0 && (size_t)n < sizeof(req));
+            TEST_ASSERT_TRUE(send_all(tracked_clients[i], req, (size_t)n));
+        }
         char headers[1024];
         TEST_ASSERT_TRUE(read_headers(tracked_clients[i], headers, sizeof(headers)));
         TEST_ASSERT_EQUAL_STRING(upgrade_response, headers);
@@ -309,9 +324,11 @@ void test_four_websockets_relay_media_on_the_web_port_and_close_cleanly(void) {
     {
         unsigned char b;
         ssize_t n2 = recv(tracked_clients[2], &b, 1, 0);
+        int err2 = (n2 < 0) ? errno : 0;
         ssize_t n3 = recv(tracked_clients[3], &b, 1, 0);
-        TEST_ASSERT_TRUE(n2 == 0 || (n2 < 0 && (errno == ECONNRESET || errno == ENOTCONN || errno == EPIPE)));
-        TEST_ASSERT_TRUE(n3 == 0 || (n3 < 0 && (errno == ECONNRESET || errno == ENOTCONN || errno == EPIPE)));
+        int err3 = (n3 < 0) ? errno : 0;
+        TEST_ASSERT_TRUE(n2 == 0 || (n2 < 0 && (err2 == ECONNRESET || err2 == ENOTCONN || err2 == EPIPE)));
+        TEST_ASSERT_TRUE(n3 == 0 || (n3 < 0 && (err3 == ECONNRESET || err3 == ENOTCONN || err3 == EPIPE)));
     }
     close(tracked_clients[2]); tracked_clients[2] = -1;
     close(tracked_clients[3]); tracked_clients[3] = -1;
