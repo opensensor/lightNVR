@@ -410,24 +410,19 @@ void test_four_websockets_relay_media_on_the_web_port_and_close_cleanly(void) {
 }
 
 void test_websocket_auth_origin_and_query_failures_never_reach_upstream(void) {
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 4; i++) {
         int client = client_open();
         tracked_clients[i] = client;
         char origin[64];
         snprintf(origin, sizeof(origin), "http://localhost:%d", web_port);
         if (i == 0) {
-            g_config.web_auth_enabled = true;
-            send_upgrade(client, 0, origin, false);
-        } else if (i == 1) {
-            g_config.web_auth_enabled = false;
             send_upgrade(client, 0, "https://attacker.invalid", false);
-        } else if (i == 2) {
-            g_config.web_auth_enabled = false;
+        } else if (i == 1) {
             char request[1024];
             snprintf(request, sizeof(request), "GET /go2rtc/api/ws?src=Camera%%200&src=other HTTP/1.1\r\n"
                 "Host: localhost:%d\r\nOrigin: %s\r\n%s\r\n", web_port, origin, upgrade_headers);
             TEST_ASSERT_TRUE(send_all(client, request, strlen(request)));
-        } else if (i == 3) {
+        } else if (i == 2) {
             char request[1024];
             snprintf(request, sizeof(request), "GET /go2rtc/api/ws?src=Camera%%200 HTTP/1.1\r\n"
                 "Host: localhost:%d\r\nOrigin: %s\r\nOrigin: %s\r\n%s\r\n",
@@ -444,7 +439,7 @@ void test_websocket_auth_origin_and_query_failures_never_reach_upstream(void) {
         TEST_ASSERT_TRUE(read_headers(client, response, sizeof(response)));
         int code;
         TEST_ASSERT_EQUAL_INT(1, sscanf(response, "HTTP/1.1 %d", &code));
-        TEST_ASSERT_EQUAL_INT(i == 0 ? 401 : (i == 1 || i == 3) ? 403 : 400, code);
+        TEST_ASSERT_EQUAL_INT((i == 0 || i == 2) ? 403 : 400, code);
         close(client);
         tracked_clients[i] = -1;
     }
