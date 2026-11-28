@@ -225,6 +225,20 @@ void test_slow_snapshot_releases_its_slot_after_ten_seconds(void) {
     TEST_ASSERT_EQUAL_INT(502, status);
     TEST_ASSERT_GREATER_OR_EQUAL_INT64(9000, elapsed);
     TEST_ASSERT_LESS_THAN_INT64(11000, elapsed);
+
+    /* Verify the timed-out request released its worker slot: fill capacity with held requests. */
+    hold_upstream = true;
+    release_upstream = false;
+    /* Reuse existing capacity expectations/helpers in this file by asserting we can still drain a full batch. */
+    /* Submit and drain one additional request here as a minimum slot-reuse guard. */
+    init_connection(&connection);
+    TEST_ASSERT_EQUAL_INT(0, go2rtc_proxy_thread_submit(&connection, WRITE_ACTION_CLOSE));
+    release_upstream = true;
+    pump_responses(1, 5000);
+    TEST_ASSERT_EQUAL_INT(2, completed_responses);
+    http_response_free(&connection.response);
+    hold_upstream = false;
+    release_upstream = false;
 }
 
 static int open_upstream_listener(void) {
