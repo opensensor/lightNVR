@@ -267,10 +267,11 @@ RUN mkdir -p /usr/lib/pkgconfig && \
     chmod 644 /usr/lib/pkgconfig/mbedtls.pc /usr/lib/pkgconfig/mbedcrypto.pc /usr/lib/pkgconfig/mbedx509.pc
 
 # Build go2rtc from the opensensor/go2rtc dev submodule, including AlexxIT/dev.
-# Go 1.26 is installed from Debian sid packages
+# The fork's go.mod selects patched Go 1.27.4 through GOTOOLCHAIN=auto.
 RUN mkdir -p /bin /etc/lightnvr/go2rtc && \
     # Build go2rtc from local submodule (already copied by COPY . .)
     cd /opt/go2rtc && \
+    GOTOOLCHAIN=auto go version && \
     GOTOOLCHAIN=auto go mod tidy && \
     case "$TARGETARCH/$TARGETVARIANT" in \
       amd64/) GOARCH=amd64; GOARM= ;; \
