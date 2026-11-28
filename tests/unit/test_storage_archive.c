@@ -825,9 +825,6 @@ static void test_archive_range_proxy_and_disconnect(void) {
             }
 
             if (timed_out) {
-                if (!uv_is_closing((uv_handle_t *)&conn->handle)) {
-                    libuv_connection_close(conn);
-                }
                 for (int i = 0; i < 100; i++) {
                     if (uv_run(&loop, UV_RUN_NOWAIT) == 0) break;
                     struct timespec pause = {.tv_nsec = 1000000};
