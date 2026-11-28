@@ -1,7 +1,6 @@
 #define _XOPEN_SOURCE 700
 #include <sqlite3.h>
 #include <stdatomic.h>
-#include <stdlib.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <ftw.h>
@@ -1594,13 +1593,13 @@ static void test_expired_multipart_upload_restarts_from_source(void) {
         unsigned char expected_hash[32];
         mbedtls_sha256_context expected_ctx;
         mbedtls_sha256_init(&expected_ctx);
-        mbedtls_sha256_starts_ret(&expected_ctx, 0);
+        TEST_ASSERT_EQUAL_INT(0, mbedtls_sha256_starts(&expected_ctx, 0));
         for (int i = 0; i < 144; i++) {
             for (size_t j = 0; j < sizeof(block); j++) block[j] = (unsigned char)((i + j) & 0xff);
             TEST_ASSERT_EQUAL_UINT(sizeof(block), fwrite(block, 1, sizeof(block), file));
-            mbedtls_sha256_update_ret(&expected_ctx, block, sizeof(block));
+            TEST_ASSERT_EQUAL_INT(0, mbedtls_sha256_update(&expected_ctx, block, sizeof(block)));
         }
-        mbedtls_sha256_finish_ret(&expected_ctx, expected_hash);
+        TEST_ASSERT_EQUAL_INT(0, mbedtls_sha256_finish(&expected_ctx, expected_hash));
         mbedtls_sha256_free(&expected_ctx);
         fclose(file);
         char query[128];
@@ -1619,6 +1618,30 @@ static void test_expired_multipart_upload_restarts_from_source(void) {
         TEST_ASSERT_EQUAL_INT(DB_STORAGE_MIGRATION_OK, db_storage_migration_get(job.uuid, &job));
         TEST_ASSERT_EQUAL_STRING("completed", job.state);
         TEST_ASSERT_NOT_EQUAL_INT(0, access(source_path, F_OK));
+        char recovered_path[MAX_PATH_LENGTH], error[STORAGE_TARGET_ERROR_MAX] = {0};
+        snprintf(recovered_path, sizeof(recovered_path), "%s/expired-verified-%d.bin", root, mode);
+        TEST_ASSERT_EQUAL_INT(STORAGE_S3_OK,
+            storage_s3_download(&target, job.destination_object_key, recovered_path,
+                                9437184, job.checksum, NULL, error));
+        FILE *recovered = fopen(recovered_path, "rb");
+        TEST_ASSERT_NOT_NULL(recovered);
+        unsigned char actual_hash[32];
+        mbedtls_sha256_context actual_ctx;
+        mbedtls_sha256_init(&actual_ctx);
+        TEST_ASSERT_EQUAL_INT(0, mbedtls_sha256_starts(&actual_ctx, 0));
+        size_t bytes_read;
+        uint64_t actual_size = 0;
+        while ((bytes_read = fread(block, 1, sizeof(block), recovered)) > 0) {
+            actual_size += bytes_read;
+            TEST_ASSERT_EQUAL_INT(0, mbedtls_sha256_update(&actual_ctx, block, bytes_read));
+        }
+        TEST_ASSERT_EQUAL_INT(0, ferror(recovered));
+        TEST_ASSERT_EQUAL_INT(0, mbedtls_sha256_finish(&actual_ctx, actual_hash));
+        mbedtls_sha256_free(&actual_ctx);
+        fclose(recovered);
+        unlink(recovered_path);
+        TEST_ASSERT_EQUAL_UINT64(9437184, actual_size);
+        TEST_ASSERT_EQUAL_MEMORY(expected_hash, actual_hash, sizeof(expected_hash));
     }
 }
 
