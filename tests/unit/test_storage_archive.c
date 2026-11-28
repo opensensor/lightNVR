@@ -220,6 +220,8 @@ void setUp(void) {
     const char *storage_read_only = getenv("LIGHTNVR_STORAGE_READ_ONLY");
     saved_storage_read_only = storage_read_only ? strdup(storage_read_only) : NULL;
     if (storage_read_only) TEST_ASSERT_NOT_NULL(saved_storage_read_only);
+    TEST_ASSERT_EQUAL_INT(0, setenv("LIGHTNVR_ARCHIVE_CACHE_MB", "64", 1));
+    TEST_ASSERT_EQUAL_INT(0, unsetenv("LIGHTNVR_STORAGE_READ_ONLY"));
     reader_progress = NULL;
     reader_progress_context = NULL;
     deny_recording_reads = false;
@@ -1222,6 +1224,8 @@ static void write_lifecycle_attestation(const storage_target_t *target, double c
     const char *credentials_dir =
         isolated_attestation_dir[0] ? isolated_attestation_dir
                                     : getenv("LIGHTNVR_ARCHIVE_CREDENTIALS_DIR");
+    TEST_ASSERT_NOT_NULL_MESSAGE(credentials_dir, "archive credentials directory is required");
+    TEST_ASSERT_TRUE_MESSAGE(credentials_dir[0] != '\0', "archive credentials directory is empty");
     snprintf(path, 1024, "%s/%s.lifecycle.json", credentials_dir, target->credential_ref);
     cJSON *json = cJSON_CreateObject();
     cJSON_AddStringToObject(json, "endpoint", target->endpoint);
@@ -1662,16 +1666,24 @@ static void test_missing_source_mount_defers_archive_and_filesystem_moves(void) 
 
 static void test_storage_workers_do_not_rollback_an_unowned_transaction(void) {
     create_history_policy();
+    uint64_t id = recording(false);
     sql("UPDATE storage_targets SET health_status='unknown';");
-    sql("BEGIN IMMEDIATE;INSERT INTO storage_read_leases(recording_id,expires_at) SELECT id,0 FROM recordings;");
+    sql("BEGIN IMMEDIATE;");
+    char query[256];
+    snprintf(query, sizeof(query),
+             "INSERT INTO storage_read_leases(recording_id,expires_at) VALUES(%llu,0);",
+             (unsigned long long)id);
+    sql(query);
     int reconciled = db_storage_lifecycle_reconcile();
     bool reconcile_preserved = !sqlite3_get_autocommit(get_db_handle());
     storage_deletion_process_one();
     bool deletion_preserved = !sqlite3_get_autocommit(get_db_handle());
+    int lease_preserved = scalar("SELECT count(*) FROM storage_read_leases;");
     sql("ROLLBACK;");
     TEST_ASSERT_EQUAL_INT(-1, reconciled);
     TEST_ASSERT_TRUE(reconcile_preserved);
     TEST_ASSERT_TRUE(deletion_preserved);
+    TEST_ASSERT_EQUAL_INT(1, lease_preserved);
 }
 
 static libuv_connection_t *stalled_archive_connection(libuv_server_t *server, int *client, uint64_t id) {
