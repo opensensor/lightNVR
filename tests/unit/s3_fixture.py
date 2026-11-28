@@ -141,10 +141,32 @@ class S3Handler(BaseHTTPRequestHandler):
                         return self.respond(404 if bucket == 'multipart-expired' else 200,
                                             b'<Error><Code>NoSuchUpload</Code></Error>')
                     manifest = ET.fromstring(body)
+
+                    def local_name(tag):
+                        return tag.rsplit('}', 1)[-1]
+
+                    def child_text(element, name):
+                        for child in list(element):
+                            if local_name(child.tag) == name:
+                                return child.text
+                        return None
+
+                    parts = [element for element in list(manifest) if local_name(element.tag) == 'Part']
+                    if not parts:
+                        return self.respond(200, b'<Error><Code>InvalidPart</Code></Error>')
+
                     values = []
-                    for part in manifest.findall('Part'):
-                        stored = upload['parts'].get(int(part.findtext('PartNumber')))
-                        if stored is None or stored[0] != part.findtext('ETag'):
+                    for part in parts:
+                        part_number_text = child_text(part, 'PartNumber')
+                        etag_text = child_text(part, 'ETag')
+                        if part_number_text is None or etag_text is None:
+                            return self.respond(200, b'<Error><Code>InvalidPart</Code></Error>')
+                        try:
+                            part_number = int(part_number_text)
+                        except (TypeError, ValueError):
+                            return self.respond(200, b'<Error><Code>InvalidPart</Code></Error>')
+                        stored = upload['parts'].get(part_number)
+                        if stored is None or stored[0] != etag_text:
                             return self.respond(200, b'<Error><Code>InvalidPart</Code></Error>')
                         values.append(stored[1])
                     self.objects[identity] = b''.join(values)
