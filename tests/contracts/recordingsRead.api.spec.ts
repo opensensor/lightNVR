@@ -129,6 +129,7 @@ test('recording reads fail closed on policy lookup failure and recover without e
       '/api/recordings/protected','/api/recordings/protected?stream=A',
       `/api/recordings/${ids.playable}`,`/api/recordings/${ids.playable}/tags`,
       `/api/recordings/play/${ids.playable}`,
+      `/api/recordings/play/${ids.playable}`,
       `/api/timeline/segments?stream=A&${timelineQuery(fixture)}`,
       `/api/timeline/manifest?stream=A&${timelineQuery(fixture)}`,
       `/api/timeline/play?stream=A&start=${fixture.start}`,
