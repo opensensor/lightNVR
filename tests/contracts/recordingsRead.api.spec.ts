@@ -317,8 +317,10 @@ test('related mutation boundaries reject historical and mixed unauthorized sets 
     const authorizedId=ids.playable;
     const authorizedBefore=rowById(authorizedId);
     if(!authorizedBefore || typeof authorizedBefore.file_path!=='string')throw new Error('Authorized recording has no file path');
-    const protectOk=await wire(server,`/api/recordings/${authorizedId}/protect`,actor,'PUT',{protected:authorizedBefore.protected?false:true});
+    const toggledProtected=authorizedBefore.protected?0:1;
+    const protectOk=await wire(server,`/api/recordings/${authorizedId}/protect`,actor,'PUT',{protected:!!toggledProtected});
     expect(protectOk.response.status).toBe(200);
+    expect(rowById(authorizedId)?.protected).toBe(toggledProtected);
     const protectRestore=await wire(server,`/api/recordings/${authorizedId}/protect`,actor,'PUT',{protected:!!authorizedBefore.protected});
     expect(protectRestore.response.status).toBe(200);
     expect(rowById(authorizedId)?.protected).toBe(authorizedBefore.protected);
