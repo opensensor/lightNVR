@@ -171,15 +171,17 @@ static cJSON *private_json_read(const storage_target_t *target, const char *suff
     close(dir);
     if (descriptor < 0) return NULL;
     struct stat status;
-    char buffer[S3_SECRET_LIMIT + 1];
+    char buffer[S3_SECRET_LIMIT + 1] = {0};
     bool valid = fstat(descriptor, &status) == 0 && S_ISREG(status.st_mode) &&
         !(status.st_mode & 0077) && (status.st_uid == 0 || status.st_uid == geteuid()) &&
         status.st_size > 0 && status.st_size <= S3_SECRET_LIMIT;
     ssize_t count = valid ? read(descriptor, buffer, sizeof(buffer) - 1) : -1;
     close(descriptor);
-    if (count <= 0 || count != status.st_size) return NULL;
-    buffer[count] = 0;
-    cJSON *json = cJSON_Parse(buffer);
+    cJSON *json = NULL;
+    if (count > 0 && count == status.st_size) {
+        buffer[count] = 0;
+        json = cJSON_Parse(buffer);
+    }
     wipe(buffer, sizeof(buffer));
     return json;
 }
