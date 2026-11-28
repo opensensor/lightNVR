@@ -118,7 +118,11 @@ class S3Handler(BaseHTTPRequestHandler):
                     del self.uploads[upload_id]
                     return self.respond(204)
                 if self.command == 'GET':
-                    return self.respond(200, b'<ListPartsResult/>')
+                    parts_xml = ''.join(
+                        f'<Part><PartNumber>{part_number}</PartNumber><ETag>{etag}</ETag><Size>{len(part_body)}</Size></Part>'
+                        for part_number, (etag, part_body) in sorted(upload['parts'].items())
+                    )
+                    return self.respond(200, f'<ListPartsResult>{parts_xml}</ListPartsResult>'.encode())
                 if self.command == 'PUT':
                     part = int(query['partNumber'])
                     if bucket == 'multipart-part-expired' and part == 2 and identity not in self.expired_parts:
