@@ -297,6 +297,12 @@ int libuv_server_start(http_server_handle_t handle) {
         return -1;
     }
 
+    /* Reject duplicate start or restart before prior stop has fully completed. */
+    if (server->running || server->thread_started) {
+        log_error("libuv_server_start: Server is already running or stop has not completed");
+        return -1;
+    }
+
     // CRITICAL: Reset shutdown flag so callbacks work properly after restart
     server->shutting_down = false;
 
