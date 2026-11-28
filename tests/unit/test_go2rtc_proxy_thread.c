@@ -36,7 +36,6 @@ static int upstream_requests;
 static char upstream_request[2048];
 static pthread_mutex_t upstream_mutex = PTHREAD_MUTEX_INITIALIZER;
 static libuv_connection_t *overflow_test_connections;
-static int overflow_test_connections_allocated;
 static int overflow_test_connections_initialized;
 static libuv_connection_t fixture_connection;
 static int redirect_server = -1;
@@ -193,7 +192,6 @@ void tearDown(void) {
         http_response_free(&overflow_test_connections[i].response);
     free(overflow_test_connections);
     overflow_test_connections = NULL;
-    overflow_test_connections_allocated = 0;
     overflow_test_connections_initialized = 0;
     TEST_ASSERT_EQUAL_INT(0, uv_loop_close(&loop));
     curl_global_cleanup();
@@ -202,7 +200,6 @@ void tearDown(void) {
 void test_proxy_rejects_overflow_and_recovers_slots_after_completion(void) {
     enum { LIMIT = 32 };
     overflow_test_connections = calloc(LIMIT + 1, sizeof(*overflow_test_connections));
-    overflow_test_connections_allocated = LIMIT + 1;
     overflow_test_connections_initialized = 0;
     TEST_ASSERT_NOT_NULL(overflow_test_connections);
     hold_upstream = true;
