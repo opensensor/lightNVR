@@ -593,8 +593,9 @@ void test_shutdown_waits_for_a_worker_beyond_the_old_ten_second_timeout(void) {
     while (!worker_in_curl && wait_rc == 0) {
         wait_rc = pthread_cond_timedwait(&upstream_ready, &upstream_mutex, &deadline);
     }
+    bool worker_in_curl_snapshot = worker_in_curl;
     pthread_mutex_unlock(&upstream_mutex);
-    TEST_ASSERT_TRUE_MESSAGE(worker_in_curl, "Timed out waiting for worker to enter curl");
+    TEST_ASSERT_TRUE_MESSAGE(worker_in_curl_snapshot, "Timed out waiting for worker to enter curl");
     pthread_t releaser;
     TEST_ASSERT_EQUAL_INT(0, pthread_create(&releaser, NULL, release_delayed_worker, NULL));
     long started = monotonic_ms();
