@@ -825,6 +825,8 @@ static bool safe_lifecycle(char *body) {
     ezxml_t root = response_xml(body, "LifecycleConfiguration");
     if (!root) return false;
     bool safe = true;
+    for (const char *p = root->txt; safe && p && *p; p++)
+        if (!isspace((unsigned char)*p)) safe = false;
     for (ezxml_t rule = root->child; rule && safe; rule = rule->ordered) {
         if (strcmp(xml_local_name(rule), "Rule")) { safe = false; break; }
         bool abort_rule = false;
