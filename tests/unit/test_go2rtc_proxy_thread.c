@@ -416,7 +416,7 @@ void test_both_proxy_handlers_never_follow_unauthorized_redirects(void) {
 void test_proxy_rejects_unsafe_requests_before_contacting_upstream(void) {
     g_config.web_auth_enabled = false;
     real_authorization = true;
-    int server = open_upstream_listener();
+    fixture_upstream_listener = open_upstream_listener();
     const char *paths[] = {
         "/go2rtc/api/hls/../streams", "/go2rtc/api/hls/../config",
         "/go2rtc/api/hls/%2e%2e/streams", "/go2rtc/api/streams",
@@ -448,9 +448,10 @@ void test_proxy_rejects_unsafe_requests_before_contacting_upstream(void) {
             }
         }
     }
-    struct pollfd ready = { .fd = server, .events = POLLIN };
+    struct pollfd ready = { .fd = fixture_upstream_listener, .events = POLLIN };
     int contacted = poll(&ready, 1, 0);
-    close(server);
+    close(fixture_upstream_listener);
+    fixture_upstream_listener = -1;
     TEST_ASSERT_EQUAL_INT(0, contacted);
 }
 
