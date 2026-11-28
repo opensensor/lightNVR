@@ -359,29 +359,38 @@ void test_websocket_auth_origin_and_query_failures_never_reach_upstream(void) {
 }
 
 void test_failed_upstream_handshake_returns_502(void) {
-    peer_t peer = {.status = 404};
-    pthread_t thread;
-    TEST_ASSERT_EQUAL_INT(0, pthread_create(&thread, NULL, upstream_peer, &peer));
+    /* Use tracked peer/thread/client resources so tearDown cleanup runs even if assertions fail. */
+    tracked_peers[0] = (peer_t){.status = 404};
+    TEST_ASSERT_EQUAL_INT(0, pthread_create(&tracked_threads[0], NULL, upstream_peer, &tracked_peers[0]));
+    tracked_thread_started[0] = true;
     int client = client_open();
+    tracked_clients[0] = client;
     char origin[64], response[2048];
+    int status = 0;
     snprintf(origin, sizeof(origin), "http://localhost:%d", web_port);
     send_upgrade(client, 0, origin, false);
     TEST_ASSERT_TRUE(read_headers(client, response, sizeof(response)));
-    TEST_ASSERT_NOT_NULL(strstr(response, "502"));
+    TEST_ASSERT_EQUAL_INT(1, sscanf(response, "HTTP/%*d.%*d %d", &status));
+    TEST_ASSERT_EQUAL_INT(502, status);
     close(client);
-    pthread_join(thread, NULL);
-    TEST_ASSERT_FALSE(peer.received_mse);
+    tracked_clients[0] = -1;
+    pthread_join(tracked_threads[0], NULL);
+    tracked_thread_started[0] = false;
+    TEST_ASSERT_FALSE(tracked_peers[0].received_mse);
 }
 void test_upgrade_without_media_policy_ack_is_rejected(void) {
-    peer_t peer = {.status = 101, .omit_media_ack = true};
-    pthread_t thread;
-    TEST_ASSERT_EQUAL_INT(0, pthread_create(&thread, NULL, upstream_peer, &peer));
+    tracked_peers[0] = (peer_t){.status = 101, .omit_media_ack = true};
+    TEST_ASSERT_EQUAL_INT(0, pthread_create(&tracked_threads[0], NULL, upstream_peer, &tracked_peers[0]));
+    tracked_thread_started[0] = true;
     int client = client_open();
+    tracked_clients[0] = client;
     char origin[64], response[2048];
+    int status = 0;
     snprintf(origin, sizeof(origin), "http://localhost:%d", web_port);
     send_upgrade(client, 0, origin, false);
     TEST_ASSERT_TRUE(read_headers(client, response, sizeof(response)));
-    TEST_ASSERT_NOT_NULL(strstr(response, "502"));
+    TEST_ASSERT_EQUAL_INT(1, sscanf(response, "HTTP/%*d.%*d %d", &status));
+    TEST_ASSERT_EQUAL_INT(502, status);
     const char *length_header = strstr(response, "Content-Length: ");
     TEST_ASSERT_NOT_NULL(length_header);
     long body_length = strtol(length_header + strlen("Content-Length: "), NULL, 10);
@@ -391,21 +400,28 @@ void test_upgrade_without_media_policy_ack_is_rejected(void) {
     response[body_length] = '\0';
     TEST_ASSERT_NOT_NULL(strstr(response, "compatible OpenSensor go2rtc fork"));
     close(client);
-    pthread_join(thread, NULL);
-    TEST_ASSERT_FALSE(peer.received_mse);
+    tracked_clients[0] = -1;
+    pthread_join(tracked_threads[0], NULL);
+    tracked_thread_started[0] = false;
+    TEST_ASSERT_FALSE(tracked_peers[0].received_mse);
 }
 void test_upgrade_with_wrong_accept_is_rejected(void) {
-    peer_t peer = {.status = 101, .bad_accept = true};
-    pthread_t thread;
-    TEST_ASSERT_EQUAL_INT(0, pthread_create(&thread, NULL, upstream_peer, &peer));
+    tracked_peers[0] = (peer_t){.status = 101, .bad_accept = true};
+    TEST_ASSERT_EQUAL_INT(0, pthread_create(&tracked_threads[0], NULL, upstream_peer, &tracked_peers[0]));
+    tracked_thread_started[0] = true;
     int client = client_open();
+    tracked_clients[0] = client;
     char origin[64], response[2048];
+    int status = 0;
     snprintf(origin, sizeof(origin), "http://localhost:%d", web_port);
     send_upgrade(client, 0, origin, false);
     TEST_ASSERT_TRUE(read_headers(client, response, sizeof(response)));
-    TEST_ASSERT_NOT_NULL(strstr(response, "502"));
+    TEST_ASSERT_EQUAL_INT(1, sscanf(response, "HTTP/%*d.%*d %d", &status));
+    TEST_ASSERT_EQUAL_INT(502, status);
     close(client);
-    pthread_join(thread, NULL);
+    tracked_clients[0] = -1;
+    pthread_join(tracked_threads[0], NULL);
+    tracked_thread_started[0] = false;
 }
 int main(void) {
     UNITY_BEGIN();
