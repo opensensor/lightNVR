@@ -44,6 +44,10 @@ static char root[] = "/tmp/lightnvr-archive-test-XXXXXX";
 static char db_path[512], source_path[512], source_uuid[37];
 static const char *payload = "a finalized recording preserved across storage tiers";
 static char *saved_archive_cache_mb;
+static char *saved_archive_credentials_dir;
+static bool had_archive_credentials_dir;
+static char *saved_storage_read_only;
+static bool had_storage_read_only;
 
 /* Instrument private background readers, including instruction budgets and
  * a deterministic pause while a SELECT is in progress. */
@@ -1115,8 +1119,6 @@ static void test_multipart_cancellation_aborts_owned_upload_and_preserves_source
 
 static void test_archive_credentials_require_private_regular_files(void) {
     storage_target_t target = archive_target("credentials", true);
-    char *original = strdup(getenv("LIGHTNVR_ARCHIVE_CREDENTIALS_DIR"));
-    TEST_ASSERT_NOT_NULL(original);
     setenv("LIGHTNVR_ARCHIVE_CREDENTIALS_DIR", root, 1);
     char path[512], link[512], error[256];
     snprintf(path, sizeof(path), "%s/test-credential", root);
@@ -1136,8 +1138,6 @@ static void test_archive_credentials_require_private_regular_files(void) {
     int symlinked = storage_s3_stat(&target, "missing", &bytes, error);
     unlink(link);
     unlink(path);
-    setenv("LIGHTNVR_ARCHIVE_CREDENTIALS_DIR", original, 1);
-    free(original);
     TEST_ASSERT_EQUAL_INT(STORAGE_S3_ERROR, unsafe_mode);
     TEST_ASSERT_EQUAL_INT(STORAGE_S3_MISSING, safe_mode);
     TEST_ASSERT_EQUAL_INT(STORAGE_S3_ERROR, symlinked);
