@@ -44,6 +44,8 @@ static char root[] = "/tmp/lightnvr-archive-test-XXXXXX";
 static char db_path[512], source_path[512], source_uuid[37];
 static const char *payload = "a finalized recording preserved across storage tiers";
 static char *saved_archive_cache_mb;
+static char *saved_archive_credentials_dir;
+static char *saved_storage_read_only;
 
 /* Instrument private background readers, including instruction budgets and
  * a deterministic pause while a SELECT is in progress. */
@@ -201,6 +203,12 @@ void setUp(void) {
     const char *archive_cache_mb = getenv("LIGHTNVR_ARCHIVE_CACHE_MB");
     saved_archive_cache_mb = archive_cache_mb ? strdup(archive_cache_mb) : NULL;
     if (archive_cache_mb) TEST_ASSERT_NOT_NULL(saved_archive_cache_mb);
+    const char *credentials_dir = getenv("LIGHTNVR_ARCHIVE_CREDENTIALS_DIR");
+    saved_archive_credentials_dir = credentials_dir ? strdup(credentials_dir) : NULL;
+    if (credentials_dir) TEST_ASSERT_NOT_NULL(saved_archive_credentials_dir);
+    const char *storage_read_only = getenv("LIGHTNVR_STORAGE_READ_ONLY");
+    saved_storage_read_only = storage_read_only ? strdup(storage_read_only) : NULL;
+    if (storage_read_only) TEST_ASSERT_NOT_NULL(saved_storage_read_only);
     reader_progress = NULL;
     reader_progress_context = NULL;
     deny_recording_reads = false;
@@ -224,6 +232,20 @@ void tearDown(void) {
         saved_archive_cache_mb = NULL;
     } else {
         TEST_ASSERT_EQUAL_INT(0, unsetenv("LIGHTNVR_ARCHIVE_CACHE_MB"));
+    }
+    if (saved_archive_credentials_dir) {
+        TEST_ASSERT_EQUAL_INT(0, setenv("LIGHTNVR_ARCHIVE_CREDENTIALS_DIR", saved_archive_credentials_dir, 1));
+        free(saved_archive_credentials_dir);
+        saved_archive_credentials_dir = NULL;
+    } else {
+        TEST_ASSERT_EQUAL_INT(0, unsetenv("LIGHTNVR_ARCHIVE_CREDENTIALS_DIR"));
+    }
+    if (saved_storage_read_only) {
+        TEST_ASSERT_EQUAL_INT(0, setenv("LIGHTNVR_STORAGE_READ_ONLY", saved_storage_read_only, 1));
+        free(saved_storage_read_only);
+        saved_storage_read_only = NULL;
+    } else {
+        TEST_ASSERT_EQUAL_INT(0, unsetenv("LIGHTNVR_STORAGE_READ_ONLY"));
     }
     reader_progress = NULL;
     reader_progress_context = NULL;
@@ -850,14 +872,14 @@ static void test_archive_admin_summary_retry_and_permissions(void) {
     storage_target_t target = archive_target("delete-retry", true);
     storage_migration_job_t job = move_recording(id, &target);
     TEST_ASSERT_EQUAL_STRING("completed", job.state);
-    setenv("LIGHTNVR_STORAGE_READ_ONLY", "1", 1);
+    TEST_ASSERT_EQUAL_INT(0, setenv("LIGHTNVR_STORAGE_READ_ONLY", "1", 1));
     cJSON *json = api(handle_get_storage_archive, HTTP_METHOD_GET, "/api/storage-archive", NULL, NULL, NULL, 200);
     TEST_ASSERT_TRUE(cJSON_IsTrue(field(json, "recovery_read_only")));
     TEST_ASSERT_TRUE(cJSON_IsTrue(field(json, "s3_enabled")));
     TEST_ASSERT_EQUAL_UINT(strlen(payload), field(json, "archive_bytes")->valueint);
     TEST_ASSERT_EQUAL_INT(0, field(json, "pending_deletion_count")->valueint);
     cJSON_Delete(json);
-    unsetenv("LIGHTNVR_STORAGE_READ_ONLY");
+    TEST_ASSERT_EQUAL_INT(0, unsetenv("LIGHTNVR_STORAGE_READ_ONLY"));
 
     char path[128], body[128];
     snprintf(path, sizeof(path), "/api/recordings/%llu", (unsigned long long)id);
@@ -1115,9 +1137,7 @@ static void test_multipart_cancellation_aborts_owned_upload_and_preserves_source
 
 static void test_archive_credentials_require_private_regular_files(void) {
     storage_target_t target = archive_target("credentials", true);
-    char *original = strdup(getenv("LIGHTNVR_ARCHIVE_CREDENTIALS_DIR"));
-    TEST_ASSERT_NOT_NULL(original);
-    setenv("LIGHTNVR_ARCHIVE_CREDENTIALS_DIR", root, 1);
+    TEST_ASSERT_EQUAL_INT(0, setenv("LIGHTNVR_ARCHIVE_CREDENTIALS_DIR", root, 1));
     char path[512], link[512], error[256];
     snprintf(path, sizeof(path), "%s/test-credential", root);
     snprintf(link, sizeof(link), "%s/test-credential-link", root);
@@ -1136,8 +1156,6 @@ static void test_archive_credentials_require_private_regular_files(void) {
     int symlinked = storage_s3_stat(&target, "missing", &bytes, error);
     unlink(link);
     unlink(path);
-    setenv("LIGHTNVR_ARCHIVE_CREDENTIALS_DIR", original, 1);
-    free(original);
     TEST_ASSERT_EQUAL_INT(STORAGE_S3_ERROR, unsafe_mode);
     TEST_ASSERT_EQUAL_INT(STORAGE_S3_MISSING, safe_mode);
     TEST_ASSERT_EQUAL_INT(STORAGE_S3_ERROR, symlinked);
@@ -1145,8 +1163,6 @@ static void test_archive_credentials_require_private_regular_files(void) {
 
 static void test_archive_credentials_reject_symlinked_directory_components(void) {
     storage_target_t target = archive_target("credentials-path", true);
-    char *original = strdup(getenv("LIGHTNVR_ARCHIVE_CREDENTIALS_DIR"));
-    TEST_ASSERT_NOT_NULL(original);
     char real[512], nested[512], link[512], indirect[512], path[512], error[256];
     snprintf(real, sizeof(real), "%s/credentials-real", root);
     snprintf(nested, sizeof(nested), "%s/credentials-real/nested", root);
@@ -1163,17 +1179,15 @@ static void test_archive_credentials_reject_symlinked_directory_components(void)
     TEST_ASSERT_EQUAL_INT(0, chmod(path, 0600));
     safe_strcpy(target.credential_ref, "test-credential", sizeof(target.credential_ref), 0);
     uint64_t bytes;
-    setenv("LIGHTNVR_ARCHIVE_CREDENTIALS_DIR", nested, 1);
+    TEST_ASSERT_EQUAL_INT(0, setenv("LIGHTNVR_ARCHIVE_CREDENTIALS_DIR", nested, 1));
     int direct = storage_s3_stat(&target, "missing", &bytes, error);
-    setenv("LIGHTNVR_ARCHIVE_CREDENTIALS_DIR", indirect, 1);
+    TEST_ASSERT_EQUAL_INT(0, setenv("LIGHTNVR_ARCHIVE_CREDENTIALS_DIR", indirect, 1));
     int intermediate = storage_s3_stat(&target, "missing", &bytes, error);
     /* Point the final component at the same usable directory as well. */
     unlink(link);
     TEST_ASSERT_EQUAL_INT(0, symlink(nested, link));
-    setenv("LIGHTNVR_ARCHIVE_CREDENTIALS_DIR", link, 1);
+    TEST_ASSERT_EQUAL_INT(0, setenv("LIGHTNVR_ARCHIVE_CREDENTIALS_DIR", link, 1));
     int final = storage_s3_stat(&target, "missing", &bytes, error);
-    setenv("LIGHTNVR_ARCHIVE_CREDENTIALS_DIR", original, 1);
-    free(original);
     unlink(link);
     unlink(path);
     rmdir(nested);
