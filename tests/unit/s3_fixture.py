@@ -180,8 +180,12 @@ class S3Handler(BaseHTTPRequestHandler):
                     if bucket in ('multipart-expired', 'multipart-expired-200') and identity not in self.expired_completions:
                         self.expired_completions.add(identity)
                         del self.uploads[upload_id]
-                        return self.respond_unlocked(404 if bucket == 'multipart-expired' else 200,
-                                            b'<Error><Code>NoSuchUpload</Code></Error>')
+                        if bucket == 'multipart-expired-200':
+                            return self.respond_unlocked(200,
+                                b'<s3:Error xmlns:s3="urn:fixture:s3">'
+                                b'<s3:RequestId>fixture</s3:RequestId>'
+                                b'<s3:Code>NoSuchUpload</s3:Code></s3:Error>')
+                        return self.respond_unlocked(404, b'<Error><Code>NoSuchUpload</Code></Error>')
                     try:
                         manifest = ET.fromstring(body)
                     except ET.ParseError:

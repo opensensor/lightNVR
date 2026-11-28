@@ -664,7 +664,7 @@ static int multipart_upload(const storage_target_t *target, const char *key, FIL
             char *failure_body = strdup(body);
             ezxml_t failure = failure_body ? response_xml(failure_body, "Error") : NULL;
             if (failure) {
-                if (!strcmp(ezxml_txt(ezxml_child(failure, "Code")), "NoSuchUpload")) missing_upload = true;
+                if (!strcmp(ezxml_txt(ezxml_child_local(failure, "Code")), "NoSuchUpload")) missing_upload = true;
                 ezxml_free(failure);
             }
             free(failure_body);
