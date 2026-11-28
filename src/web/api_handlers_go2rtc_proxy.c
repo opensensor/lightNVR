@@ -7,10 +7,10 @@
 
 /**
  * @file api_handlers_go2rtc_proxy.c
- * @brief Streaming reverse proxy handler for forwarding requests to go2rtc
+ * @brief Buffered reverse proxy handler for forwarding requests to go2rtc
  *
  * Proxies HLS, snapshots and WebRTC signaling to the local go2rtc instance with:
- * - Streaming pass-through (no buffering)
+ * - Buffered upstream forwarding (response body accumulated before return)
  * - Concurrency limiting (semaphore-based)
  * - Scoped to explicitly authorized endpoints only
  */
