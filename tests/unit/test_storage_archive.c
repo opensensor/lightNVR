@@ -1833,5 +1833,11 @@ int main(void) {
     RUN_TEST(test_stalled_archive_writes_renew_lease_until_completion);
     int result = UNITY_END();
     shutdown_database();
+    {
+        char cleanup_cmd[sizeof(root) + 32];
+        if (snprintf(cleanup_cmd, sizeof(cleanup_cmd), "rm -rf -- '%s'", root) < (int)sizeof(cleanup_cmd)) {
+            (void)system(cleanup_cmd);
+        }
+    }
     return result;
 }
