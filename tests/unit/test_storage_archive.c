@@ -884,16 +884,7 @@ static void test_ambiguous_multipart_completion_recovers(void) {
     FILE *file = fopen(source_path, "wb");
     TEST_ASSERT_NOT_NULL(file);
     unsigned char block[65536];
-    unsigned long long expected_checksum = 0;
-    uint64_t expected_size = 0;
-    for (int i = 0; i < 144; i++) {
-        for (size_t j = 0; j < sizeof(block); j++) {
-            block[j] = (unsigned char)((i * 131 + (int)j * 17 + (i ^ (int)j)) & 0xff);
-        }
-        TEST_ASSERT_EQUAL_UINT(sizeof(block), fwrite(block, 1, sizeof(block), file));
-        for (size_t j = 0; j < sizeof(block); j++) expected_checksum += block[j];
-        expected_size += sizeof(block);
-    }
+    uint64_t expected_checksum = 14695981039346656037ULL;
     uint64_t expected_size = 0;
     for (int i = 0; i < 144; i++) {
         for (size_t j = 0; j < sizeof(block); j++) {
@@ -907,23 +898,6 @@ static void test_ambiguous_multipart_completion_recovers(void) {
         expected_size += sizeof(block);
     }
     fclose(file);
-
-    char recovered_path[MAX_PATH_LENGTH];
-    TEST_ASSERT_EQUAL_INT(0, storage_s3_download(&target, job.destination_object_key, recovered_path, NULL));
-    FILE *recovered = fopen(recovered_path, "rb");
-    TEST_ASSERT_NOT_NULL(recovered);
-    unsigned long long actual_checksum = 0;
-    uint64_t actual_size = 0;
-    while (1) {
-        size_t n = fread(block, 1, sizeof(block), recovered);
-        actual_size += n;
-        for (size_t j = 0; j < n; j++) actual_checksum += block[j];
-        if (n < sizeof(block)) break;
-    }
-    fclose(recovered);
-    unlink(recovered_path);
-    TEST_ASSERT_EQUAL_UINT64(expected_size, actual_size);
-    TEST_ASSERT_EQUAL_UINT64(expected_checksum, actual_checksum);
     sql("UPDATE recordings SET size_bytes=9437184;");
     storage_target_t target = archive_target("multipart-ambiguous", true);
     storage_migration_job_t job = move_recording(id, &target);
@@ -935,6 +909,7 @@ static void test_ambiguous_multipart_completion_recovers(void) {
     TEST_ASSERT_EQUAL_INT(1, storage_migration_process_one());
     TEST_ASSERT_EQUAL_INT(DB_STORAGE_MIGRATION_OK, db_storage_migration_get(job.uuid, &job));
     TEST_ASSERT_EQUAL_STRING("completed", job.state);
+    TEST_ASSERT_EQUAL_INT(0, storage_migration_process_one());
     TEST_ASSERT_NOT_EQUAL_INT(0, access(source_path, F_OK));
 
     char recovered_path[MAX_PATH_LENGTH], error[STORAGE_TARGET_ERROR_MAX] = {0};
@@ -1517,20 +1492,6 @@ static void test_legacy_age_cleanup_honors_archive_retention_override(void) {
 }
 
 static void test_batch_export_waits_for_verified_archive_source(void) {
-        if (!terminal) {
-            // Keep draining until terminal (or hard safety cap) before allowing
-            // teardown paths to run, to avoid races with detached worker activity.
-            for (int drain = 0; drain < 5000; drain++) {
-                (void)storage_source_process_one();
-                json = api(handle_batch_download_status, HTTP_METHOD_GET, path, NULL, NULL, NULL, 200);
-                terminal = strcmp(field(json, "status")->valuestring, "pending") != 0 &&
-                           strcmp(field(json, "status")->valuestring, "running") != 0;
-                cJSON_Delete(json);
-                if (terminal) break;
-                struct timespec delay = {.tv_nsec = 10000000};
-                nanosleep(&delay, NULL);
-            }
-        }
     uint64_t id = recording(false);
     storage_target_t target = archive_target("batch-export", true);
     storage_migration_job_t job = move_recording(id, &target);
