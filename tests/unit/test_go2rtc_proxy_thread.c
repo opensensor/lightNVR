@@ -40,6 +40,7 @@ static pthread_t slow_snapshot_thread;
 static bool slow_snapshot_thread_started;
 static libuv_connection_t slow_snapshot_connection;
 static bool slow_snapshot_connection_initialized;
+static libuv_connection_t threaded_connection;
 static libuv_connection_t *snapshot_capacity_connections;
 static int snapshot_capacity_count;
 
@@ -132,6 +133,7 @@ void tearDown(void) {
     pthread_mutex_unlock(&upstream_mutex);
     go2rtc_proxy_thread_shutdown();
     uv_run(&loop, UV_RUN_DEFAULT);
+    http_response_free(&threaded_connection.response);
     if (slow_snapshot_thread_started) {
         pthread_join(slow_snapshot_thread, NULL);
         slow_snapshot_thread_started = false;
@@ -436,7 +438,6 @@ static void check_both_webrtc_proxies(bool acknowledged, bool fail_issuance) {
         const char *override = "api: {base_path: /custom}";
         TEST_ASSERT_TRUE(go2rtc_api_apply_base_path_override(override, strlen(override)));
     }
-    static libuv_connection_t threaded_connection;
     for (int threaded = 0; threaded < 2; threaded++) {
         upstream_request[0] = '\0';
         int server = open_upstream_listener();
