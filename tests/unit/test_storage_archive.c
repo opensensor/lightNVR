@@ -1491,6 +1491,22 @@ static void test_batch_export_waits_for_verified_archive_source(void) {
             struct timespec delay = {.tv_nsec = 10000000};
             nanosleep(&delay, NULL);
         }
+        if (!terminal) {
+            char cancel_path[512];
+            snprintf(cancel_path, sizeof(cancel_path), "/api/recordings/batch-download/cancel/%s", token);
+            json = api(handle_batch_download_cancel, HTTP_METHOD_POST, cancel_path, NULL, NULL, NULL, 200);
+            cJSON_Delete(json);
+            for (int drain = 0; drain < 500; drain++) {
+                (void)storage_source_process_one();
+                json = api(handle_batch_download_status, HTTP_METHOD_GET, path, NULL, NULL, NULL, 200);
+                terminal = strcmp(field(json, "status")->valuestring, "pending") != 0 &&
+                           strcmp(field(json, "status")->valuestring, "running") != 0;
+                cJSON_Delete(json);
+                if (terminal) break;
+                struct timespec delay = {.tv_nsec = 10000000};
+                nanosleep(&delay, NULL);
+            }
+        }
         TEST_ASSERT_TRUE_MESSAGE(terminal, "batch export worker did not reach terminal state before fixture release");
     }
     TEST_ASSERT_FALSE_MESSAGE(timed_out, "batch export did not complete before polling deadline");
