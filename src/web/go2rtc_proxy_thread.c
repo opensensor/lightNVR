@@ -316,6 +316,9 @@ static void *proxy_worker_thread(void *arg) {
         if (ctx->body && ctx->body_len > 0) {
             curl_easy_setopt(curl, CURLOPT_POSTFIELDS, ctx->body);
             curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)ctx->body_len);
+        } else {
+            curl_easy_setopt(curl, CURLOPT_POSTFIELDS, "");
+            curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, 0L);
         }
     } else if (strcmp(ctx->method, "PUT") == 0) {
         curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "PUT");
