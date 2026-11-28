@@ -629,8 +629,17 @@ static void test_multipart_resume_after_restart(void) {
     FILE *file = fopen(source_path, "wb");
     TEST_ASSERT_NOT_NULL(file);
     unsigned char block[65536];
+    uint64_t expected_size = 0;
+    uint64_t expected_hash = 1469598103934665603ULL; /* FNV-1a 64-bit offset basis */
     for (size_t i = 0; i < sizeof(block); i++) block[i] = (unsigned char)(i * 13);
-    for (int i = 0; i < 144; i++) TEST_ASSERT_EQUAL_UINT(sizeof(block), fwrite(block, 1, sizeof(block), file));
+    for (int i = 0; i < 144; i++) {
+        TEST_ASSERT_EQUAL_UINT(sizeof(block), fwrite(block, 1, sizeof(block), file));
+        expected_size += sizeof(block);
+        for (size_t j = 0; j < sizeof(block); j++) {
+            expected_hash ^= block[j];
+            expected_hash *= 1099511628211ULL;
+        }
+    }
     fclose(file);
     sql("UPDATE recordings SET size_bytes=9437184;");
     storage_target_t target = archive_target("multipart-retry", true);
@@ -645,6 +654,30 @@ static void test_multipart_resume_after_restart(void) {
     TEST_ASSERT_EQUAL_INT(DB_STORAGE_MIGRATION_OK, db_storage_migration_get(job.uuid, &job));
     TEST_ASSERT_EQUAL_STRING("completed", job.state);
     TEST_ASSERT_NOT_EQUAL_INT(0, access(source_path, F_OK));
+
+    /* Verify archived object content integrity after multipart resume. */
+    char verified_path[512], error[STORAGE_TARGET_ERROR_MAX] = {0};
+    snprintf(verified_path, sizeof(verified_path), "%s/multipart-verified.bin", root);
+    TEST_ASSERT_EQUAL_INT(STORAGE_S3_OK,
+        storage_s3_download(&target, job.destination_object_key, verified_path,
+                            expected_size, job.checksum, NULL, error));
+    FILE *archived = fopen(verified_path, "rb");
+    TEST_ASSERT_NOT_NULL(archived);
+    uint64_t archived_hash = 1469598103934665603ULL;
+    uint64_t archived_size = 0;
+    size_t bytes_read;
+    while ((bytes_read = fread(block, 1, sizeof(block), archived)) > 0) {
+        archived_size += bytes_read;
+        for (size_t i = 0; i < bytes_read; i++) {
+            archived_hash ^= block[i];
+            archived_hash *= 1099511628211ULL;
+        }
+    }
+    TEST_ASSERT_EQUAL_INT(0, ferror(archived));
+    fclose(archived);
+    unlink(verified_path);
+    TEST_ASSERT_EQUAL_UINT64(expected_size, archived_size);
+    TEST_ASSERT_EQUAL_UINT64(expected_hash, archived_hash);
 }
 
 static void test_existing_archive_promotion_and_pressure(void) {
@@ -1410,7 +1443,21 @@ static void test_batch_export_waits_for_verified_archive_source(void) {
         struct timespec delay = {.tv_nsec = 10000000};
         nanosleep(&delay, NULL);
     }
-    TEST_ASSERT_TRUE(completed);
+    if (!completed) {
+        // Give the detached export worker a bounded chance to reach a terminal
+        // state before the assertion aborts this test's fixture.
+        for (int drain = 0; drain < 500; drain++) {
+            (void)storage_source_process_one();
+            json = api(handle_batch_download_status, HTTP_METHOD_GET, path, NULL, NULL, NULL, 200);
+            bool terminal = strcmp(field(json, "status")->valuestring, "pending") != 0 &&
+                            strcmp(field(json, "status")->valuestring, "running") != 0;
+            cJSON_Delete(json);
+            if (terminal) break;
+            struct timespec delay = {.tv_nsec = 10000000};
+            nanosleep(&delay, NULL);
+        }
+        TEST_FAIL_MESSAGE("batch export did not complete before polling deadline");
+    }
     TEST_ASSERT_TRUE(retrieved);
     // Inspect the ZIP produced through the real handler's deferred-file contract.
     uv_loop_t loop;
