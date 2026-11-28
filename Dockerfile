@@ -255,7 +255,7 @@ ARG GIT_COMMIT
 RUN mkdir -p /usr/lib/pkgconfig && \
     case "$TARGETARCH/$TARGETVARIANT" in \
         amd64/) LIB_DIR="/usr/lib/x86_64-linux-gnu"; MBEDTLS_PACKAGE=libmbedtls-dev ;; \
-        arm64/) LIB_DIR="/usr/lib/aarch64-linux-gnu"; MBEDTLS_PACKAGE=libmbedtls-dev ;; \
+        arm64/|arm64/v8) LIB_DIR="/usr/lib/aarch64-linux-gnu"; MBEDTLS_PACKAGE=libmbedtls-dev ;; \
         arm/v7) LIB_DIR="/usr/lib/arm-linux-gnueabihf"; MBEDTLS_PACKAGE=libmbedtls-dev; \
                 DPKG_ADMINDIR="--admindir=/opt/target-sysroot/var/lib/dpkg" ;; \
         *) echo "Unsupported target architecture: $TARGETARCH/$TARGETVARIANT"; exit 1 ;; \
