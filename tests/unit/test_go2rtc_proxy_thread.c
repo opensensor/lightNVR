@@ -622,6 +622,36 @@ void test_shutdown_waits_for_a_worker_beyond_the_old_ten_second_timeout(void) {
     fixture_connection_initialized = false;
 }
 
+void test_proxy_preflight_advertises_endpoint_method(void) {
+    const char *paths[] = {"/go2rtc/api/streams", "/go2rtc/api/webrtc"};
+    const char *methods[] = {"GET, OPTIONS", "POST, OPTIONS"};
+    for (int i = 0; i < 2; i++) {
+        http_request_t request;
+        http_response_t response;
+        http_request_init(&request);
+        http_response_init(&response);
+        strcpy(request.path, paths[i]);
+        strcpy(request.method_str, "OPTIONS");
+        handle_go2rtc_proxy(&request, &response);
+        TEST_ASSERT_EQUAL_INT(204, response.status_code);
+        bool found_allow = false;
+        bool found_origin = false;
+        for (int j = 0; j < response.num_headers; j++) {
+            if (!strcmp(response.headers[j].name, "Allow")) {
+                TEST_ASSERT_EQUAL_STRING(methods[i], response.headers[j].value);
+                found_allow = true;
+            }
+            if (!strcmp(response.headers[j].name, "Access-Control-Allow-Origin")) {
+                TEST_ASSERT_EQUAL_STRING("*", response.headers[j].value);
+                found_origin = true;
+            }
+        }
+        TEST_ASSERT_TRUE(found_allow);
+        TEST_ASSERT_TRUE(found_origin);
+        http_response_free(&response);
+    }
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_shutdown_waits_for_a_worker_beyond_the_old_ten_second_timeout);
@@ -633,5 +663,6 @@ int main(void) {
     RUN_TEST(test_slow_snapshot_releases_its_slot_after_ten_seconds);
     RUN_TEST(test_both_proxy_handlers_never_follow_unauthorized_redirects);
     RUN_TEST(test_proxy_rejects_unsafe_requests_before_contacting_upstream);
+    RUN_TEST(test_proxy_preflight_advertises_endpoint_method);
     return UNITY_END();
 }
