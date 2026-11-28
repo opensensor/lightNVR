@@ -35,6 +35,8 @@ static bool informational_media_ack;
 static int upstream_requests;
 static char upstream_request[2048];
 static pthread_mutex_t upstream_mutex = PTHREAD_MUTEX_INITIALIZER;
+static libuv_connection_t *overflow_test_connections;
+static int overflow_test_connections_initialized;
 static libuv_connection_t fixture_connection;
 static int redirect_server = -1;
 static pthread_t redirect_peer_thread;
@@ -186,21 +188,30 @@ void tearDown(void) {
     free(snapshot_capacity_connections);
     snapshot_capacity_connections = NULL;
     snapshot_capacity_count = 0;
+    for (int i = 0; i < overflow_test_connections_initialized; i++)
+        http_response_free(&overflow_test_connections[i].response);
+    free(overflow_test_connections);
+    overflow_test_connections = NULL;
+    overflow_test_connections_initialized = 0;
     TEST_ASSERT_EQUAL_INT(0, uv_loop_close(&loop));
     curl_global_cleanup();
 }
 
 void test_proxy_rejects_overflow_and_recovers_slots_after_completion(void) {
     enum { LIMIT = 32 };
-    libuv_connection_t *connections = calloc(LIMIT + 1, sizeof(*connections));
-    TEST_ASSERT_NOT_NULL(connections);
+    overflow_test_connections = calloc(LIMIT + 1, sizeof(*overflow_test_connections));
+    overflow_test_connections_initialized = 0;
+    TEST_ASSERT_NOT_NULL(overflow_test_connections);
     hold_upstream = true;
-    for (int i = 0; i < LIMIT + 1; i++) init_connection(&connections[i]);
+    for (int i = 0; i < LIMIT + 1; i++) {
+        init_connection(&overflow_test_connections[i]);
+        overflow_test_connections_initialized++;
+    }
     int accepted = 0;
     for (int i = 0; i < LIMIT; i++) {
-        if (go2rtc_proxy_thread_submit(&connections[i], WRITE_ACTION_CLOSE) == 0) accepted++;
+        if (go2rtc_proxy_thread_submit(&overflow_test_connections[i], WRITE_ACTION_CLOSE) == 0) accepted++;
     }
-    int overflow_result = go2rtc_proxy_thread_submit(&connections[LIMIT], WRITE_ACTION_CLOSE);
+    int overflow_result = go2rtc_proxy_thread_submit(&overflow_test_connections[LIMIT], WRITE_ACTION_CLOSE);
     pthread_mutex_lock(&upstream_mutex);
     release_upstream = true;
     pthread_cond_broadcast(&upstream_ready);
@@ -210,11 +221,9 @@ void test_proxy_rejects_overflow_and_recovers_slots_after_completion(void) {
     TEST_ASSERT_EQUAL_INT(LIMIT, accepted);
     TEST_ASSERT_EQUAL_INT(-1, overflow_result);
     TEST_ASSERT_EQUAL_INT(LIMIT, completed_responses);
-    TEST_ASSERT_EQUAL_INT(0, go2rtc_proxy_thread_submit(&connections[LIMIT], WRITE_ACTION_CLOSE));
+    TEST_ASSERT_EQUAL_INT(0, go2rtc_proxy_thread_submit(&overflow_test_connections[LIMIT], WRITE_ACTION_CLOSE));
     pump_responses(LIMIT + 1, 3000);
     TEST_ASSERT_EQUAL_INT(LIMIT + 1, completed_responses);
-    for (int i = 0; i < LIMIT + 1; i++) http_response_free(&connections[i].response);
-    free(connections);
 }
 
 static void *slow_snapshot_peer(void *arg) {
@@ -295,6 +304,7 @@ void test_slow_snapshot_releases_its_slot_after_ten_seconds(void) {
     pthread_cond_broadcast(&upstream_ready);
     pthread_mutex_unlock(&upstream_mutex);
     pump_responses(1 + accepted, 5000);
+    TEST_ASSERT_EQUAL_INT(1 + accepted, completed_responses);
     hold_upstream = false;
     TEST_ASSERT_EQUAL_INT(LIMIT, accepted);
     TEST_ASSERT_EQUAL_INT(1 + LIMIT, completed_responses);
