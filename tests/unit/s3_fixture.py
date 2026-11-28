@@ -41,11 +41,17 @@ class S3Handler(BaseHTTPRequestHandler):
                              self.headers.get('Authorization', ''))
         if not match or match[1] != 'fixture-access':
             return False
-        if self.headers.get('x-amz-security-token') != 'fixture-session-token':
+        token = self.headers.get('x-amz-security-token')
+        if token is not None and token != 'fixture-session-token':
             return False
         scope = match[2]
-        date, region, service, terminator = scope.split('/')
+        scope_parts = scope.split('/')
+        if len(scope_parts) != 4:
+            return False
+        date, region, service, terminator = scope_parts
         if service != 's3' or terminator != 'aws4_request':
+            return False
+        if not self.headers.get('x-amz-date'):
             return False
         payload_hash = self.headers.get('x-amz-content-sha256', hashlib.sha256(body).hexdigest())
         if payload_hash != 'UNSIGNED-PAYLOAD' and payload_hash != hashlib.sha256(body).hexdigest():
