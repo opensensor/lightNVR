@@ -5,6 +5,7 @@ name: lightnvr-rs guard
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, closed]
     branches: [main]
 
 permissions:
@@ -17,6 +18,7 @@ concurrency:
 
 jobs:
   guard:
+    if: github.event.action != 'closed'
     name: rust/ is not hand-edited
     runs-on: ubuntu-latest
     steps:

@@ -14,6 +14,7 @@ on:
       - 'scripts/check_docs_links.py'
       - '.github/workflows/docs-link-check.yml'
   pull_request:
+    types: [opened, synchronize, reopened, closed]
     paths:
       - '**/*.md'
       - 'scripts/check_docs_links.py'
@@ -27,6 +28,7 @@ concurrency:
 
 jobs:
   links:
+    if: github.event.action != 'closed'
     name: Check documentation links
     runs-on: ubuntu-latest
     steps:

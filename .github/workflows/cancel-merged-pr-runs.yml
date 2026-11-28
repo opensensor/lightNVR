@@ -1,8 +1,9 @@
 name: Cancel merged PR runs
 
-# Once a pull request is merged, its branch's CI no longer gates anything:
-# the merge commit gets its own runs on main. Cancel whatever is still queued
-# or running for the PR head so runners free up immediately.
+# PR workflows share a concurrency key between their normal runs and the
+# merged pull_request event. GitHub cancels the old run when it queues that
+# event, without waiting for a runner. This workflow catches remaining runs
+# such as CLA and Code Quality once a runner becomes available.
 #
 # pull_request_target is used so the token can cancel runs for PRs from forks
 # too. This workflow never checks out or executes PR code, and the branch name
@@ -27,18 +28,26 @@ jobs:
           REPO: ${{ github.repository }}
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
           SELF_RUN_ID: ${{ github.run_id }}
         run: |
           set -euo pipefail
-          # Match on branch *and* source repository: a fork's "main" must
-          # never cancel this repository's main.
-          ids=$(gh api -X GET "repos/$REPO/actions/runs" \
-                  -f branch="$HEAD_REF" -F per_page=100 --paginate \
-                  --jq ".workflow_runs[]
-                        | select(.status != \"completed\")
-                        | select(.head_repository.full_name == \"$HEAD_REPO\")
-                        | select(.id != $SELF_RUN_ID)
-                        | .id")
+          # A fork's branch may be named main; match its repository too.
+          # Code Quality runs use refs/pull/N/head instead of the head branch.
+          ids=$(
+            gh api -X GET "repos/$REPO/actions/runs" \
+              -f branch="$HEAD_REF" -F per_page=100 --paginate |
+              jq -r --arg repo "$HEAD_REPO" --argjson self "$SELF_RUN_ID" \
+                '.workflow_runs[] | select(.status != "completed")
+                 | select(.head_repository.full_name == $repo)
+                 | select(.id != $self) | .id'
+            gh api -X GET "repos/$REPO/actions/runs" \
+              -f branch="refs/pull/$PR_NUMBER/head" -F per_page=100 --paginate |
+              jq -r --arg ref "refs/pull/$PR_NUMBER/head" --argjson self "$SELF_RUN_ID" \
+                '.workflow_runs[] | select(.status != "completed")
+                 | select(.head_branch == $ref) | select(.id != $self) | .id'
+          )
+          ids=$(printf '%s\n' "$ids" | sed '/^$/d' | sort -u)
           if [ -z "$ids" ]; then
             echo "No active runs for $HEAD_REPO:$HEAD_REF."
             exit 0
