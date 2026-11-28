@@ -552,6 +552,15 @@ static int file_section_hash(FILE *file, uint64_t offset, uint64_t bytes, char h
     return rc || fseeko(file, (off_t)offset, SEEK_SET) ? -1 : 0;
 }
 
+static ezxml_t ezxml_child_local(ezxml_t node, const char *local) {
+    if (!node || !local) return NULL;
+    for (ezxml_t child = node->child; child; child = child->next) {
+        const char *name = child->name ? xml_local_name(child->name) : NULL;
+        if (name && !strcmp(name, local)) return child;
+    }
+    return NULL;
+}
+
 static int multipart_upload(const storage_target_t *target, const char *key, FILE *file,
                             uint64_t bytes, const char *checksum,
                             const storage_transfer_control_t *control, char error[256]) {
@@ -589,7 +598,8 @@ static int multipart_upload(const storage_target_t *target, const char *key, FIL
         result = request(target, key, "uploads", "POST", NULL, 0, NULL, &io, NULL, error);
         if (!result) {
             ezxml_t root = response_xml(body, "InitiateMultipartUploadResult");
-            const char *value = root ? ezxml_txt(ezxml_child(root, "UploadId")) : NULL;
+            ezxml_t upload_id = root ? ezxml_child_local(root, "UploadId") : NULL;
+            const char *value = upload_id ? ezxml_txt(upload_id) : NULL;
             if (!value || !*value || strlen(value) >= sizeof(id)) result = -1;
             else safe_strcpy(id, value, sizeof(id), 0);
             if (root) ezxml_free(root);
