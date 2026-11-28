@@ -422,27 +422,27 @@ static void check_both_webrtc_proxies(bool acknowledged, bool fail_issuance) {
         const char *override = "api: {base_path: /custom}";
         TEST_ASSERT_TRUE(go2rtc_api_apply_base_path_override(override, strlen(override)));
     }
+    static libuv_connection_t threaded_connection;
     for (int threaded = 0; threaded < 2; threaded++) {
         upstream_request[0] = '\0';
         int server = open_upstream_listener();
         pthread_t peer;
         if (!fail_issuance) TEST_ASSERT_EQUAL_INT(0, pthread_create(&peer, NULL, webrtc_peer, &server));
-        libuv_connection_t connection;
-        init_connection(&connection);
-        strcpy(connection.request.path, "/go2rtc/api/webrtc");
-        strcpy(connection.request.method_str, "POST");
-        strcpy(connection.request.query_string, "src=Front%20Gate");
-        strcpy(connection.request.content_type, "application/sdp");
-        connection.request.body = (char *)sdp_offer;
-        connection.request.body_len = strlen(sdp_offer);
-        connection.request.user_data = &connection;
+        init_connection(&threaded_connection);
+        strcpy(threaded_connection.request.path, "/go2rtc/api/webrtc");
+        strcpy(threaded_connection.request.method_str, "POST");
+        strcpy(threaded_connection.request.query_string, "src=Front%20Gate");
+        strcpy(threaded_connection.request.content_type, "application/sdp");
+        threaded_connection.request.body = (char *)sdp_offer;
+        threaded_connection.request.body_len = strlen(sdp_offer);
+        threaded_connection.request.user_data = &threaded_connection;
         fail_lease_uuid = fail_issuance;
         if (threaded) {
-            TEST_ASSERT_EQUAL_INT(0, go2rtc_proxy_thread_submit(&connection, WRITE_ACTION_CLOSE));
+            TEST_ASSERT_EQUAL_INT(0, go2rtc_proxy_thread_submit(&threaded_connection, WRITE_ACTION_CLOSE));
             pump_responses(1, 3000);
             TEST_ASSERT_EQUAL_INT(1, completed_responses);
         } else {
-            handle_go2rtc_proxy(&connection.request, &connection.response);
+            handle_go2rtc_proxy(&threaded_connection.request, &threaded_connection.response);
         }
         fail_lease_uuid = false;
         if (!fail_issuance) pthread_join(peer, NULL);
@@ -452,25 +452,25 @@ static void check_both_webrtc_proxies(bool acknowledged, bool fail_issuance) {
         }
         close(server);
         if (!acknowledged || fail_issuance) {
-            TEST_ASSERT_EQUAL_INT(fail_issuance ? 503 : 502, connection.response.status_code);
-            TEST_ASSERT_NULL(strstr((char *)connection.response.body, sdp_answer));
+            TEST_ASSERT_EQUAL_INT(fail_issuance ? 503 : 502, threaded_connection.response.status_code);
+            TEST_ASSERT_NULL(strstr((char *)threaded_connection.response.body, sdp_answer));
             if (!acknowledged && !fail_issuance) {
-                TEST_ASSERT_NOT_NULL(strstr((char *)connection.response.body,
+                TEST_ASSERT_NOT_NULL(strstr((char *)threaded_connection.response.body,
                                             "compatible OpenSensor go2rtc fork"));
             }
-            http_response_free(&connection.response);
+            http_response_free(&threaded_connection.response);
             continue;
         }
-        TEST_ASSERT_EQUAL_INT(201, connection.response.status_code);
-        TEST_ASSERT_EQUAL_STRING("application/sdp", connection.response.content_type);
-        TEST_ASSERT_EQUAL_UINT(strlen(sdp_answer), connection.response.body_length);
-        TEST_ASSERT_EQUAL_MEMORY(sdp_answer, connection.response.body, strlen(sdp_answer));
+        TEST_ASSERT_EQUAL_INT(201, threaded_connection.response.status_code);
+        TEST_ASSERT_EQUAL_STRING("application/sdp", threaded_connection.response.content_type);
+        TEST_ASSERT_EQUAL_UINT(strlen(sdp_answer), threaded_connection.response.body_length);
+        TEST_ASSERT_EQUAL_MEMORY(sdp_answer, threaded_connection.response.body, strlen(sdp_answer));
         TEST_ASSERT_NOT_NULL(strstr(upstream_request, yaml_validate_is_available()
             ? "POST /custom/api/webrtc?src=Front%20Gate HTTP/1.1"
             : "POST /go2rtc/api/webrtc?src=Front%20Gate HTTP/1.1"));
         TEST_ASSERT_NOT_NULL(strstr(upstream_request, "Content-Type: application/sdp\r\n"));
         TEST_ASSERT_NOT_NULL(strstr(upstream_request, sdp_offer));
-        http_response_free(&connection.response);
+        http_response_free(&threaded_connection.response);
     }
     shutdown_database();
     unlink(db_path);
