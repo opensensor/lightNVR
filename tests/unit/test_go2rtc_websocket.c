@@ -148,7 +148,9 @@ static int client_open(void) {
     socket_timeout(fd);
     struct sockaddr_in address = {.sin_family = AF_INET,
         .sin_addr.s_addr = htonl(INADDR_LOOPBACK), .sin_port = htons(web_port)};
-    TEST_ASSERT_EQUAL_INT(0, connect(fd, (struct sockaddr *)&address, sizeof(address)));
+    int rc = connect(fd, (struct sockaddr *)&address, sizeof(address));
+    if (rc != 0) close(fd);
+    TEST_ASSERT_EQUAL_INT(0, rc);
     return fd;
 }
 static void *upstream_peer(void *arg) {
