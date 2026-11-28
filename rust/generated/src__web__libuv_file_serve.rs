@@ -5,6 +5,7 @@ unsafe extern "C" {
         __format: *const ::core::ffi::c_char,
         ...
     ) -> ::core::ffi::c_int;
+    unsafe fn __errno_location() -> *mut ::core::ffi::c_int;
     unsafe fn llhttp_should_keep_alive(parser: *const llhttp_t) -> ::core::ffi::c_int;
     unsafe fn uv_strerror(err: ::core::ffi::c_int) -> *const ::core::ffi::c_char;
     unsafe fn uv_buf_init(base: *mut ::core::ffi::c_char, len: ::core::ffi::c_uint) -> uv_buf_t;
@@ -97,15 +98,6 @@ unsafe extern "C" {
         __src: *const ::core::ffi::c_void,
         __n: size_t,
     ) -> *mut ::core::ffi::c_void;
-    unsafe fn strncmp(
-        __s1: *const ::core::ffi::c_char,
-        __s2: *const ::core::ffi::c_char,
-        __n: size_t,
-    ) -> ::core::ffi::c_int;
-    unsafe fn strchr(
-        __s: *const ::core::ffi::c_char,
-        __c: ::core::ffi::c_int,
-    ) -> *mut ::core::ffi::c_char;
     unsafe fn strrchr(
         __s: *const ::core::ffi::c_char,
         __c: ::core::ffi::c_int,
@@ -113,6 +105,11 @@ unsafe extern "C" {
     unsafe fn strcasecmp(
         __s1: *const ::core::ffi::c_char,
         __s2: *const ::core::ffi::c_char,
+    ) -> ::core::ffi::c_int;
+    unsafe fn strncasecmp(
+        __s1: *const ::core::ffi::c_char,
+        __s2: *const ::core::ffi::c_char,
+        __n: size_t,
     ) -> ::core::ffi::c_int;
     unsafe fn strtoull(
         __nptr: *const ::core::ffi::c_char,
@@ -862,6 +859,7 @@ pub struct file_serve_ctx {
     pub range_end: size_t,
     pub headers_sent: bool,
     pub head_response_managed: bool,
+    pub manage_connection_on_close: bool,
     pub write_error: bool,
     pub content_type: [::core::ffi::c_char; 128],
     pub extra_headers: [::core::ffi::c_char; 512],
@@ -883,6 +881,7 @@ pub struct file_chunk_write_ctx_t {
     pub ctx: *mut file_serve_ctx_t,
     pub free_buffer: bool,
 }
+pub const SIZE_MAX: ::core::ffi::c_ulong = 18446744073709551615 as ::core::ffi::c_ulong;
 pub const O_RDONLY: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
 pub const UV_FS_O_RDONLY: ::core::ffi::c_int = O_RDONLY;
 pub const LOG_COMPONENT: [::core::ffi::c_char; 5] =
@@ -982,7 +981,10 @@ pub unsafe extern "C" fn libuv_parse_range_header(
     mut end: *mut size_t,
 ) -> bool {
     if range_header.is_null()
-        || strncmp(
+        || start.is_null()
+        || end.is_null()
+        || file_size == 0 as size_t
+        || strncasecmp(
             range_header,
             b"bytes=\0".as_ptr() as *const ::core::ffi::c_char,
             6 as size_t,
@@ -992,34 +994,69 @@ pub unsafe extern "C" fn libuv_parse_range_header(
     }
     let mut range: *const ::core::ffi::c_char =
         range_header.offset(6 as ::core::ffi::c_int as isize);
+    if *range as ::core::ffi::c_int == '\0' as ::core::ffi::c_int {
+        return r#false != 0;
+    }
     if *range as ::core::ffi::c_int == '-' as ::core::ffi::c_int {
-        let mut suffix_len: size_t = strtoull(
+        let mut endptr: *mut ::core::ffi::c_char = ::core::ptr::null_mut::<::core::ffi::c_char>();
+        *__errno_location() = 0 as ::core::ffi::c_int;
+        let mut suffix_ull: ::core::ffi::c_ulonglong = strtoull(
             range.offset(1 as ::core::ffi::c_int as isize),
-            ::core::ptr::null_mut::<*mut ::core::ffi::c_char>(),
+            &raw mut endptr,
             10 as ::core::ffi::c_int,
-        ) as size_t;
+        );
+        if (*range.offset(1isize) as ::core::ffi::c_int) < '0' as ::core::ffi::c_int
+            || *range.offset(1isize) as ::core::ffi::c_int > '9' as ::core::ffi::c_int
+            || endptr == range.offset(1 as ::core::ffi::c_int as isize) as *mut ::core::ffi::c_char
+            || *endptr as ::core::ffi::c_int != '\0' as ::core::ffi::c_int
+            || *__errno_location() == ERANGE
+            || suffix_ull == 0 as ::core::ffi::c_ulonglong
+            || suffix_ull > SIZE_MAX as ::core::ffi::c_ulonglong
+        {
+            return r#false != 0;
+        }
+        let mut suffix_len: size_t = suffix_ull as size_t;
         if suffix_len > file_size {
             suffix_len = file_size;
         }
         *start = file_size.wrapping_sub(suffix_len);
         *end = file_size.wrapping_sub(1 as size_t);
     } else {
-        *start = strtoull(
-            range,
-            ::core::ptr::null_mut::<*mut ::core::ffi::c_char>(),
-            10 as ::core::ffi::c_int,
-        ) as size_t;
-        let mut dash: *const ::core::ffi::c_char = strchr(range, '-' as ::core::ffi::c_int);
-        if !dash.is_null()
-            && *dash.offset(1isize) as ::core::ffi::c_int != '\0' as ::core::ffi::c_int
+        let mut start_endptr: *mut ::core::ffi::c_char =
+            ::core::ptr::null_mut::<::core::ffi::c_char>();
+        *__errno_location() = 0 as ::core::ffi::c_int;
+        let mut start_ull: ::core::ffi::c_ulonglong =
+            strtoull(range, &raw mut start_endptr, 10 as ::core::ffi::c_int);
+        if (*range as ::core::ffi::c_int) < '0' as ::core::ffi::c_int
+            || *range as ::core::ffi::c_int > '9' as ::core::ffi::c_int
+            || start_endptr == range as *mut ::core::ffi::c_char
+            || *start_endptr as ::core::ffi::c_int != '-' as ::core::ffi::c_int
+            || *__errno_location() == ERANGE
+            || start_ull > SIZE_MAX as ::core::ffi::c_ulonglong
         {
-            *end = strtoull(
-                dash.offset(1 as ::core::ffi::c_int as isize),
-                ::core::ptr::null_mut::<*mut ::core::ffi::c_char>(),
-                10 as ::core::ffi::c_int,
-            ) as size_t;
-        } else {
+            return r#false != 0;
+        }
+        *start = start_ull as size_t;
+        let mut end_part: *const ::core::ffi::c_char =
+            start_endptr.offset(1 as ::core::ffi::c_int as isize);
+        if *end_part as ::core::ffi::c_int == '\0' as ::core::ffi::c_int {
             *end = file_size.wrapping_sub(1 as size_t);
+        } else {
+            let mut end_endptr: *mut ::core::ffi::c_char =
+                ::core::ptr::null_mut::<::core::ffi::c_char>();
+            *__errno_location() = 0 as ::core::ffi::c_int;
+            let mut end_ull: ::core::ffi::c_ulonglong =
+                strtoull(end_part, &raw mut end_endptr, 10 as ::core::ffi::c_int);
+            if (*end_part as ::core::ffi::c_int) < '0' as ::core::ffi::c_int
+                || *end_part as ::core::ffi::c_int > '9' as ::core::ffi::c_int
+                || end_endptr == end_part as *mut ::core::ffi::c_char
+                || *end_endptr as ::core::ffi::c_int != '\0' as ::core::ffi::c_int
+                || *__errno_location() == ERANGE
+                || end_ull > SIZE_MAX as ::core::ffi::c_ulonglong
+            {
+                return r#false != 0;
+            }
+            *end = end_ull as size_t;
         }
     }
     if *start >= file_size {
@@ -1060,6 +1097,7 @@ pub unsafe extern "C" fn libuv_serve_file(
     }
     (*ctx).conn = conn;
     (*ctx).fd = -1 as ::core::ffi::c_int as uv_file;
+    (*ctx).manage_connection_on_close = r#true != 0;
     if !content_type.is_null() {
         safe_strcpy(
             &raw mut (*ctx).content_type as *mut ::core::ffi::c_char,
@@ -1087,7 +1125,7 @@ pub unsafe extern "C" fn libuv_serve_file(
         &raw mut (*conn).request,
         b"Range\0".as_ptr() as *const ::core::ffi::c_char,
     );
-    if !range_header.is_null() {
+    if !range_header.is_null() && (*conn).request.method.0 == http_method_t::HTTP_METHOD_GET.0 {
         (*ctx).has_range = r#true != 0;
     }
     (*ctx).buffer = safe_malloc(LIBUV_FILE_BUFFER_SIZE) as *mut ::core::ffi::c_char;
@@ -1123,6 +1161,7 @@ pub unsafe extern "C" fn libuv_serve_file(
             b"libuv_serve_file: Failed to start open: %s\0".as_ptr() as *const ::core::ffi::c_char,
             uv_strerror(r),
         );
+        (*conn).async_response_pending = r#false != 0;
         file_serve_cleanup(ctx);
         return -1 as ::core::ffi::c_int;
     }
@@ -1209,6 +1248,23 @@ unsafe extern "C" fn on_file_open(mut req: *mut uv_fs_t) {
             b"on_file_open: Failed to start stat: %s\0".as_ptr() as *const ::core::ffi::c_char,
             uv_strerror(r),
         );
+        http_response_set_json_error(
+            &raw mut (*conn).response,
+            500 as ::core::ffi::c_int,
+            b"Internal Server Error\0".as_ptr() as *const ::core::ffi::c_char,
+        );
+        let mut action_0: write_complete_action_t = write_complete_action_t(
+            (if (*conn).keep_alive as ::core::ffi::c_int != 0
+                && llhttp_should_keep_alive(&raw mut (*conn).parser) != 0
+            {
+                write_complete_action_t::WRITE_ACTION_KEEP_ALIVE.0 as ::core::ffi::c_int
+            } else {
+                write_complete_action_t::WRITE_ACTION_CLOSE.0 as ::core::ffi::c_int
+            }) as ::core::ffi::c_uint,
+        );
+        libuv_send_response_ex(conn, &raw mut (*conn).response, action_0);
+        (*ctx).manage_connection_on_close = r#false != 0;
+        (*conn).async_response_pending = r#false != 0;
         uv_fs_close(
             (*(*(*ctx).conn).server).r#loop,
             &raw mut (*ctx).close_req,
@@ -1253,6 +1309,7 @@ unsafe extern "C" fn on_file_stat(mut req: *mut uv_fs_t) {
             }) as ::core::ffi::c_uint,
         );
         libuv_send_response_ex(conn, &raw mut (*conn).response, action);
+        (*ctx).manage_connection_on_close = r#false != 0;
         (*conn).async_response_pending = r#false != 0;
         uv_fs_close(
             (*(*conn).server).r#loop,
@@ -1290,6 +1347,7 @@ unsafe extern "C" fn on_file_stat(mut req: *mut uv_fs_t) {
                 }) as ::core::ffi::c_uint,
             );
             libuv_send_response_ex(conn, &raw mut (*conn).response, action_0);
+            (*ctx).manage_connection_on_close = r#false != 0;
             (*conn).async_response_pending = r#false != 0;
             uv_fs_close(
                 (*(*conn).server).r#loop,
@@ -1347,6 +1405,7 @@ unsafe extern "C" fn on_file_stat(mut req: *mut uv_fs_t) {
     let mut header_buf: *mut ::core::ffi::c_char =
         safe_malloc(len as size_t) as *mut ::core::ffi::c_char;
     if header_buf.is_null() {
+        (*ctx).write_error = r#true != 0;
         uv_fs_close(
             (*(*(*ctx).conn).server).r#loop,
             &raw mut (*ctx).close_req,
@@ -1371,6 +1430,7 @@ unsafe extern "C" fn on_file_stat(mut req: *mut uv_fs_t) {
             }) as ::core::ffi::c_uint,
         );
         (*ctx).head_response_managed = r#true != 0;
+        (*ctx).manage_connection_on_close = r#false != 0;
         (*conn).async_response_pending = r#false != 0;
         libuv_connection_send_ex(conn, header_buf, len as size_t, r#true != 0, action_1);
         uv_fs_close(
@@ -1384,6 +1444,7 @@ unsafe extern "C" fn on_file_stat(mut req: *mut uv_fs_t) {
     if libuv_connection_send((*ctx).conn, header_buf, len as size_t, r#true != 0)
         != 0 as ::core::ffi::c_int
     {
+        (*ctx).manage_connection_on_close = r#false != 0;
         (*conn).async_response_pending = r#false != 0;
         uv_fs_close(
             (*(*conn).server).r#loop,
@@ -1438,6 +1499,7 @@ unsafe extern "C" fn send_file_chunk(mut ctx: *mut file_serve_ctx_t) {
             b"send_file_chunk: Failed to start read: %s\0".as_ptr() as *const ::core::ffi::c_char,
             uv_strerror(r),
         );
+        (*ctx).write_error = r#true != 0;
         uv_fs_close(
             (*(*(*ctx).conn).server).r#loop,
             &raw mut (*ctx).close_req,
@@ -1485,6 +1547,7 @@ unsafe extern "C" fn on_file_read(mut req: *mut uv_fs_t) {
             b"on_file_read: Read error: %s\0".as_ptr() as *const ::core::ffi::c_char,
             uv_strerror((*req).result as ::core::ffi::c_int),
         );
+        (*ctx).write_error = r#true != 0;
         uv_fs_close(
             (*(*(*ctx).conn).server).r#loop,
             &raw mut (*ctx).close_req,
@@ -1494,6 +1557,9 @@ unsafe extern "C" fn on_file_read(mut req: *mut uv_fs_t) {
         return;
     }
     if (*req).result == 0 as ssize_t {
+        if (*ctx).remaining > 0 as size_t {
+            (*ctx).write_error = r#true != 0;
+        }
         uv_fs_close(
             (*(*(*ctx).conn).server).r#loop,
             &raw mut (*ctx).close_req,
@@ -1507,6 +1573,7 @@ unsafe extern "C" fn on_file_read(mut req: *mut uv_fs_t) {
     let mut send_buf: *mut ::core::ffi::c_char =
         safe_malloc(bytes_read) as *mut ::core::ffi::c_char;
     if send_buf.is_null() {
+        (*ctx).write_error = r#true != 0;
         uv_fs_close(
             (*(*(*ctx).conn).server).r#loop,
             &raw mut (*ctx).close_req,
@@ -1527,6 +1594,7 @@ unsafe extern "C" fn on_file_read(mut req: *mut uv_fs_t) {
     >()) as *mut file_chunk_write_ctx_t;
     if write_ctx.is_null() {
         safe_free(send_buf as *mut ::core::ffi::c_void);
+        (*ctx).write_error = r#true != 0;
         uv_fs_close(
             (*(*(*ctx).conn).server).r#loop,
             &raw mut (*ctx).close_req,
@@ -1576,6 +1644,7 @@ unsafe extern "C" fn on_file_read(mut req: *mut uv_fs_t) {
         );
         safe_free(send_buf as *mut ::core::ffi::c_void);
         safe_free(write_ctx as *mut ::core::ffi::c_void);
+        (*ctx).write_error = r#true != 0;
         uv_fs_close(
             (*(*(*ctx).conn).server).r#loop,
             &raw mut (*ctx).close_req,
@@ -1600,11 +1669,13 @@ unsafe extern "C" fn on_file_close(mut req: *mut uv_fs_t) {
         return;
     }
     let mut conn_0: *mut libuv_connection_t = (*ctx).conn;
-    let mut should_manage_connection: bool = (*conn_0).async_response_pending;
+    let mut should_manage_connection: bool = (*ctx).manage_connection_on_close;
     let mut write_error: bool = (*ctx).write_error;
     file_serve_cleanup(ctx);
     (*conn_0).file_serve_refs = (*conn_0).file_serve_refs.wrapping_sub(1);
-    (*conn_0).async_response_pending = r#false != 0;
+    if should_manage_connection {
+        (*conn_0).async_response_pending = r#false != 0;
+    }
     if (*conn_0).close_completed {
         if (*conn_0).file_serve_refs == 0 as ::core::ffi::c_uint && !(*conn_0).handler_on_worker {
             libuv_connection_destroy(conn_0);
@@ -1662,5 +1733,6 @@ pub const LIBUV_FILE_BUFFER_SIZE: size_t =
     (64 as ::core::ffi::c_int as size_t).wrapping_mul(1024 as size_t);
 pub const _log_stream_name: *const ::core::ffi::c_char = NULL as *const ::core::ffi::c_char;
 pub const NULL: *mut ::core::ffi::c_void = ::core::ptr::null_mut::<::core::ffi::c_void>();
+pub const ERANGE: ::core::ffi::c_int = 34 as ::core::ffi::c_int;
 pub const r#true: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
 pub const r#false: ::core::ffi::c_int = 0 as ::core::ffi::c_int;

@@ -1030,6 +1030,12 @@ pub struct C2Rust_Unnamed_13 {
     pub method: [::core::ffi::c_char; 16],
     pub handler: request_handler_t,
 }
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct server_handle_scan_t {
+    pub server: *const libuv_server_t,
+    pub present: bool,
+}
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct log_level_t(pub ::core::ffi::c_uint);
@@ -1041,12 +1047,6 @@ impl log_level_t {
 }
 pub type libuv_connection_t = libuv_connection;
 pub type libuv_tls_context_t = libuv_tls_context;
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct server_handle_scan_t {
-    pub server: *const libuv_server_t,
-    pub present: bool,
-}
 pub const PF_INET: ::core::ffi::c_int = 2 as ::core::ffi::c_int;
 pub const PF_INET6: ::core::ffi::c_int = 10 as ::core::ffi::c_int;
 pub const AF_INET: ::core::ffi::c_int = PF_INET;
@@ -1115,6 +1115,30 @@ unsafe extern "C" fn scan_server_handles_cb(
         || handle == &raw const (*(*scan).server).stop_async as *mut uv_handle_t
     {
         (*scan).present = r#true != 0;
+    }
+}
+unsafe extern "C" fn drain_server_handles(
+    mut r#loop: *mut uv_loop_t,
+    mut server: *const libuv_server_t,
+) {
+    let mut scan: server_handle_scan_t = server_handle_scan_t {
+        server: server,
+        present: r#false != 0,
+    };
+    loop {
+        uv_run(r#loop, uv_run_mode::UV_RUN_NOWAIT);
+        scan.present = r#false != 0;
+        uv_walk(
+            r#loop,
+            Some(
+                scan_server_handles_cb
+                    as unsafe extern "C" fn(*mut uv_handle_t, *mut ::core::ffi::c_void) -> (),
+            ),
+            &raw mut scan as *mut ::core::ffi::c_void,
+        );
+        if !scan.present {
+            break;
+        }
     }
 }
 unsafe extern "C" fn shared_destroy_timer_closed(mut handle: *mut uv_handle_t) {
@@ -1407,6 +1431,21 @@ pub unsafe extern "C" fn libuv_server_start(
     if server.is_null() {
         return -1 as ::core::ffi::c_int;
     }
+    if ::core::sync::atomic::AtomicBool::from_ptr(&raw mut (*server).running).load(::core::sync::atomic::Ordering::SeqCst) as ::core::ffi::c_int
+        != 0
+        || ::core::sync::atomic::AtomicBool::from_ptr(&raw mut (*server).thread_joinable).load(::core::sync::atomic::Ordering::SeqCst) as ::core::ffi::c_int
+            != 0
+        || (*server).destroy_pending as ::core::ffi::c_int != 0
+    {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_ERROR,
+            LOG_COMPONENT.as_ptr(),
+            _log_stream_name,
+            b"libuv_server_start: Server is already running or stop has not completed\0".as_ptr()
+                as *const ::core::ffi::c_char,
+        );
+        return -1 as ::core::ffi::c_int;
+    }
     (*server).shutting_down = r#false != 0;
     let mut need_reinit: bool = uv_is_closing(&raw mut (*server).listener as *mut uv_handle_t) != 0
         || uv_is_closing(&raw mut (*server).stop_async as *mut uv_handle_t) != 0;
@@ -1465,6 +1504,9 @@ pub unsafe extern "C" fn libuv_server_start(
                     as *const ::core::ffi::c_char,
             );
             uv_close(&raw mut (*server).listener as *mut uv_handle_t, None);
+            if (*server).owns_loop {
+                drain_server_handles((*server).r#loop, server);
+            }
             return -1 as ::core::ffi::c_int;
         }
         (*server).stop_async.data = server as *mut ::core::ffi::c_void;
@@ -1513,6 +1555,15 @@ pub unsafe extern "C" fn libuv_server_start(
             b"libuv_server_start: Bind failed: %s\0".as_ptr() as *const ::core::ffi::c_char,
             uv_strerror(r),
         );
+        if uv_is_closing(&raw mut (*server).listener as *mut uv_handle_t) == 0 {
+            uv_close(&raw mut (*server).listener as *mut uv_handle_t, None);
+        }
+        if uv_is_closing(&raw mut (*server).stop_async as *mut uv_handle_t) == 0 {
+            uv_close(&raw mut (*server).stop_async as *mut uv_handle_t, None);
+        }
+        if (*server).owns_loop {
+            drain_server_handles((*server).r#loop, server);
+        }
         return -1 as ::core::ffi::c_int;
     }
     r = uv_listen(
@@ -1528,6 +1579,15 @@ pub unsafe extern "C" fn libuv_server_start(
             b"libuv_server_start: Listen failed: %s\0".as_ptr() as *const ::core::ffi::c_char,
             uv_strerror(r),
         );
+        if uv_is_closing(&raw mut (*server).listener as *mut uv_handle_t) == 0 {
+            uv_close(&raw mut (*server).listener as *mut uv_handle_t, None);
+        }
+        if uv_is_closing(&raw mut (*server).stop_async as *mut uv_handle_t) == 0 {
+            uv_close(&raw mut (*server).stop_async as *mut uv_handle_t, None);
+        }
+        if (*server).owns_loop {
+            drain_server_handles((*server).r#loop, server);
+        }
         return -1 as ::core::ffi::c_int;
     }
     (*server).running = r#true != 0;
@@ -1556,6 +1616,34 @@ pub unsafe extern "C" fn libuv_server_start(
                 b"libuv_server_start: Failed to create server thread\0".as_ptr()
                     as *const ::core::ffi::c_char,
             );
+            if uv_is_closing(&raw mut (*server).listener as *mut uv_handle_t) == 0 {
+                uv_close(&raw mut (*server).listener as *mut uv_handle_t, None);
+            }
+            if uv_is_closing(&raw mut (*server).stop_async as *mut uv_handle_t) == 0 {
+                uv_close(&raw mut (*server).stop_async as *mut uv_handle_t, None);
+            }
+            let mut scan_0: server_handle_scan_t = server_handle_scan_t {
+                server: server,
+                present: r#false != 0,
+            };
+            loop {
+                uv_run((*server).r#loop, uv_run_mode::UV_RUN_NOWAIT);
+                scan_0.present = r#false != 0;
+                uv_walk(
+                    (*server).r#loop,
+                    Some(
+                        scan_server_handles_cb
+                            as unsafe extern "C" fn(
+                                *mut uv_handle_t,
+                                *mut ::core::ffi::c_void,
+                            ) -> (),
+                    ),
+                    &raw mut scan_0 as *mut ::core::ffi::c_void,
+                );
+                if !scan_0.present {
+                    break;
+                }
+            }
             return -1 as ::core::ffi::c_int;
         }
         (*server).thread_joinable = r#true != 0;
@@ -1638,6 +1726,7 @@ unsafe extern "C" fn close_walk_cb(
     mut handle: *mut uv_handle_t,
     mut arg: *mut ::core::ffi::c_void,
 ) {
+    let mut server: *mut libuv_server_t = arg as *mut libuv_server_t;
     if uv_is_closing(handle) == 0 {
         if recording_archive_close_timer(handle) {
             return;
@@ -1649,14 +1738,20 @@ unsafe extern "C" fn close_walk_cb(
             b"close_walk_cb: Closing handle type %d\0".as_ptr() as *const ::core::ffi::c_char,
             (*handle).r#type.0,
         );
-        if (*handle).r#type.0 == uv_handle_type::UV_TCP.0 && !(*handle).data.is_null() {
-            uv_close(
-                handle,
-                Some(libuv_close_cb as unsafe extern "C" fn(*mut uv_handle_t) -> ()),
-            );
-        } else {
-            uv_close(handle, None);
+        if !server.is_null() {
+            let mut conn: *mut libuv_connection_t = (*server).connections;
+            while !conn.is_null() {
+                if handle == &raw mut (*conn).handle as *mut uv_handle_t {
+                    uv_close(
+                        handle,
+                        Some(libuv_close_cb as unsafe extern "C" fn(*mut uv_handle_t) -> ()),
+                    );
+                    return;
+                }
+                conn = (*conn).server_next as *mut libuv_connection_t;
+            }
         }
+        uv_close(handle, None);
     }
 }
 unsafe extern "C" fn count_handles_cb(
@@ -1742,7 +1837,7 @@ pub unsafe extern "C" fn libuv_server_stop(mut handle: http_server_handle_t) {
                 close_walk_cb
                     as unsafe extern "C" fn(*mut uv_handle_t, *mut ::core::ffi::c_void) -> (),
             ),
-            NULL,
+            server as *mut ::core::ffi::c_void,
         );
     } else {
         let mut conn: *mut libuv_connection_t = (*server).connections;
@@ -1842,36 +1937,8 @@ pub unsafe extern "C" fn libuv_server_stop(mut handle: http_server_handle_t) {
                 handle_count_0,
             );
         }
-        if (*server).owns_loop {
-            while uv_loop_alive((*server).r#loop) != 0 {
-                uv_run((*server).r#loop, uv_run_mode::UV_RUN_DEFAULT);
-            }
-        } else {
-            let mut scan: server_handle_scan_t = server_handle_scan_t {
-                server: server,
-                present: r#false != 0,
-            };
-            loop {
-                uv_run((*server).r#loop, uv_run_mode::UV_RUN_NOWAIT);
-                scan.present = r#false != 0;
-                uv_walk(
-                    (*server).r#loop,
-                    Some(
-                        scan_server_handles_cb
-                            as unsafe extern "C" fn(
-                                *mut uv_handle_t,
-                                *mut ::core::ffi::c_void,
-                            ) -> (),
-                    ),
-                    &raw mut scan as *mut ::core::ffi::c_void,
-                );
-                if scan.present as ::core::ffi::c_int != 0 || !(*server).connections.is_null() {
-                    usleep((check_interval_ms_0 * 1000 as ::core::ffi::c_int) as __useconds_t);
-                }
-                if !(scan.present as ::core::ffi::c_int != 0 || !(*server).connections.is_null()) {
-                    break;
-                }
-            }
+        while uv_loop_alive((*server).r#loop) != 0 {
+            uv_run((*server).r#loop, uv_run_mode::UV_RUN_DEFAULT);
         }
     }
     _log_message_ctx(
@@ -2089,94 +2156,45 @@ unsafe extern "C" fn on_connection(mut listener: *mut uv_stream_t, mut status: :
         return;
     }
     let mut addr: sockaddr_storage = sockaddr_storage {
-        ss_family: 0,
+        ss_family: 0 as sa_family_t,
         __ss_padding: [0; 118],
         __ss_align: 0,
     };
     let mut addr_len: ::core::ffi::c_int =
         ::core::mem::size_of::<sockaddr_storage>() as ::core::ffi::c_int;
-    uv_tcp_getpeername(
+    let mut ip: [::core::ffi::c_char; 64] = ::core::mem::transmute::<
+        [u8; 64],
+        [::core::ffi::c_char; 64],
+    >(
+        *b"unknown\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0",
+    );
+    let mut peer_rc: ::core::ffi::c_int = uv_tcp_getpeername(
         &raw mut (*conn).handle,
         &raw mut addr as *mut sockaddr,
         &raw mut addr_len,
     );
-    let mut ip: [::core::ffi::c_char; 64] = [
-        0 as ::core::ffi::c_char,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-    ];
-    if addr.ss_family as ::core::ffi::c_int == AF_INET {
-        uv_ip4_name(
-            &raw mut addr as *mut sockaddr_in,
-            &raw mut ip as *mut ::core::ffi::c_char,
-            ::core::mem::size_of::<[::core::ffi::c_char; 64]>(),
-        );
-    } else if addr.ss_family as ::core::ffi::c_int == AF_INET6 {
-        uv_ip6_name(
-            &raw mut addr as *mut sockaddr_in6,
-            &raw mut ip as *mut ::core::ffi::c_char,
-            ::core::mem::size_of::<[::core::ffi::c_char; 64]>(),
+    if peer_rc == 0 as ::core::ffi::c_int {
+        if addr.ss_family as ::core::ffi::c_int == AF_INET {
+            uv_ip4_name(
+                &raw mut addr as *mut sockaddr_in,
+                &raw mut ip as *mut ::core::ffi::c_char,
+                ::core::mem::size_of::<[::core::ffi::c_char; 64]>(),
+            );
+        } else if addr.ss_family as ::core::ffi::c_int == AF_INET6 {
+            uv_ip6_name(
+                &raw mut addr as *mut sockaddr_in6,
+                &raw mut ip as *mut ::core::ffi::c_char,
+                ::core::mem::size_of::<[::core::ffi::c_char; 64]>(),
+            );
+        }
+    } else {
+        _log_message_ctx(
+            log_level_t::LOG_LEVEL_DEBUG,
+            LOG_COMPONENT.as_ptr(),
+            _log_stream_name,
+            b"on_connection: Failed to get peer address: %s\0".as_ptr()
+                as *const ::core::ffi::c_char,
+            uv_strerror(peer_rc),
         );
     }
     safe_strcpy(
@@ -2250,3 +2268,4 @@ pub const _log_stream_name: *const ::core::ffi::c_char = NULL as *const ::core::
 pub const NULL: *mut ::core::ffi::c_void = ::core::ptr::null_mut::<::core::ffi::c_void>();
 pub const r#true: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
 pub const r#false: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+pub const __ATOMIC_SEQ_CST: ::core::ffi::c_int = 5 as ::core::ffi::c_int;

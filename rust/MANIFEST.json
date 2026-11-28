@@ -7,7 +7,7 @@
     "clang_major": 21
   },
   "toolchain_json_sha256": "d209c76d137638a5a234a3e209bf39225a2c7afe3e202de476fa4f479f93e739",
-  "repairs_sha256": "883b57091c9015633adc1036619371bdee6b6f62b3bd2d7d9d949f18056ed828",
+  "repairs_sha256": "339674f8f817d604a7f6a13569df5a6ec103af0e5b140219a38c94664d640165",
   "translated_not_linked": [
     "src/sod/sod_ingenic_mxu.c",
     "src/tools/ffmpeg_rss_guard.c",
@@ -1865,9 +1865,9 @@
     },
     {
       "c": "src/web/libuv_file_serve.c",
-      "c_sha256": "326f399dee4f7171d19965dfcad4900c6188d02e7f8184c0b4e772615ce6ef08",
+      "c_sha256": "d9aa8217c678d79f25583ce4620f9ac7ebd6e7755976412ff11999740f3f285e",
       "rust": "generated/src__web__libuv_file_serve.rs",
-      "rust_sha256": "6752732bd1e3fd17430f13467b5b72ad6765ac92980985a8d11824a9be45f38e",
+      "rust_sha256": "4f5fd95b2e16ec96df7911608066864488229f9641574c6b46601f2f2cb2405d",
       "adapted": false
     },
     {
@@ -1879,10 +1879,10 @@
     },
     {
       "c": "src/web/libuv_server.c",
-      "c_sha256": "a92a07eb069e4bdcb15b124a2a92ac229847aabbe4f0af111f7c13a1be9f3f3e",
+      "c_sha256": "f5b10e237780e6efdc413cb1ffc2e77b9849dec2920ce3fd61d782d3aaa14652",
       "rust": "generated/src__web__libuv_server.rs",
-      "rust_sha256": "6af09f73bb479fc380cf0a5c62c3c91afe319ca7f224fc0c1b3b7704fad123ec",
-      "adapted": false
+      "rust_sha256": "96879d237f1a3b8c1f679bfced8bef376caf80c1f3f3aa65252edcd38a1d53f3",
+      "adapted": true
     },
     {
       "c": "src/web/libuv_tls.c",
