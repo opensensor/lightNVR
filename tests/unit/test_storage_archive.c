@@ -1254,7 +1254,7 @@ static void test_multipart_cancellation_aborts_owned_upload_and_preserves_source
     uint64_t bytes;
     char error[256];
     TEST_ASSERT_EQUAL_INT(STORAGE_S3_MISSING, storage_s3_stat(&target, job.destination_object_key, &bytes, error));
-    /* Best-effort fixture cleanup only; do not use abort success as proof that cancellation cleaned up multipart state. */
+    /* This call is idempotent and cannot prove provider-side absence. */
     (void)storage_s3_abort_upload(&target, job.destination_object_key, original_upload_id, error);
 }
 
@@ -1965,19 +1965,25 @@ static void test_stalled_archive_writes_renew_lease_until_completion(void) {
     int remote_state = storage_source_remote(id, &rejected);
 
     // The remaining reader may finish even though new readers are excluded.
-    TEST_ASSERT_EQUAL_INT(0, fcntl(clients[1], F_SETFL, O_NONBLOCK));
+    int set_nonblock_result = fcntl(clients[1], F_SETFL, O_NONBLOCK);
     const size_t capacity = 3145728 + 2048;
     char *response = calloc(1, capacity);
-    TEST_ASSERT_NOT_NULL(response);
+    bool response_alloc_ok = (response != NULL);
+    int recv_unexpected_errno = 0;
     size_t total = 0;
     bool ended = false;
-    for (int i = 0; i < 15000; i++) {
-        uv_run(&loop, UV_RUN_NOWAIT);
-        ssize_t count = recv(clients[1], response + total, capacity - total - 1, 0);
-        if (count > 0) total += (size_t)count;
-        else if (count == 0) { ended = true; break; }
-        else TEST_ASSERT_TRUE(errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR);
-        struct timespec pause = {.tv_nsec = 1000000}; nanosleep(&pause, NULL);
+    if (response_alloc_ok && set_nonblock_result == 0) {
+        for (int i = 0; i < 15000; i++) {
+            uv_run(&loop, UV_RUN_NOWAIT);
+            ssize_t count = recv(clients[1], response + total, capacity - total - 1, 0);
+            if (count > 0) total += (size_t)count;
+            else if (count == 0) { ended = true; break; }
+            else if (!(errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) {
+                recv_unexpected_errno = errno;
+                break;
+            }
+            struct timespec pause = {.tv_nsec = 1000000}; nanosleep(&pause, NULL);
+        }
     }
     if (!ended) {
         // Wake the server side of the remaining stream before draining libuv.
@@ -1988,6 +1994,9 @@ static void test_stalled_archive_writes_renew_lease_until_completion(void) {
     close(clients[1]);
     uv_run(&loop, UV_RUN_DEFAULT);
     TEST_ASSERT_EQUAL_INT(0, uv_loop_close(&loop));
+    TEST_ASSERT_EQUAL_INT(0, set_nonblock_result);
+    TEST_ASSERT_TRUE(response_alloc_ok);
+    TEST_ASSERT_EQUAL_INT(0, recv_unexpected_errno);
     TEST_ASSERT_TRUE(has_lease_after_first);
     TEST_ASSERT_EQUAL_INT(1, delete_result);
     TEST_ASSERT_EQUAL_INT(0, deletion_first);
