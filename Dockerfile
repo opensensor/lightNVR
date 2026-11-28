@@ -440,7 +440,8 @@ COPY --from=builder /usr/lib/libuv.so* /usr/lib/
 COPY --from=builder /usr/lib/libllhttp.so* /usr/lib/
 
 # Copy latest upstream SQLite shared library built in the builder stage
-COPY --from=builder /usr/lib/libsqlite3.so* /tmp/lightnvr-sqlite/
+COPY --from=builder /usr/lib/libsqlite3.so* /usr/lib/x86_64-linux-gnu/
+RUN ldconfig
 RUN set -eu; \
     case "$(dpkg --print-architecture)" in \
       amd64) multiarch=x86_64-linux-gnu ;; \
