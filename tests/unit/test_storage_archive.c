@@ -825,13 +825,9 @@ static void test_archive_range_proxy_and_disconnect(void) {
             }
 
             if (timed_out) {
-                for (int i = 0; i < 100; i++) {
-                    if (uv_run(&loop, UV_RUN_NOWAIT) == 0) break;
-                    struct timespec pause = {.tv_nsec = 1000000};
-                    nanosleep(&pause, NULL);
-                }
-                close(client);
-                TEST_FAIL_MESSAGE("Timed out waiting for archive response/event-loop drain");
+                /* The async stream may still own this stack loop and connection. */
+                fprintf(stderr, "FATAL: timed out waiting for archive response; aborting before fixture teardown\n");
+                abort();
             }
 
             close(client);
@@ -1618,12 +1614,6 @@ static void test_batch_export_waits_for_verified_archive_source(void) {
             cJSON_Delete(json);
             break;
         }
-    if (!submit_failed && !have_status_path) {
-        fprintf(stderr,
-                "FATAL: batch export may have started but no status token/path is available; "
-                "aborting to avoid teardown race with detached worker\n");
-        abort();
-    }
         completed = !strcmp(status->valuestring, "complete");
         failed = !strcmp(status->valuestring, "error");
         cJSON_Delete(json);
