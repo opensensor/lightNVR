@@ -42,6 +42,8 @@ RUN mkdir -p /opt/sysroot-export && \
       for d in usr lib lib32 lib64 etc; do \
         if [ -e "/$d" ]; then cp -a "/$d" /opt/sysroot-export/; fi; \
       done && \
+      mkdir -p /opt/sysroot-export/var/lib && \
+      cp -a /var/lib/dpkg /opt/sysroot-export/var/lib/ && \
       rm -rf /var/lib/apt/lists/*; \
     fi
 
