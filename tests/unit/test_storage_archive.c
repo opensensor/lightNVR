@@ -1221,14 +1221,13 @@ static void test_archive_credentials_reject_symlinked_directory_components(void)
 
 static void write_lifecycle_attestation(const storage_target_t *target, double checked_at,
                                         const char *xml, char path[1024]) {
-    const char *credentials_dir =
-        isolated_attestation_dir[0] ? isolated_attestation_dir
-                                    : getenv("LIGHTNVR_ARCHIVE_CREDENTIALS_DIR");
-    TEST_ASSERT_NOT_NULL_MESSAGE(credentials_dir, "archive credentials directory is required");
-    TEST_ASSERT_TRUE_MESSAGE(credentials_dir[0] != '\0', "archive credentials directory is empty");
+    TEST_ASSERT_TRUE_MESSAGE(isolated_attestation_dir[0] != '\0',
+                             "isolated attestation credentials directory is required");
+    const char *credentials_dir = isolated_attestation_dir;
     snprintf(path, 1024, "%s/%s.lifecycle.json", credentials_dir, target->credential_ref);
     cJSON *json = cJSON_CreateObject();
     cJSON_AddStringToObject(json, "endpoint", target->endpoint);
+    cJSON_AddStringToObject(json, "region", target->region);
     cJSON_AddStringToObject(json, "region", target->region);
     cJSON_AddStringToObject(json, "bucket", target->bucket);
     cJSON_AddNumberToObject(json, "checked_at", checked_at);
