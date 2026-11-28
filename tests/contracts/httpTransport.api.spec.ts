@@ -202,12 +202,14 @@ test('closing a client during file delivery leaves file callbacks safe', async (
       const timer = setTimeout(() => socket.destroy(new Error('File response timed out')), 10000);
       const chunks: Buffer[] = [];
       let settled = false;
+      let interruptionObserved = false;
       const done = (err?: Error) => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
         socket.removeAllListeners('data');
         socket.removeAllListeners('error');
+        socket.removeAllListeners('close');
         socket.destroy();
         if (err) reject(err);
         else resolve();
@@ -225,10 +227,16 @@ test('closing a client during file delivery leaves file callbacks safe', async (
           return;
         }
         if (buffer.length > separator + 4) {
+          interruptionObserved = true;
           done();
         }
       });
       socket.once('error', done);
+      socket.once('close', () => {
+        if (!interruptionObserved) {
+          done(new Error('Connection closed before response body delivery reached interruption point'));
+        }
+      });
     })));
     const health = await server.request('/api/health?liveness=true');
     expect(health.status).toBe(200);
