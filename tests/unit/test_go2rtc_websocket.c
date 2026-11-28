@@ -206,12 +206,14 @@ static void *upstream_peer(void *arg) {
         }
         goto done;
     }
-    // Send the upgrade and first frame together; the client must handle
-    // coalescing or splitting because TCP does not preserve write boundaries.
-    unsigned char combined[sizeof(upgrade_response) - 1 + sizeof(media_response)];
-    memcpy(combined, upgrade_response, sizeof(upgrade_response) - 1);
-    memcpy(combined + sizeof(upgrade_response) - 1, media_response, sizeof(media_response));
-    if (!send_all(peer->fd, combined, sizeof(combined))) goto done;
+    // Send the upgrade response in controlled fragments, including a split
+    // across the terminating "\r\n\r\n", then send the first media frame.
+    // This deterministically exercises fragmented handshake parsing.
+    const size_t upgrade_len = sizeof(upgrade_response) - 1;
+    const size_t split = upgrade_len - 2; // split inside final "\r\n\r\n"
+    if (!send_all(peer->fd, upgrade_response, split)) goto done;
+    if (!send_all(peer->fd, upgrade_response + split, upgrade_len - split)) goto done;
+    if (!send_all(peer->fd, media_response, sizeof(media_response))) goto done;
     unsigned char frame[sizeof(mse_request)];
     if (read_all(peer->fd, frame, sizeof(frame))) {
         peer->received_mse = memcmp(frame, mse_request, sizeof(frame)) == 0;
