@@ -122,11 +122,13 @@ test('large timeline IDs remain exact through JSON, playback and ZIP export',asy
   const zip=await server.request(`/api/recordings/batch-download/result/${accepted.token}`,{principal:'admin'});
   expect(zip.status).toBe(200);
   const archive=info.outputPath('exact.zip');writeFileSync(archive,Buffer.from(await zip.arrayBuffer()));
-  const members=JSON.parse(execFileSync('python3',['-c',
-    'import hashlib,json,sys,zipfile; z=zipfile.ZipFile(sys.argv[1]); assert z.testzip() is None; print(json.dumps({n:hashlib.sha256(z.read(n)).hexdigest() for n in z.namelist()}))',archive],{encoding:'utf8'}));
-  expect(Object.keys(members).sort()).toEqual(exact.slice(1,3).map(id=>`${id}.mp4`));
+  const zipInspect=JSON.parse(execFileSync('python3',['-c',
+    'import hashlib,json,sys,zipfile; z=zipfile.ZipFile(sys.argv[1]); assert z.testzip() is None; names=z.namelist(); print(json.dumps({"names":names,"digests":{n:hashlib.sha256(z.read(n)).hexdigest() for n in names}}))',archive],{encoding:'utf8'})) as {names:string[];digests:Record<string,string>};
+  const expectedNames=exact.slice(1,3).map(id=>`${id}.mp4`).sort();
+  expect([...zipInspect.names].sort()).toEqual(expectedNames);
+  expect(new Set(zipInspect.names).size).toBe(zipInspect.names.length);
   const expectedMembers=Object.fromEntries(exact.slice(1,3).map(id=>[`${id}.mp4`,expectedDigestById.get(id)!]));
-  expect(members).toEqual(expectedMembers);
+  expect(zipInspect.digests).toEqual(expectedMembers);
 });
 
 test('recording reads fail closed on policy lookup failure and recover without empty or partial success',async({server})=>{
