@@ -171,7 +171,7 @@ static void *upstream_peer(void *arg) {
     peer->observed_upgrade_request = true;
     if (peer->status != 101) {
         const char error[] = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n";
-        send_all(peer->fd, error, sizeof(error) - 1);
+        peer->sent_configured_response = send_all(peer->fd, error, sizeof(error) - 1);
         struct pollfd ready = {.fd = peer->fd, .events = POLLIN};
         if (poll(&ready, 1, 200) > 0 && (ready.revents & POLLIN)) {
             unsigned char byte;
@@ -476,6 +476,8 @@ void test_failed_upstream_handshake_returns_502(void) {
     tracked_clients[0] = -1;
     pthread_join(tracked_threads[0], NULL);
     tracked_thread_started[0] = false;
+    TEST_ASSERT_TRUE(tracked_peers[0].observed_upgrade_request);
+    TEST_ASSERT_TRUE(tracked_peers[0].sent_configured_response);
     TEST_ASSERT_FALSE(tracked_peers[0].observed_client_ws_data_after_reject);
 }
 void test_upgrade_without_media_policy_ack_is_rejected(void) {
