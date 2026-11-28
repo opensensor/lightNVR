@@ -788,6 +788,8 @@ void handle_go2rtc_proxy(const http_request_t *req, http_response_t *res) {
     // was never authorized. Disabling redirect following below is what
     // actually closes it.
     curl_easy_setopt(curl, CURLOPT_URL, url);
+    // Loopback-only upstream: never inherit environment-configured proxies.
+    curl_easy_setopt(curl, CURLOPT_PROXY, "");
     curl_easy_setopt(curl, CURLOPT_PATH_AS_IS, 1L);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, buffered_write_cb);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &ctx);
