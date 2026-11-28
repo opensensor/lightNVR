@@ -603,7 +603,7 @@ static int multipart_upload(const storage_target_t *target, const char *key, FIL
             }
             free(failure_body);
             ezxml_t root = result == 0 ? response_xml(body, "CompleteMultipartUploadResult") : NULL;
-            if (!root) result = -1;
+            if (result == 0 && !root) result = -1;
             if (missing_upload) {
                 id[0] = 0;
                 cJSON_DeleteItemFromObjectCaseSensitive(checkpoint, "parts");
