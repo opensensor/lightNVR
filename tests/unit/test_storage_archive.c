@@ -1945,6 +1945,7 @@ static void test_archive_replica_failover_and_local_status(void) {
     sql("UPDATE storage_targets SET health_status='unavailable' WHERE target_type='s3';");
     // A completed verified cache can serve playback even with both providers down.
     TEST_ASSERT_EQUAL_INT(STORAGE_SOURCE_MISSING, storage_source_remote(id, &remote));
+    TEST_ASSERT_EQUAL_INT(STORAGE_SOURCE_READY, storage_source_resolve(id, path, error));
     assert_storage_state(id, "archived", 2, true, "inherit");
     TEST_ASSERT_EQUAL_INT(0, unlink(path));
     sql("DELETE FROM storage_retrieval_jobs;");
@@ -2251,12 +2252,18 @@ static void test_stalled_archive_writes_renew_lease_until_completion(void) {
     char *response = calloc(1, capacity);
     bool response_alloc_ok = (response != NULL);
     int recv_unexpected_errno = 0;
+    bool response_buffer_full = false;
     size_t total = 0;
     bool ended = false;
     if (response_alloc_ok && set_nonblock_result == 0) {
         for (int i = 0; i < 15000; i++) {
             uv_run(&loop, UV_RUN_NOWAIT);
-            ssize_t count = recv(clients[1], response + total, capacity - total - 1, 0);
+            size_t remaining = capacity - total - 1;
+            if (remaining == 0) {
+                response_buffer_full = true;
+                break;
+            }
+            ssize_t count = recv(clients[1], response + total, remaining, 0);
             if (count > 0) total += (size_t)count;
             else if (count == 0) { ended = true; break; }
             else if (!(errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) {
@@ -2280,6 +2287,7 @@ static void test_stalled_archive_writes_renew_lease_until_completion(void) {
     TEST_ASSERT_EQUAL_INT(0, set_nonblock_result);
     TEST_ASSERT_TRUE(response_alloc_ok);
     TEST_ASSERT_EQUAL_INT(0, recv_unexpected_errno);
+    TEST_ASSERT_FALSE_MESSAGE(response_buffer_full, "archive response exceeded test buffer");
     TEST_ASSERT_TRUE(has_lease_after_first);
     TEST_ASSERT_EQUAL_INT(1, delete_result);
     TEST_ASSERT_EQUAL_INT(0, deletion_first);
