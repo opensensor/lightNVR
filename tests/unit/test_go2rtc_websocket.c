@@ -156,8 +156,8 @@ static int client_open(void) {
 static void *upstream_peer(void *arg) {
     peer_t *peer = arg;
     struct pollfd ready = {.fd = upstream, .events = POLLIN};
-    if (poll(&ready, 1, 3000) <= 0) return NULL;
-    peer->fd = accept(upstream, NULL, NULL);
+    if (poll(&ready, 1, 3000) <= 0 || !(ready.revents & POLLIN)) return NULL;
+    peer->fd = accept(ready.fd, NULL, NULL);
     if (peer->fd < 0) return NULL;
     socket_timeout(peer->fd);
     if (!read_headers(peer->fd, peer->request, sizeof(peer->request))) goto done;
@@ -193,8 +193,6 @@ static void *upstream_peer(void *arg) {
         send_all(peer->fd, media_response, sizeof(media_response));
     }
     // Keep the socket alive until its consumer or the server disconnects.
-    struct timeval no_timeout = {0};
-    setsockopt(peer->fd, SOL_SOCKET, SO_RCVTIMEO, &no_timeout, sizeof(no_timeout));
     char byte;
     recv(peer->fd, &byte, 1, 0);
 done:
@@ -261,7 +259,10 @@ void tearDown(void) {
             tracked_thread_started[i] = false;
         }
     }
-    close(upstream);
+    if (upstream >= 0) {
+        close(upstream);
+        upstream = -1;
+    }
     shutdown_database();
     unlink(db_path);
     go2rtc_api_apply_base_path_override(NULL, 0);
