@@ -219,12 +219,13 @@ test('closing a client during file delivery leaves file callbacks safe', async (
 
 test('HEAD ignores Range while GET serves the requested byte range', async () => {
   const webRoot = mkdtempSync(path.join(tmpdir(), 'lightnvr-head-range-'));
-  writeFileSync(path.join(webRoot, 'range.txt'), 'x'.repeat(1500));
+  const content = Array.from({length: 1500}, (_, i) => String.fromCharCode(33 + (i % 90))).join('');
+  writeFileSync(path.join(webRoot, 'range.txt'), content);
   let server: Awaited<ReturnType<typeof startFixture>> | undefined;
   try {
     server = await startFixture({webRoot});
     const request = (method: string) =>
-      `${method} /range.txt HTTP/1.1\r\nHost: localhost\r\nRange: bytes=0-99\r\nConnection: close\r\n\r\n`;
+      `${method} /range.txt HTTP/1.1\r\nHost: localhost\r\nRange: bytes=100-199\r\nConnection: close\r\n\r\n`;
     const head = await rawExchange(server.port, request('HEAD'));
     const get = await rawExchange(server.port, request('GET'));
     expect(head).toMatch(/^HTTP\/1\.1 200 /);
@@ -232,6 +233,10 @@ test('HEAD ignores Range while GET serves the requested byte range', async () =>
     expect(head.slice(head.indexOf('\r\n\r\n') + 4)).toBe('');
     expect(get).toMatch(/^HTTP\/1\.1 206 /);
     expect(get).toContain('Content-Length: 100');
+    expect(get).toContain('Content-Range: bytes 100-199/1500');
+    const getSeparator = get.indexOf('\r\n\r\n');
+    expect(getSeparator).toBeGreaterThan(0);
+    expect(get.slice(getSeparator + 4)).toBe(content.slice(100, 200));
   } finally {
     if (server) await server.stop();
     rmSync(webRoot, {recursive: true, force: true});
