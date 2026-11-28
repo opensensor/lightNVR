@@ -36,6 +36,14 @@ class S3Handler(BaseHTTPRequestHandler):
         if self.command != 'HEAD':
             self.wfile.write(data)
 
+    def respond_unlocked(self, status, data=b'', headers=None):
+        """Send a prepared response without holding the shared fixture lock."""
+        self.lock.release()
+        try:
+            return self.respond(status, data, headers)
+        finally:
+            self.lock.acquire()
+
     def authorized(self, body):
         match = re.fullmatch(r'AWS4-HMAC-SHA256 Credential=([^/]+)/([^,]+), SignedHeaders=([^,]+), Signature=([0-9a-f]+)',
                              self.headers.get('Authorization', ''))
@@ -51,7 +59,10 @@ class S3Handler(BaseHTTPRequestHandler):
         date, region, service, terminator = scope_parts
         if service != 's3' or terminator != 'aws4_request':
             return False
-        if not self.headers.get('x-amz-date'):
+        amz_date = self.headers.get('x-amz-date')
+        if not amz_date or not re.fullmatch(r'\d{8}T\d{6}Z', amz_date):
+            return False
+        if amz_date[:8] != date:
             return False
         signed_headers = match[3].split(';')
         if not signed_headers:
@@ -78,7 +89,7 @@ class S3Handler(BaseHTTPRequestHandler):
         canonical_headers = ''.join(f'{key}:{" ".join(self.headers.get(key, "").split())}\n'
                                     for key in signed_headers)
         canonical = '\n'.join([self.command, url.path, query, canonical_headers, match[3], payload_hash])
-        string_to_sign = '\n'.join(['AWS4-HMAC-SHA256', self.headers['x-amz-date'], scope,
+        string_to_sign = '\n'.join(['AWS4-HMAC-SHA256', amz_date, scope,
                                     hashlib.sha256(canonical.encode()).hexdigest()])
         key = b'AWS4fixture-secret'
         for component in [date, region, service, terminator]:
@@ -129,52 +140,52 @@ class S3Handler(BaseHTTPRequestHandler):
                                 f'<s3:Bucket>{bucket}</s3:Bucket>'
                                 f'<s3:UploadId>{upload_id}</s3:UploadId>'
                                 '</s3:InitiateMultipartUploadResult>')
-                    return self.respond(200, response.encode())
-                return self.respond(200, f'<InitiateMultipartUploadResult><UploadId>{upload_id}</UploadId></InitiateMultipartUploadResult>'.encode())
+                    return self.respond_unlocked(200, response.encode())
+                return self.respond_unlocked(200, f'<InitiateMultipartUploadResult><UploadId>{upload_id}</UploadId></InitiateMultipartUploadResult>'.encode())
             if 'uploadId' in query:
                 upload_id = query['uploadId']
                 upload = self.uploads.get(upload_id)
                 if upload is None or upload['identity'] != identity:
-                    return self.respond(404, b'<Error><Code>NoSuchUpload</Code></Error>')
+                    return self.respond_unlocked(404, b'<Error><Code>NoSuchUpload</Code></Error>')
                 if self.command == 'DELETE':
                     del self.uploads[upload_id]
-                    return self.respond(204)
+                    return self.respond_unlocked(204)
                 if self.command == 'GET':
                     parts_xml = ''.join(
                         f'<Part><PartNumber>{part_number}</PartNumber><ETag>{etag}</ETag><Size>{len(part_body)}</Size></Part>'
                         for part_number, (etag, part_body) in sorted(upload['parts'].items())
                     )
-                    return self.respond(200, f'<ListPartsResult>{parts_xml}</ListPartsResult>'.encode())
+                    return self.respond_unlocked(200, f'<ListPartsResult>{parts_xml}</ListPartsResult>'.encode())
                 if self.command == 'PUT':
                     try:
                         part = int(query['partNumber'])
                     except (KeyError, ValueError):
-                        return self.respond(400, b'<Error><Code>InvalidArgument</Code></Error>')
+                        return self.respond_unlocked(400, b'<Error><Code>InvalidArgument</Code></Error>')
                     if part < 1:
-                        return self.respond(400, b'<Error><Code>InvalidArgument</Code></Error>')
+                        return self.respond_unlocked(400, b'<Error><Code>InvalidArgument</Code></Error>')
                     if bucket == 'multipart-part-expired' and part == 2 and identity not in self.expired_parts:
                         self.expired_parts.add(identity)
                         del self.uploads[upload_id]
-                        return self.respond(404, b'<Error><Code>NoSuchUpload</Code></Error>')
+                        return self.respond_unlocked(404, b'<Error><Code>NoSuchUpload</Code></Error>')
                     attempt = self.part_attempts.get((identity, part), 0) + 1
                     self.part_attempts[identity, part] = attempt
                     # Fail once after a durable first part. Retrying part 1 is
                     # forbidden so a non-resuming implementation cannot pass.
                     if bucket == 'multipart-retry' and ((part == 2 and attempt == 1) or (part == 1 and attempt > 1)):
-                        return self.respond(503)
+                        return self.respond_unlocked(503)
                     etag = '"' + hashlib.md5(body).hexdigest() + '"'
                     upload['parts'][part] = (etag, body)
-                    return self.respond(200, headers={'ETag': etag})
+                    return self.respond_unlocked(200, headers={'ETag': etag})
                 if self.command == 'POST':
                     if bucket in ('multipart-expired', 'multipart-expired-200') and identity not in self.expired_completions:
                         self.expired_completions.add(identity)
                         del self.uploads[upload_id]
-                        return self.respond(404 if bucket == 'multipart-expired' else 200,
+                        return self.respond_unlocked(404 if bucket == 'multipart-expired' else 200,
                                             b'<Error><Code>NoSuchUpload</Code></Error>')
                     try:
                         manifest = ET.fromstring(body)
                     except ET.ParseError:
-                        return self.respond(200, b'<Error><Code>InvalidPart</Code></Error>')
+                        return self.respond_unlocked(200, b'<Error><Code>InvalidPart</Code></Error>')
 
                     def local_name(tag):
                         return tag.rsplit('}', 1)[-1]
@@ -186,10 +197,10 @@ class S3Handler(BaseHTTPRequestHandler):
                         return None
 
                     if local_name(manifest.tag) != 'CompleteMultipartUpload':
-                        return self.respond(200, b'<Error><Code>InvalidPart</Code></Error>')
+                        return self.respond_unlocked(200, b'<Error><Code>InvalidPart</Code></Error>')
                     parts = [element for element in list(manifest) if local_name(element.tag) == 'Part']
                     if not parts:
-                        return self.respond(200, b'<Error><Code>InvalidPart</Code></Error>')
+                        return self.respond_unlocked(200, b'<Error><Code>InvalidPart</Code></Error>')
 
                     values = []
                     previous_part_number = 0
@@ -197,32 +208,32 @@ class S3Handler(BaseHTTPRequestHandler):
                         part_number_text = child_text(part, 'PartNumber')
                         etag_text = child_text(part, 'ETag')
                         if part_number_text is None or etag_text is None:
-                            return self.respond(200, b'<Error><Code>InvalidPart</Code></Error>')
+                            return self.respond_unlocked(200, b'<Error><Code>InvalidPart</Code></Error>')
                         try:
                             part_number = int(part_number_text)
                         except (TypeError, ValueError):
-                            return self.respond(200, b'<Error><Code>InvalidPart</Code></Error>')
+                            return self.respond_unlocked(200, b'<Error><Code>InvalidPart</Code></Error>')
                         if part_number <= previous_part_number:
-                            return self.respond(200, b'<Error><Code>InvalidPartOrder</Code></Error>')
+                            return self.respond_unlocked(200, b'<Error><Code>InvalidPartOrder</Code></Error>')
                         previous_part_number = part_number
                         stored = upload['parts'].get(part_number)
                         if stored is None or stored[0] != etag_text:
-                            return self.respond(200, b'<Error><Code>InvalidPart</Code></Error>')
+                            return self.respond_unlocked(200, b'<Error><Code>InvalidPart</Code></Error>')
                         values.append(stored[1])
                     self.objects[identity] = b''.join(values)
                     del self.uploads[upload_id]
                     if bucket == 'multipart-ambiguous':
-                        return self.respond(503)
-                    return self.respond(200, b'<CompleteMultipartUploadResult/>')
+                        return self.respond_unlocked(503)
+                    return self.respond_unlocked(200, b'<CompleteMultipartUploadResult/>')
             if self.command == 'PUT':
                 self.objects[identity] = body
-                return self.respond(200)
+                return self.respond_unlocked(200)
             if self.command == 'DELETE':
                 if bucket == 'delete-retry' and '/recordings/' in key and identity not in self.failed_deletions:
                     self.failed_deletions.add(identity)
-                    return self.respond(503)
+                    return self.respond_unlocked(503)
                 self.objects.pop(identity, None)
-                return self.respond(204)
+                return self.respond_unlocked(204)
             value = self.objects.get(identity)
         if value is None:
             return self.respond(404)
