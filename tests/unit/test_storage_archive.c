@@ -1516,12 +1516,26 @@ static void test_batch_export_waits_for_verified_archive_source(void) {
     TEST_ASSERT_EQUAL_STRING("completed", job.state);
     char body[128], token[64], path[160];
     snprintf(body, sizeof(body), "{\"ids\":[%llu],\"filename\":\"archive-export.zip\"}", (unsigned long long)id);
-    cJSON *json = api(handle_batch_download_recordings, HTTP_METHOD_POST, "/api/recordings/batch-download", NULL, body, NULL, 202);
-    safe_strcpy(token, field(json, "token")->valuestring, sizeof(token), 0);
+    int submit_status = 0;
+    bool submit_failed = false;
+    bool have_status_path = false;
+    cJSON *json = api_noassert(handle_batch_download_recordings, HTTP_METHOD_POST,
+                              "/api/recordings/batch-download", NULL, body, NULL, &submit_status);
+    if (submit_status != 202 || !json) {
+        submit_failed = true;
+    } else {
+        cJSON *tok = cJSON_GetObjectItemCaseSensitive(json, "token");
+        if (!cJSON_IsString(tok) || !tok->valuestring ||
+            safe_strcpy(token, tok->valuestring, sizeof(token), 0) != 0) {
+            submit_failed = true;
+        } else {
+            snprintf(path, sizeof(path), "/api/recordings/batch-download/status/%s", token);
+            have_status_path = true;
+        }
+    }
     cJSON_Delete(json);
-    snprintf(path, sizeof(path), "/api/recordings/batch-download/status/%s", token);
     bool completed = false, retrieved = false, failed = false, poll_failed = false;
-    for (int i = 0; i < 500; i++) {
+    for (int i = 0; i < 500 && have_status_path; i++) {
         if (storage_source_process_one() == 1) retrieved = true;
         int status_code = 0;
         json = batch_status_noassert(path, &status_code);
@@ -1538,8 +1552,8 @@ static void test_batch_export_waits_for_verified_archive_source(void) {
         struct timespec delay = {.tv_nsec = 10000000};
         nanosleep(&delay, NULL);
     }
-    bool timed_out = !completed;
-    if (timed_out) {
+    bool timed_out = have_status_path ? !completed : true;
+    if (timed_out || submit_failed) {
         // Do not abort immediately: first wait for a terminal worker state so
         // fixture teardown cannot race a detached export worker.
         bool terminal = failed;
@@ -1564,6 +1578,7 @@ static void test_batch_export_waits_for_verified_archive_source(void) {
             abort();
         }
     }
+    TEST_ASSERT_FALSE_MESSAGE(submit_failed, "batch export submission failed or token missing");
     TEST_ASSERT_FALSE_MESSAGE(poll_failed, "batch export status was unavailable while polling");
     TEST_ASSERT_FALSE_MESSAGE(failed, "batch export worker reported an error");
     TEST_ASSERT_FALSE_MESSAGE(timed_out, "batch export did not complete before polling deadline");
