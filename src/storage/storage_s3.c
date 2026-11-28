@@ -209,9 +209,12 @@ static int credentials_read(const storage_target_t *target, s3_credentials_t *cr
 static size_t response_header(char *buffer, size_t size, size_t count, void *context) {
     s3_io_t *io = context;
     size_t length = size * count;
-    if (length > 12 && !memcmp(buffer, "HTTP/", 5)) {
+    if (length >= 5 && !memcmp(buffer, "HTTP/", 5)) {
         const char *space = memchr(buffer, ' ', length);
-        if (space && space + 4 <= buffer + length)
+        if (space && space + 4 <= buffer + length &&
+            isdigit((unsigned char)space[1]) &&
+            isdigit((unsigned char)space[2]) &&
+            isdigit((unsigned char)space[3]))
             io->status = (space[1] - '0') * 100 + (space[2] - '0') * 10 + space[3] - '0';
     }
     if (length > 5 && !strncasecmp(buffer, "ETag:", 5)) {
