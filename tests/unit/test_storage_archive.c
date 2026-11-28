@@ -1491,6 +1491,20 @@ static void test_legacy_age_cleanup_honors_archive_retention_override(void) {
 }
 
 static void test_batch_export_waits_for_verified_archive_source(void) {
+        if (!terminal) {
+            // Keep draining until terminal (or hard safety cap) before allowing
+            // teardown paths to run, to avoid races with detached worker activity.
+            for (int drain = 0; drain < 5000; drain++) {
+                (void)storage_source_process_one();
+                json = api(handle_batch_download_status, HTTP_METHOD_GET, path, NULL, NULL, NULL, 200);
+                terminal = strcmp(field(json, "status")->valuestring, "pending") != 0 &&
+                           strcmp(field(json, "status")->valuestring, "running") != 0;
+                cJSON_Delete(json);
+                if (terminal) break;
+                struct timespec delay = {.tv_nsec = 10000000};
+                nanosleep(&delay, NULL);
+            }
+        }
     uint64_t id = recording(false);
     storage_target_t target = archive_target("batch-export", true);
     storage_migration_job_t job = move_recording(id, &target);
