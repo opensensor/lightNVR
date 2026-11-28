@@ -450,8 +450,12 @@ void test_upgrade_without_media_policy_ack_is_rejected(void) {
     tracked_clients[0] = client;
     char origin[64], response[2048];
     int status = 0;
+    static const unsigned char masked_frame[] = {
+        0x81, 0x82, 0x01, 0x02, 0x03, 0x04, (unsigned char)('h' ^ 0x01), (unsigned char)('i' ^ 0x02)
+    };
     snprintf(origin, sizeof(origin), "http://localhost:%d", web_port);
     send_upgrade(client, 0, origin, true);
+    TEST_ASSERT_EQUAL_INT((int)sizeof(masked_frame), (int)send(client, masked_frame, sizeof(masked_frame), 0));
     TEST_ASSERT_TRUE(read_headers(client, response, sizeof(response)));
     TEST_ASSERT_EQUAL_INT(1, sscanf(response, "HTTP/%*d.%*d %d", &status));
     TEST_ASSERT_EQUAL_INT(502, status);
@@ -477,8 +481,12 @@ void test_upgrade_with_wrong_accept_is_rejected(void) {
     tracked_clients[0] = client;
     char origin[64], response[2048];
     int status = 0;
+    static const unsigned char masked_frame[] = {
+        0x81, 0x82, 0x01, 0x02, 0x03, 0x04, (unsigned char)('h' ^ 0x01), (unsigned char)('i' ^ 0x02)
+    };
     snprintf(origin, sizeof(origin), "http://localhost:%d", web_port);
     send_upgrade(client, 0, origin, true);
+    TEST_ASSERT_EQUAL_INT((int)sizeof(masked_frame), (int)send(client, masked_frame, sizeof(masked_frame), 0));
     TEST_ASSERT_TRUE(read_headers(client, response, sizeof(response)));
     TEST_ASSERT_EQUAL_INT(1, sscanf(response, "HTTP/%*d.%*d %d", &status));
     TEST_ASSERT_EQUAL_INT(502, status);
