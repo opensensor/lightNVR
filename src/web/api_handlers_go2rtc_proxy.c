@@ -180,9 +180,19 @@ static size_t buffered_header_cb(char *buffer, size_t size, size_t nitems, void 
         return total;
     }
 
-    if (!ctx->header_block_is_informational &&
-        total == sizeof("X-LightNVR-Media-Policy: 1\r\n") - 1 &&
-        strncasecmp(buffer, "X-LightNVR-Media-Policy: 1\r\n", total) == 0) ctx->media_policy_ack = true;
+    if (!ctx->header_block_is_informational) {
+        static const char k_media_policy_header[] = "X-LightNVR-Media-Policy";
+        const size_t header_name_len = sizeof(k_media_policy_header) - 1;
+        if (total > header_name_len + 1 &&
+            strncasecmp(buffer, k_media_policy_header, header_name_len) == 0 &&
+            buffer[header_name_len] == ':') {
+            const char *val = buffer + header_name_len + 1;
+            const char *end = buffer + total;
+            while (val < end && (*val == ' ' || *val == '\t')) val++;
+            while (end > val && (end[-1] == '\r' || end[-1] == '\n' || end[-1] == ' ' || end[-1] == '\t')) end--;
+            ctx->media_policy_ack = ((size_t)(end - val) == 1 && val[0] == '1');
+        }
+    }
     // Parse Content-Type header
     if (!ctx->header_block_is_informational &&
         total > 14 && strncasecmp(buffer, "Content-Type:", 13) == 0) {

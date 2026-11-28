@@ -31,6 +31,7 @@ static bool worker_in_curl;
 static bool real_authorization;
 static bool fail_lease_uuid;
 static bool acknowledge_media_policy;
+static bool spaced_media_policy_ack;
 static bool informational_media_ack;
 static int upstream_requests;
 static char upstream_request[2048];
@@ -139,6 +140,7 @@ void setUp(void) {
     real_authorization = false;
     fail_lease_uuid = false;
     acknowledge_media_policy = true;
+    spaced_media_policy_ack = false;
     informational_media_ack = false;
     upstream_requests = 0;
     TEST_ASSERT_EQUAL_INT(CURLE_OK, curl_global_init(CURL_GLOBAL_ALL));
@@ -480,7 +482,9 @@ static void *webrtc_peer(void *arg) {
     int length = snprintf(response, sizeof(response),
         "HTTP/1.1 201 Created\r\n%sContent-Type: application/sdp\r\n"
         "Content-Length: %zu\r\nConnection: close\r\n\r\n%s",
-        acknowledge_media_policy ? "X-LightNVR-Media-Policy: 1\r\n" : "",
+        acknowledge_media_policy ? (spaced_media_policy_ack
+            ? "x-lightnvr-media-policy:\t 1 \t\r\n"
+            : "X-LightNVR-Media-Policy: 1\r\n") : "",
         strlen(sdp_answer), sdp_answer);
     (void)send(client, response, (size_t)length, MSG_NOSIGNAL);
     close(client);
@@ -565,6 +569,10 @@ static void check_both_webrtc_proxies(bool acknowledged, bool fail_issuance) {
 }
 
 void test_both_proxy_handlers_forward_authorized_webrtc_sdp(void) {
+    check_both_webrtc_proxies(true, false);
+}
+void test_both_proxy_handlers_accept_spaced_media_ack(void) {
+    spaced_media_policy_ack = true;
     check_both_webrtc_proxies(true, false);
 }
 void test_both_proxy_handlers_reject_missing_media_ack(void) {
@@ -656,6 +664,7 @@ int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_shutdown_waits_for_a_worker_beyond_the_old_ten_second_timeout);
     RUN_TEST(test_both_proxy_handlers_forward_authorized_webrtc_sdp);
+    RUN_TEST(test_both_proxy_handlers_accept_spaced_media_ack);
     RUN_TEST(test_both_proxy_handlers_reject_missing_media_ack);
     RUN_TEST(test_interim_ack_does_not_authorize_final_response);
     RUN_TEST(test_both_proxy_handlers_reject_lease_failure_without_upstream_contact);
