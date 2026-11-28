@@ -183,7 +183,7 @@ static void *upstream_peer(void *arg) {
         const char unsupported[] = "HTTP/1.1 101 Switching Protocols\r\n"
             "Upgrade: websocket\r\nConnection: Upgrade\r\n"
             "Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n";
-        send_all(peer->fd, unsupported, sizeof(unsupported) - 1);
+        peer->sent_configured_response = send_all(peer->fd, unsupported, sizeof(unsupported) - 1);
         send_all(peer->fd, media_response, sizeof(media_response));
         struct pollfd ready = {.fd = peer->fd, .events = POLLIN};
         if (poll(&ready, 1, 200) > 0 && (ready.revents & POLLIN)) {
@@ -519,6 +519,8 @@ void test_upgrade_without_media_policy_ack_is_rejected(void) {
     tracked_clients[0] = -1;
     pthread_join(tracked_threads[0], NULL);
     tracked_thread_started[0] = false;
+    TEST_ASSERT_TRUE(tracked_peers[0].observed_upgrade_request);
+    TEST_ASSERT_TRUE(tracked_peers[0].sent_configured_response);
     TEST_ASSERT_FALSE(tracked_peers[0].observed_client_ws_data_after_reject);
 }
 void test_upgrade_with_wrong_accept_is_rejected(void) {
