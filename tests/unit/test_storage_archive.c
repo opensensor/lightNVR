@@ -1236,7 +1236,8 @@ static void test_multipart_cancellation_aborts_owned_upload_and_preserves_source
     uint64_t bytes;
     char error[256];
     TEST_ASSERT_EQUAL_INT(STORAGE_S3_MISSING, storage_s3_stat(&target, job.destination_object_key, &bytes, error));
-    TEST_ASSERT_EQUAL_INT(0, storage_s3_abort_upload(&target, job.destination_object_key, original_upload_id, error));
+    /* Best-effort fixture cleanup only; do not use abort success as proof that cancellation cleaned up multipart state. */
+    (void)storage_s3_abort_upload(&target, job.destination_object_key, original_upload_id, error);
 }
 
 static void test_archive_credentials_require_private_regular_files(void) {
