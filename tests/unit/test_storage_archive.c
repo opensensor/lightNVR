@@ -883,8 +883,17 @@ static void test_ambiguous_multipart_completion_recovers(void) {
     uint64_t id = recording(false);
     FILE *file = fopen(source_path, "wb");
     TEST_ASSERT_NOT_NULL(file);
-    unsigned char block[65536] = {0};
-    for (int i = 0; i < 144; i++) TEST_ASSERT_EQUAL_UINT(sizeof(block), fwrite(block, 1, sizeof(block), file));
+    unsigned char block[65536];
+    unsigned long long expected_checksum = 0;
+    uint64_t expected_size = 0;
+    for (int i = 0; i < 144; i++) {
+        for (size_t j = 0; j < sizeof(block); j++) {
+            block[j] = (unsigned char)((i * 131 + (int)j * 17 + (i ^ (int)j)) & 0xff);
+        }
+        TEST_ASSERT_EQUAL_UINT(sizeof(block), fwrite(block, 1, sizeof(block), file));
+        for (size_t j = 0; j < sizeof(block); j++) expected_checksum += block[j];
+        expected_size += sizeof(block);
+    }
     fclose(file);
     sql("UPDATE recordings SET size_bytes=9437184;");
     storage_target_t target = archive_target("multipart-ambiguous", true);
@@ -898,6 +907,23 @@ static void test_ambiguous_multipart_completion_recovers(void) {
     TEST_ASSERT_EQUAL_INT(DB_STORAGE_MIGRATION_OK, db_storage_migration_get(job.uuid, &job));
     TEST_ASSERT_EQUAL_STRING("completed", job.state);
     TEST_ASSERT_NOT_EQUAL_INT(0, access(source_path, F_OK));
+
+    char recovered_path[MAX_PATH_LENGTH];
+    TEST_ASSERT_EQUAL_INT(0, storage_s3_download(&target, job.destination_object_key, recovered_path, NULL));
+    FILE *recovered = fopen(recovered_path, "rb");
+    TEST_ASSERT_NOT_NULL(recovered);
+    unsigned long long actual_checksum = 0;
+    uint64_t actual_size = 0;
+    while (1) {
+        size_t n = fread(block, 1, sizeof(block), recovered);
+        actual_size += n;
+        for (size_t j = 0; j < n; j++) actual_checksum += block[j];
+        if (n < sizeof(block)) break;
+    }
+    fclose(recovered);
+    unlink(recovered_path);
+    TEST_ASSERT_EQUAL_UINT64(expected_size, actual_size);
+    TEST_ASSERT_EQUAL_UINT64(expected_checksum, actual_checksum);
 }
 
 static void test_archive_restore_without_retrieval_cache(void) {
