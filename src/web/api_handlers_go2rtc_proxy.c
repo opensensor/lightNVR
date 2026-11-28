@@ -312,8 +312,10 @@ static bool parse_proxy_query(const http_request_t *req, proxy_query_t *parsed) 
     for (const char *p = req->query_string; *p;) {
         const char *end = strchr(p, '&');
         if (!end) end = p + strlen(p);
+        if (end == p) return false; // Reject empty query components (e.g. "a=1&&b=2")
         const char *eq = memchr(p, '=', (size_t)(end - p));
         const char *key_end = eq ? eq : end;
+        if (key_end == p) return false; // Reject empty keys (e.g. "=value")
         int key = -1;
         for (size_t i = 0; i < sizeof(keys) / sizeof(keys[0]); i++) {
             if (strlen(keys[i]) == (size_t)(key_end - p) &&
