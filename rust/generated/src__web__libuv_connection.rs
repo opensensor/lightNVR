@@ -1210,6 +1210,7 @@ pub struct libuv_server {
     pub thread_joinable: atomic_bool,
     pub init_close_pending: ::core::ffi::c_uint,
     pub connections: *mut libuv_connection,
+    pub destroy_pending: bool,
 }
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -1236,6 +1237,7 @@ pub struct libuv_connection {
     pub keep_alive: bool,
     pub requests_handled: ::core::ffi::c_int,
     pub async_response_pending: bool,
+    pub file_serve_refs: ::core::ffi::c_uint,
     pub handler_on_worker: bool,
     pub close_completed: bool,
     pub go2rtc_websocket: *mut ::core::ffi::c_void,
@@ -1915,7 +1917,10 @@ pub unsafe extern "C" fn libuv_close_cb(mut handle: *mut uv_handle_t) {
             (*conn).requests_handled,
         );
         (*conn).close_completed = r#true != 0;
-        if !(*conn).handler_on_worker {
+        if !(*conn).handler_on_worker
+            && !(*conn).async_response_pending
+            && (*conn).file_serve_refs == 0 as ::core::ffi::c_uint
+        {
             libuv_connection_destroy(conn);
         }
     }
@@ -2444,7 +2449,9 @@ unsafe extern "C" fn handler_after_work_cb(
     safe_free(hw as *mut ::core::ffi::c_void);
     (*conn).handler_on_worker = r#false != 0;
     if (*conn).close_completed {
-        libuv_connection_destroy(conn);
+        if (*conn).file_serve_refs == 0 as ::core::ffi::c_uint && !(*conn).async_response_pending {
+            libuv_connection_destroy(conn);
+        }
         return;
     }
     if (*(*conn).server).shutting_down as ::core::ffi::c_int != 0

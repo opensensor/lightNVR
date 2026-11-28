@@ -1461,7 +1461,7 @@
       "c": "src/web/api_handlers_go2rtc_proxy.c",
       "c_sha256": "6519df40d720f7d332dec154cf77e7730d71d33a21ba4ed9d2a5a46fac5aa2d4",
       "rust": "generated/src__web__api_handlers_go2rtc_proxy.rs",
-      "rust_sha256": "8af815a5c0560240c0cc534024a0fa6ebdb553d2b8fdff1550db178f5f6a62ab",
+      "rust_sha256": "0ed75693a609ade067884e1df26499331e22df274ef3a575b3c26d3a978e1266",
       "adapted": false
     },
     {
@@ -1636,7 +1636,7 @@
       "c": "src/web/api_handlers_recordings_thumbnail.c",
       "c_sha256": "fffb6c4c7a4ad421bb6a0d3c6949afb9587c112f3de19c1b2739cd2af5fe05e3",
       "rust": "generated/src__web__api_handlers_recordings_thumbnail.rs",
-      "rust_sha256": "db1b1289b6aa212ee46bb39f46d03577d61c012206686e91c8d669cd6fc19771",
+      "rust_sha256": "8f8929dc1cd9722d98f7774bb0e4b959682216a40b59dbefc70768983e0bfae7",
       "adapted": false
     },
     {
@@ -1832,14 +1832,14 @@
       "c": "src/web/go2rtc_proxy_thread.c",
       "c_sha256": "f148662c3a92b5997c2119ccfe69064d9883341e8e395263b3ff2be9a48ee86e",
       "rust": "generated/src__web__go2rtc_proxy_thread.rs",
-      "rust_sha256": "13f67ff2e21968fe04c53f8543f244ad70b1f3f2b7f71a2e9d171771b11b48f9",
+      "rust_sha256": "d7b801da9cd24b2e43302d7b1e08d1f4c2a09cd92e560c8ce5a2e49de57c4948",
       "adapted": true
     },
     {
       "c": "src/web/go2rtc_websocket.c",
       "c_sha256": "792d2c1fce93bfeeca1dc23a9328a57b6f2788ca8e45b25dd64bf595907546dc",
       "rust": "generated/src__web__go2rtc_websocket.rs",
-      "rust_sha256": "48844d144fa08a93770a19c48205dea92f7b7775b77dd13a466f0cca285eec58",
+      "rust_sha256": "a5e663a79af1033addb6961e8844b93ecfde7381476f7b78cefbd667b3c35ef8",
       "adapted": false
     },
     {
@@ -1858,37 +1858,37 @@
     },
     {
       "c": "src/web/libuv_connection.c",
-      "c_sha256": "196a49682bff2a8cd150f9ce23a68a842c06ea9af68679b9eb5e0d474b9ed0a4",
+      "c_sha256": "c1683fa7b99e6c46ab5267f43ac48d432a90209d36e6420ef770442314a76386",
       "rust": "generated/src__web__libuv_connection.rs",
-      "rust_sha256": "149108f9ff954f9ce0552b545d22e38430c24781a36eb684d094814249011dd3",
+      "rust_sha256": "88397ca1b71936e5d088cc9e741c8d542e4c79c5451e2bb7a60fc7582ac53cc9",
       "adapted": false
     },
     {
       "c": "src/web/libuv_file_serve.c",
-      "c_sha256": "c4b73d275a807090cd32c6e4073ae5746ea31f388ba09568e819aad595c793fc",
+      "c_sha256": "326f399dee4f7171d19965dfcad4900c6188d02e7f8184c0b4e772615ce6ef08",
       "rust": "generated/src__web__libuv_file_serve.rs",
-      "rust_sha256": "108202894af4d1714a3cfbeacbbe08f53c601c7e5cf49e4b42f20a061325b540",
+      "rust_sha256": "6752732bd1e3fd17430f13467b5b72ad6765ac92980985a8d11824a9be45f38e",
       "adapted": false
     },
     {
       "c": "src/web/libuv_response.c",
       "c_sha256": "a792d6b00f3ac5f4c7270e17646a434077ea80e740db9c7aa8b4943b0e718874",
       "rust": "generated/src__web__libuv_response.rs",
-      "rust_sha256": "cf9fe5dee73d58d93f6f3282d0c198c6139d9506416fc344d536dab2f7466273",
+      "rust_sha256": "58baa5e777478b7bd9e947b22dc362765d13fde627f01f5bed7dbffcb32adc1f",
       "adapted": false
     },
     {
       "c": "src/web/libuv_server.c",
-      "c_sha256": "fe619613610ca59a2d6d1fd2adc94bb7f7d8783198ca4fd8a4b8fd4382247e3e",
+      "c_sha256": "a92a07eb069e4bdcb15b124a2a92ac229847aabbe4f0af111f7c13a1be9f3f3e",
       "rust": "generated/src__web__libuv_server.rs",
-      "rust_sha256": "47c15f7be628ccdf46a5c0d4d92a09038208056c52d3053699c222c8e0a2f2a9",
+      "rust_sha256": "6af09f73bb479fc380cf0a5c62c3c91afe319ca7f224fc0c1b3b7704fad123ec",
       "adapted": false
     },
     {
       "c": "src/web/libuv_tls.c",
       "c_sha256": "ae74db82d92e99121c8c5d518743b88bf9b675f8e47214e3e115d365cebd92ae",
       "rust": "generated/src__web__libuv_tls.rs",
-      "rust_sha256": "be8df17965293e3e77e34cf65d25fbd15cdc0438889869029a362acff64e6384",
+      "rust_sha256": "cd439610bf38bdfbe433daf6ade9f9c0eb002fbb2a145dd9d91c12a66d67a9b6",
       "adapted": false
     },
     {
@@ -1902,7 +1902,7 @@
       "c": "src/web/recording_archive.c",
       "c_sha256": "da26baa4cfd19024bc617ff2e8f69decdb112d77a85d5977166ab75307b53972",
       "rust": "generated/src__web__recording_archive.rs",
-      "rust_sha256": "09e9960ede28afc875c3d6fbeddd1d1fcafdf5bed0aec209330d9638f5b03514",
+      "rust_sha256": "17f29c5212e08fb77aa624be9cfe106f99eb4be765d2020a031bdc8e91b3049b",
       "adapted": true
     },
     {
@@ -1930,7 +1930,7 @@
       "c": "src/web/request_response.c",
       "c_sha256": "e50497861943078d9dea3ed138c98bb9e17e9bd2e5527e117a5a2cad3d80363a",
       "rust": "generated/src__web__request_response.rs",
-      "rust_sha256": "ee0a2a9646a256245a80ee97dc10b2985765e33ce6727c4ba258e42c85e59609",
+      "rust_sha256": "40f4fc56656244c9d7330ba32daec352a87bbc49895eea19a1ab09920161c6ff",
       "adapted": false
     },
     {

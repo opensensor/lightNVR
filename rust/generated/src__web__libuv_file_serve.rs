@@ -65,6 +65,7 @@ unsafe extern "C" {
         cb: uv_write_cb,
     ) -> ::core::ffi::c_int;
     unsafe fn libuv_connection_reset(conn: *mut libuv_connection_t);
+    unsafe fn libuv_connection_destroy(conn: *mut libuv_connection_t);
     unsafe fn libuv_connection_send(
         conn: *mut libuv_connection_t,
         data: *mut ::core::ffi::c_char,
@@ -785,6 +786,7 @@ pub struct libuv_server {
     pub thread_joinable: atomic_bool,
     pub init_close_pending: ::core::ffi::c_uint,
     pub connections: *mut libuv_connection,
+    pub destroy_pending: bool,
 }
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -811,6 +813,7 @@ pub struct libuv_connection {
     pub keep_alive: bool,
     pub requests_handled: ::core::ffi::c_int,
     pub async_response_pending: bool,
+    pub file_serve_refs: ::core::ffi::c_uint,
     pub handler_on_worker: bool,
     pub close_completed: bool,
     pub go2rtc_websocket: *mut ::core::ffi::c_void,
@@ -1123,6 +1126,7 @@ pub unsafe extern "C" fn libuv_serve_file(
         file_serve_cleanup(ctx);
         return -1 as ::core::ffi::c_int;
     }
+    (*conn).file_serve_refs = (*conn).file_serve_refs.wrapping_add(1);
     return 0 as ::core::ffi::c_int;
 }
 unsafe extern "C" fn file_serve_cleanup(mut ctx: *mut file_serve_ctx_t) {
@@ -1141,6 +1145,26 @@ unsafe extern "C" fn file_serve_cleanup(mut ctx: *mut file_serve_ctx_t) {
 unsafe extern "C" fn on_file_open(mut req: *mut uv_fs_t) {
     let mut ctx: *mut file_serve_ctx_t = (*req).data as *mut file_serve_ctx_t;
     let mut conn: *mut libuv_connection_t = (*ctx).conn;
+    if (*conn).close_completed {
+        if (*req).result >= 0 as ssize_t {
+            (*ctx).fd = (*req).result as uv_file;
+            uv_fs_req_cleanup(req);
+            uv_fs_close(
+                (*(*conn).server).r#loop,
+                &raw mut (*ctx).close_req,
+                (*ctx).fd,
+                Some(on_file_close as unsafe extern "C" fn(*mut uv_fs_t) -> ()),
+            );
+        } else {
+            file_serve_cleanup(ctx);
+            (*conn).async_response_pending = r#false != 0;
+            (*conn).file_serve_refs = (*conn).file_serve_refs.wrapping_sub(1);
+            if (*conn).file_serve_refs == 0 as ::core::ffi::c_uint && !(*conn).handler_on_worker {
+                libuv_connection_destroy(conn);
+            }
+        }
+        return;
+    }
     if (*req).result < 0 as ssize_t {
         _log_message_ctx(
             log_level_t::LOG_LEVEL_ERROR,
@@ -1166,6 +1190,7 @@ unsafe extern "C" fn on_file_open(mut req: *mut uv_fs_t) {
         libuv_send_response_ex(conn, &raw mut (*conn).response, action);
         file_serve_cleanup(ctx);
         (*conn).async_response_pending = r#false != 0;
+        (*conn).file_serve_refs = (*conn).file_serve_refs.wrapping_sub(1);
         return;
     }
     (*ctx).fd = (*req).result as uv_file;
@@ -1196,6 +1221,15 @@ unsafe extern "C" fn on_file_open(mut req: *mut uv_fs_t) {
 unsafe extern "C" fn on_file_stat(mut req: *mut uv_fs_t) {
     let mut ctx: *mut file_serve_ctx_t = (*req).data as *mut file_serve_ctx_t;
     let mut conn: *mut libuv_connection_t = (*ctx).conn;
+    if (*conn).close_completed {
+        uv_fs_close(
+            (*(*conn).server).r#loop,
+            &raw mut (*ctx).close_req,
+            (*ctx).fd,
+            Some(on_file_close as unsafe extern "C" fn(*mut uv_fs_t) -> ()),
+        );
+        return;
+    }
     if (*req).result < 0 as ssize_t {
         _log_message_ctx(
             log_level_t::LOG_LEVEL_ERROR,
@@ -1363,6 +1397,15 @@ unsafe extern "C" fn on_file_stat(mut req: *mut uv_fs_t) {
     send_file_chunk(ctx);
 }
 unsafe extern "C" fn send_file_chunk(mut ctx: *mut file_serve_ctx_t) {
+    if (*(*ctx).conn).close_completed {
+        uv_fs_close(
+            (*(*(*ctx).conn).server).r#loop,
+            &raw mut (*ctx).close_req,
+            (*ctx).fd,
+            Some(on_file_close as unsafe extern "C" fn(*mut uv_fs_t) -> ()),
+        );
+        return;
+    }
     if (*ctx).remaining == 0 as size_t {
         uv_fs_close(
             (*(*(*ctx).conn).server).r#loop,
@@ -1544,14 +1587,30 @@ unsafe extern "C" fn on_file_read(mut req: *mut uv_fs_t) {
 unsafe extern "C" fn on_file_close(mut req: *mut uv_fs_t) {
     let mut ctx: *mut file_serve_ctx_t = (*req).data as *mut file_serve_ctx_t;
     if (*ctx).head_response_managed {
+        let mut conn: *mut libuv_connection_t = (*ctx).conn;
         file_serve_cleanup(ctx);
+        (*conn).file_serve_refs = (*conn).file_serve_refs.wrapping_sub(1);
+        if (*conn).file_serve_refs == 0 as ::core::ffi::c_uint
+            && (*conn).close_completed as ::core::ffi::c_int != 0
+            && !(*conn).handler_on_worker
+            && !(*conn).async_response_pending
+        {
+            libuv_connection_destroy(conn);
+        }
         return;
     }
-    let mut conn: *mut libuv_connection_t = (*ctx).conn;
-    let mut should_manage_connection: bool = (*conn).async_response_pending;
+    let mut conn_0: *mut libuv_connection_t = (*ctx).conn;
+    let mut should_manage_connection: bool = (*conn_0).async_response_pending;
     let mut write_error: bool = (*ctx).write_error;
     file_serve_cleanup(ctx);
-    (*conn).async_response_pending = r#false != 0;
+    (*conn_0).file_serve_refs = (*conn_0).file_serve_refs.wrapping_sub(1);
+    (*conn_0).async_response_pending = r#false != 0;
+    if (*conn_0).close_completed {
+        if (*conn_0).file_serve_refs == 0 as ::core::ffi::c_uint && !(*conn_0).handler_on_worker {
+            libuv_connection_destroy(conn_0);
+        }
+        return;
+    }
     if !should_manage_connection {
         _log_message_ctx(
             log_level_t::LOG_LEVEL_DEBUG,
@@ -1562,7 +1621,7 @@ unsafe extern "C" fn on_file_close(mut req: *mut uv_fs_t) {
         );
         return;
     }
-    if (*(*conn).server).shutting_down {
+    if (*(*conn_0).server).shutting_down {
         _log_message_ctx(
             log_level_t::LOG_LEVEL_DEBUG,
             LOG_COMPONENT.as_ptr(),
@@ -1572,10 +1631,10 @@ unsafe extern "C" fn on_file_close(mut req: *mut uv_fs_t) {
         );
         return;
     }
-    if uv_is_closing(&raw mut (*conn).handle as *mut uv_handle_t) == 0 {
+    if uv_is_closing(&raw mut (*conn_0).handle as *mut uv_handle_t) == 0 {
         if !write_error
-            && (*conn).keep_alive as ::core::ffi::c_int != 0
-            && llhttp_should_keep_alive(&raw mut (*conn).parser) != 0
+            && (*conn_0).keep_alive as ::core::ffi::c_int != 0
+            && llhttp_should_keep_alive(&raw mut (*conn_0).parser) != 0
         {
             _log_message_ctx(
                 log_level_t::LOG_LEVEL_DEBUG,
@@ -1584,7 +1643,7 @@ unsafe extern "C" fn on_file_close(mut req: *mut uv_fs_t) {
                 b"on_file_close: Keeping connection alive for reuse\0".as_ptr()
                     as *const ::core::ffi::c_char,
             );
-            libuv_connection_reset(conn);
+            libuv_connection_reset(conn_0);
         } else {
             _log_message_ctx(
                 log_level_t::LOG_LEVEL_DEBUG,
@@ -1592,10 +1651,10 @@ unsafe extern "C" fn on_file_close(mut req: *mut uv_fs_t) {
                 _log_stream_name,
                 b"on_file_close: Closing connection (keep_alive=%d, write_error=%d)\0".as_ptr()
                     as *const ::core::ffi::c_char,
-                (*conn).keep_alive as ::core::ffi::c_int,
+                (*conn_0).keep_alive as ::core::ffi::c_int,
                 write_error as ::core::ffi::c_int,
             );
-            libuv_connection_close(conn);
+            libuv_connection_close(conn_0);
         }
     }
 }

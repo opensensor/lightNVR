@@ -1131,6 +1131,7 @@ pub struct libuv_connection {
     pub keep_alive: bool,
     pub requests_handled: ::core::ffi::c_int,
     pub async_response_pending: bool,
+    pub file_serve_refs: ::core::ffi::c_uint,
     pub handler_on_worker: bool,
     pub close_completed: bool,
     pub go2rtc_websocket: *mut ::core::ffi::c_void,
@@ -1169,6 +1170,7 @@ pub struct libuv_server {
     pub thread_joinable: atomic_bool,
     pub init_close_pending: ::core::ffi::c_uint,
     pub connections: *mut libuv_connection,
+    pub destroy_pending: bool,
 }
 pub type atomic_bool = bool;
 pub type uv_thread_t = pthread_t;
