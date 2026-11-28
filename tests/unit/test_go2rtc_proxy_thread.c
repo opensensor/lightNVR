@@ -21,6 +21,7 @@
 #include "web/go2rtc_proxy_thread.h"
 #include "web/api_handlers_go2rtc_proxy.h"
 #include "web/libuv_server.h"
+#include "web/httpd_utils.h"
 #include "web/request_response.h"
 
 static uv_loop_t loop;
@@ -560,9 +561,9 @@ static void check_both_webrtc_proxies(bool acknowledged, bool fail_issuance) {
             : "POST /go2rtc/api/webrtc?src=Front%20Gate HTTP/1.1"));
         TEST_ASSERT_NOT_NULL(strstr(upstream_request, "Content-Type: application/sdp\r\n"));
         {
-            const char *lease_hdr = strstr(upstream_request, "X-MediaMTX-Lease-UUID: ");
+            const char *lease_hdr = strstr(upstream_request, "X-LightNVR-Media-Lease: ");
             TEST_ASSERT_NOT_NULL(lease_hdr);
-            lease_hdr += strlen("X-MediaMTX-Lease-UUID: ");
+            lease_hdr += strlen("X-LightNVR-Media-Lease: ");
             const char *lease_end = strstr(lease_hdr, "\r\n");
             TEST_ASSERT_NOT_NULL(lease_end);
             TEST_ASSERT_EQUAL_UINT(36, (unsigned int)(lease_end - lease_hdr));
@@ -578,7 +579,8 @@ static void check_both_webrtc_proxies(bool acknowledged, bool fail_issuance) {
                 }
             }
         }
-        TEST_ASSERT_NOT_NULL(strstr(upstream_request, "X-MediaMTX-TLS-Policy: validate\r\n"));
+        TEST_ASSERT_NOT_NULL(strstr(upstream_request, httpd_secure_cookies()
+            ? "X-LightNVR-Media-TLS: 1\r\n" : "X-LightNVR-Media-TLS: 0\r\n"));
         TEST_ASSERT_NOT_NULL(strstr(upstream_request, sdp_offer));
         http_response_free(&threaded_connection.response);
     }
