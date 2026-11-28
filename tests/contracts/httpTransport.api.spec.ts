@@ -200,14 +200,35 @@ test('closing a client during file delivery leaves file callbacks safe', async (
     await Promise.all(Array.from({length: 8}, () => new Promise<void>((resolve, reject) => {
       const socket = connect(server!.port, '127.0.0.1');
       const timer = setTimeout(() => socket.destroy(new Error('File response timed out')), 10000);
+      const chunks: Buffer[] = [];
+      let settled = false;
+      const done = (err?: Error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        socket.removeAllListeners('data');
+        socket.removeAllListeners('error');
+        socket.destroy();
+        if (err) reject(err);
+        else resolve();
+      };
       socket.once('connect', () => socket.write(
         'GET /large.bin HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n'));
-      socket.once('data', () => {
-        clearTimeout(timer);
-        socket.destroy();
-        resolve();
+      socket.on('data', chunk => {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        const buffer = Buffer.concat(chunks);
+        const separator = buffer.indexOf('\r\n\r\n');
+        if (separator < 0) return;
+        const headerText = buffer.slice(0, separator).toString('utf8');
+        if (!/^HTTP\/1\.1 200 /m.test(headerText)) {
+          done(new Error(`Unexpected response while testing interrupted delivery: ${headerText.split('\r\n', 1)[0] ?? headerText}`));
+          return;
+        }
+        if (buffer.length > separator + 4) {
+          done();
+        }
       });
-      socket.once('error', reject);
+      socket.once('error', done);
     })));
     const health = await server.request('/api/health?liveness=true');
     expect(health.status).toBe(200);
