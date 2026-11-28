@@ -320,6 +320,7 @@ void test_four_websockets_relay_media_on_the_web_port_and_close_cleanly(void) {
 void test_websocket_auth_origin_and_query_failures_never_reach_upstream(void) {
     for (int i = 0; i < 5; i++) {
         int client = client_open();
+        tracked_clients[i] = client;
         char origin[64];
         snprintf(origin, sizeof(origin), "http://localhost:%d", web_port);
         if (i == 0) {
@@ -353,6 +354,7 @@ void test_websocket_auth_origin_and_query_failures_never_reach_upstream(void) {
         TEST_ASSERT_EQUAL_INT(1, sscanf(response, "HTTP/1.1 %d", &code));
         TEST_ASSERT_EQUAL_INT(i == 0 ? 401 : (i == 1 || i == 3) ? 403 : 400, code);
         close(client);
+        tracked_clients[i] = -1;
     }
     struct pollfd ready = {.fd = upstream, .events = POLLIN};
     TEST_ASSERT_EQUAL_INT(0, poll(&ready, 1, 0));
