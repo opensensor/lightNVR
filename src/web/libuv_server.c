@@ -587,17 +587,7 @@ void libuv_server_stop(http_server_handle_t handle) {
         /* Workers still access request state, database and server/TLS objects.
          * Stop must finish their after-work callbacks before global teardown.
          * A timed-out drain is not permission to free a busy loop. */
-        if (server->owns_loop) {
-            while (uv_loop_alive(server->loop)) uv_run(server->loop, UV_RUN_DEFAULT);
-        } else {
-            server_handle_scan_t scan = {.server = server, .present = false};
-            do {
-                uv_run(server->loop, UV_RUN_NOWAIT);
-                scan.present = false;
-                uv_walk(server->loop, scan_server_handles_cb, &scan);
-                if (scan.present || server->connections) usleep(check_interval_ms * 1000);
-            } while (scan.present || server->connections);
-        }
+        while (uv_loop_alive(server->loop)) uv_run(server->loop, UV_RUN_DEFAULT);
     }
 
     log_info("libuv_server_stop: Server stopped");
