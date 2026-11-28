@@ -107,6 +107,8 @@ class S3Handler(BaseHTTPRequestHandler):
                 if self.command == 'DELETE':
                     del self.uploads[upload_id]
                     return self.respond(204)
+                if self.command == 'GET':
+                    return self.respond(200, b'<ListPartsResult/>')
                 if self.command == 'PUT':
                     part = int(query['partNumber'])
                     if bucket == 'multipart-part-expired' and part == 2 and identity not in self.expired_parts:

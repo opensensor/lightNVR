@@ -792,14 +792,54 @@ static void test_archive_range_proxy_and_disconnect(void) {
             close(client);
             libuv_connection_close(conn);
         }
-        uv_run(&loop, UV_RUN_DEFAULT);
-        TEST_ASSERT_EQUAL_INT(0, uv_loop_close(&loop));
         if (!disconnect) {
             char response[2048] = {0};
             size_t total = 0;
             ssize_t count;
-            while ((count = recv(client, response + total, sizeof(response)-1-total, 0)) > 0) total += (size_t)count;
+            bool timed_out = false;
+            struct timespec start_ts, now_ts;
+            const long timeout_ms = 5000;
+            TEST_ASSERT_EQUAL_INT(0, fcntl(client, F_SETFL, fcntl(client, F_GETFL, 0) | O_NONBLOCK));
+            TEST_ASSERT_EQUAL_INT(0, clock_gettime(CLOCK_MONOTONIC, &start_ts));
+
+            while (1) {
+                (void)uv_run(&loop, UV_RUN_NOWAIT);
+                while ((count = recv(client, response + total, sizeof(response) - 1 - total, 0)) > 0) {
+                    total += (size_t)count;
+                    if (total >= sizeof(response) - 1) break;
+                }
+                if (count == 0) break;
+                if (count < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
+                    timed_out = true;
+                    break;
+                }
+                TEST_ASSERT_EQUAL_INT(0, clock_gettime(CLOCK_MONOTONIC, &now_ts));
+                long elapsed_ms = (now_ts.tv_sec - start_ts.tv_sec) * 1000L +
+                                  (now_ts.tv_nsec - start_ts.tv_nsec) / 1000000L;
+                if (elapsed_ms >= timeout_ms) {
+                    timed_out = true;
+                    break;
+                }
+                struct timespec pause = {.tv_nsec = 1000000};
+                nanosleep(&pause, NULL);
+            }
+
+            if (timed_out) {
+                if (!uv_is_closing((uv_handle_t *)&conn->handle)) {
+                    libuv_connection_close(conn);
+                }
+                for (int i = 0; i < 100; i++) {
+                    if (uv_run(&loop, UV_RUN_NOWAIT) == 0) break;
+                    struct timespec pause = {.tv_nsec = 1000000};
+                    nanosleep(&pause, NULL);
+                }
+                close(client);
+                TEST_FAIL_MESSAGE("Timed out waiting for archive response/event-loop drain");
+            }
+
             close(client);
+            uv_run(&loop, UV_RUN_DEFAULT);
+            TEST_ASSERT_EQUAL_INT(0, uv_loop_close(&loop));
             char *body = strstr(response, "\r\n\r\n");
             TEST_ASSERT_NOT_NULL(body);
             if (unavailable) {
@@ -816,6 +856,9 @@ static void test_archive_range_proxy_and_disconnect(void) {
                 TEST_ASSERT_EQUAL_UINT(14, strlen(body+4));
                 TEST_ASSERT_EQUAL_MEMORY(payload+2, body+4, 14);
             }
+        } else {
+            uv_run(&loop, UV_RUN_DEFAULT);
+            TEST_ASSERT_EQUAL_INT(0, uv_loop_close(&loop));
         }
     }
     TEST_ASSERT_EQUAL_INT(0, scalar("SELECT count(*) FROM storage_retrieval_jobs;"));
@@ -1254,14 +1297,18 @@ static void test_multipart_cancellation_aborts_owned_upload_and_preserves_source
     TEST_ASSERT_TRUE(original_upload_id[0] != '\0');
     TEST_ASSERT_EQUAL_STRING("retry_wait", job.state);
     TEST_ASSERT_EQUAL_INT(1, scalar("SELECT count(*) FROM storage_migration_jobs WHERE upload_id<>'';"));
+    char error[256];
+    TEST_ASSERT_EQUAL_INT(STORAGE_S3_OK, storage_s3_upload_status(
+        &target, job.destination_object_key, original_upload_id, error));
     TEST_ASSERT_EQUAL_INT(DB_STORAGE_MIGRATION_OK, db_storage_migration_request_cancel(job.uuid, &job));
     TEST_ASSERT_EQUAL_STRING("cancelled", job.state);
     storage_migration_process_one();
     TEST_ASSERT_EQUAL_INT(1, scalar("SELECT count(*) FROM storage_migration_jobs WHERE state='cancelled' AND artifacts_cleaned=1 AND upload_id='';"));
     TEST_ASSERT_EQUAL_INT(0, access(source_path, F_OK));
     uint64_t bytes;
-    char error[256];
     TEST_ASSERT_EQUAL_INT(STORAGE_S3_MISSING, storage_s3_stat(&target, job.destination_object_key, &bytes, error));
+    TEST_ASSERT_EQUAL_INT(STORAGE_S3_MISSING, storage_s3_upload_status(
+        &target, job.destination_object_key, original_upload_id, error));
     /* Do not issue an extra abort here: it can mask a worker-side failure to abort multipart upload. */
 }
 

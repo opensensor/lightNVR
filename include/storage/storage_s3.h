@@ -50,6 +50,9 @@ int storage_s3_verify(const storage_target_t *target, const char *key,
                       char error[STORAGE_TARGET_ERROR_MAX]);
 int storage_s3_abort_upload(const storage_target_t *target, const char *key,
                             const char *upload_id, char error[STORAGE_TARGET_ERROR_MAX]);
+/* Query an existing multipart upload without changing its state. */
+int storage_s3_upload_status(const storage_target_t *target, const char *key,
+                             const char *upload_id, char error[STORAGE_TARGET_ERROR_MAX]);
 int storage_s3_delete(const storage_target_t *target, const char *key,
                       char error[STORAGE_TARGET_ERROR_MAX]);
 
