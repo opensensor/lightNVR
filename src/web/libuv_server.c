@@ -339,6 +339,22 @@ int libuv_server_start(http_server_handle_t handle) {
     r = uv_tcp_bind(&server->listener, (const struct sockaddr *)&addr, 0);
     if (r != 0) {
         log_error("libuv_server_start: Bind failed: %s", uv_strerror(r));
+
+        if (!uv_is_closing((uv_handle_t *)&server->listener)) {
+            uv_close((uv_handle_t *)&server->listener, NULL);
+        }
+        if (!uv_is_closing((uv_handle_t *)&server->stop_async)) {
+            uv_close((uv_handle_t *)&server->stop_async, NULL);
+        }
+        if (server->owns_loop) {
+            server_handle_scan_t scan = {.server = server, .present = false};
+            do {
+                uv_run(server->loop, UV_RUN_NOWAIT);
+                scan.present = false;
+                uv_walk(server->loop, scan_server_handles_cb, &scan);
+            } while (scan.present);
+        }
+
         return -1;
     }
 
@@ -346,6 +362,22 @@ int libuv_server_start(http_server_handle_t handle) {
     r = uv_listen((uv_stream_t *)&server->listener, 128, on_connection);
     if (r != 0) {
         log_error("libuv_server_start: Listen failed: %s", uv_strerror(r));
+
+        if (!uv_is_closing((uv_handle_t *)&server->listener)) {
+            uv_close((uv_handle_t *)&server->listener, NULL);
+        }
+        if (!uv_is_closing((uv_handle_t *)&server->stop_async)) {
+            uv_close((uv_handle_t *)&server->stop_async, NULL);
+        }
+        if (server->owns_loop) {
+            server_handle_scan_t scan = {.server = server, .present = false};
+            do {
+                uv_run(server->loop, UV_RUN_NOWAIT);
+                scan.present = false;
+                uv_walk(server->loop, scan_server_handles_cb, &scan);
+            } while (scan.present);
+        }
+
         return -1;
     }
 
