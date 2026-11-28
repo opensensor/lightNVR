@@ -108,6 +108,8 @@ typedef struct {
     bool wait_for_client_teardown;
     bool omit_media_ack;
     bool bad_accept;
+    bool split_upgrade;
+    bool premature_client_ws_data;
 } peer_t;
 
 static int tracked_clients[5];
@@ -206,25 +208,25 @@ static void *upstream_peer(void *arg) {
         }
         goto done;
     }
-    // Send the upgrade and first frame together; the client must handle
-    // coalescing or splitting because TCP does not preserve write boundaries.
-    // Deterministically exercise split upstream handshake handling:
-    // send an incomplete upgrade response first, verify no client WS data
-    // is emitted yet, then send the remainder and first media frame.
-    const size_t upgrade_len = sizeof(upgrade_response) - 1;
-    const size_t split_at = upgrade_len - 2; // hold back final "\r\n"
-    if (!send_all(peer->fd, upgrade_response, split_at)) goto done;
-    {
+    if (peer->split_upgrade) {
+        // Hold back the final CRLF so the proxy must wait for a complete response.
+        const size_t upgrade_len = sizeof(upgrade_response) - 1;
+        const size_t split_at = upgrade_len - 2;
+        if (!send_all(peer->fd, upgrade_response, split_at)) goto done;
         struct pollfd ready = {.fd = peer->fd, .events = POLLIN};
         if (poll(&ready, 1, 200) > 0 && (ready.revents & POLLIN)) {
             unsigned char byte;
-            peer->observed_client_ws_data_after_reject = recv(peer->fd, &byte, 1, MSG_DONTWAIT) > 0;
+            peer->premature_client_ws_data = recv(peer->fd, &byte, 1, MSG_DONTWAIT) > 0;
         }
+        if (!send_all(peer->fd, upgrade_response + split_at, upgrade_len - split_at) ||
+            !send_all(peer->fd, media_response, sizeof(media_response))) goto done;
+    } else {
+        // Keep the combined upgrade and first frame case.
+        unsigned char combined[sizeof(upgrade_response) - 1 + sizeof(media_response)];
+        memcpy(combined, upgrade_response, sizeof(upgrade_response) - 1);
+        memcpy(combined + sizeof(upgrade_response) - 1, media_response, sizeof(media_response));
+        if (!send_all(peer->fd, combined, sizeof(combined))) goto done;
     }
-    unsigned char combined[(sizeof(upgrade_response) - 1 - split_at) + sizeof(media_response)];
-    memcpy(combined, upgrade_response + split_at, sizeof(upgrade_response) - 1 - split_at);
-    memcpy(combined + (sizeof(upgrade_response) - 1 - split_at), media_response, sizeof(media_response));
-    if (!send_all(peer->fd, combined, sizeof(combined))) goto done;
     unsigned char frame[sizeof(mse_request)];
     if (read_all(peer->fd, frame, sizeof(frame))) {
         peer->received_mse = memcmp(frame, mse_request, sizeof(frame)) == 0;
@@ -370,6 +372,7 @@ void test_four_websockets_relay_media_on_the_web_port_and_close_cleanly(void) {
     for (int i = 0; i < 4; i++) {
         tracked_peers[i].status = 101;
         tracked_peers[i].wait_for_client_teardown = i < 2;
+        tracked_peers[i].split_upgrade = i == 0;
         TEST_ASSERT_EQUAL_INT(0, pthread_create(&tracked_threads[i], NULL, upstream_peer, &tracked_peers[i]));
         tracked_thread_started[i] = true;
         tracked_clients[i] = client_open();
@@ -408,6 +411,7 @@ void test_four_websockets_relay_media_on_the_web_port_and_close_cleanly(void) {
         tracked_thread_started[i] = false;
         TEST_ASSERT_TRUE(tracked_peers[i].received_mse);
         TEST_ASSERT_TRUE(tracked_peers[i].observed_disconnect);
+        TEST_ASSERT_FALSE(tracked_peers[i].premature_client_ws_data);
         char target[128];
         snprintf(target, sizeof(target), "GET %s/api/ws?src=Camera%%20%d_sub HTTP/1.1", go2rtc_api_get_base_path(), i);
         TEST_ASSERT_NOT_NULL(strstr(tracked_peers[i].request, target));
@@ -503,7 +507,7 @@ void test_failed_upstream_handshake_returns_502(void) {
     const unsigned char frame[] = {0x81, 0x81, 0x12, 0x34, 0x56, 0x78, (unsigned char)('x' ^ 0x12)};
     unsigned char request[2048];
     int header_len = snprintf((char *)request, sizeof(request),
-        "GET /go2rtc/api/ws?src=Camera%%200 HTTP/1.1\r\n"
+        "GET /go2rtc/api/ws?src=Camera%%200_sub HTTP/1.1\r\n"
         "Host: localhost:%d\r\nOrigin: %s\r\n%s\r\n",
         web_port, origin, upgrade_headers);
     TEST_ASSERT_TRUE(header_len > 0);
