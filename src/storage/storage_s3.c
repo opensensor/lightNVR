@@ -440,7 +440,22 @@ int storage_s3_read_range(const storage_target_t *target, const char *key,
                           uint64_t offset, size_t length, uint64_t total_size,
                           void *buffer, const storage_transfer_control_t *control,
                           char error[STORAGE_TARGET_ERROR_MAX]) {
-    if (!length || offset >= total_size || length > total_size - offset || length > 1024U*1024U) return -1;
+    if (!length) {
+        error_set(error, "Requested range length must be greater than zero");
+        return -1;
+    }
+    if (offset >= total_size) {
+        error_set(error, "Requested range starts beyond end of object");
+        return -1;
+    }
+    if (length > total_size - offset) {
+        error_set(error, "Requested range exceeds object size");
+        return -1;
+    }
+    if (length > 1024U * 1024U) {
+        error_set(error, "Requested range exceeds 1 MiB limit");
+        return -1;
+    }
     s3_io_t io = {.data = buffer, .limit = length, .control = control};
     snprintf(io.range, sizeof(io.range), "%llu-%llu", (unsigned long long)offset,
              (unsigned long long)(offset + length - 1));
