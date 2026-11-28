@@ -22,7 +22,7 @@
 #include "web/libuv_server.h"
 
 static http_server_handle_t server;
-static int upstream, web_port;
+static int upstream = -1, web_port;
 static char db_path[80];
 static const char upgrade_headers[] =
     "Upgrade: websocket\r\nConnection: keep-alive, Upgrade\r\n"
