@@ -321,7 +321,7 @@ test('related mutation boundaries reject historical and mixed unauthorized sets 
   const fixture=seedRecordings(server);const historical=seedHistoricalNameReuse(server,fixture);
   const actor=await createUser(server,'historical_writer');const actions=await role(server,'Capture-bound fixture writes',['evidence.protect','recording.delete','recordings.export']);await policy(server,actor,[{role_uuid:actions,scope:cameraScope(server.cameras.A.camera_uuid)}]);
   const db=new DatabaseSync(path.join(server.directory,'lightnvr.db'));
-  const state=()=>db.prepare('SELECT id,camera_uuid,protected,file_path FROM recordings WHERE id=?').get(historical.hidden);
+  const state=()=>db.prepare('SELECT id,camera_uuid,protected,file_path,deletion_pending FROM recordings WHERE id=?').get(historical.hidden) as {id:number;camera_uuid:string;protected:number;file_path:string;deletion_pending:number}|undefined;
   const rowById=(id:number)=>db.prepare('SELECT id,camera_uuid,protected,file_path,deletion_pending FROM recordings WHERE id=?').get(id) as {id:number;camera_uuid:string;protected:number;file_path:string;deletion_pending:number}|undefined;
   try {
     const before=state();
