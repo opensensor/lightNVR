@@ -66,6 +66,7 @@ static void test_failed_thread_start_closes_handles_before_retry(void) {
     config.bind_ip = "127.0.0.1";
     config.web_root = "/nonexistent-thread-start-fixture";
     config.max_connections = 8;
+    config.request_handler = probe_handler;
     fixture_server = libuv_server_init(&config);
     TEST_ASSERT_NOT_NULL(fixture_server);
 
@@ -89,6 +90,7 @@ static void test_failed_thread_start_closes_handles_before_retry(void) {
         &((libuv_server_t *)fixture_server)->listener,
         (struct sockaddr *)&assigned, &assigned_length));
     TEST_ASSERT_TRUE(ntohs(assigned.sin_port) > 0);
+    assert_http_probe_ok("127.0.0.1", ntohs(assigned.sin_port));
 }
 
 static void test_failed_bind_can_retry_after_port_released(void) {
@@ -106,12 +108,14 @@ static void test_failed_bind_can_retry_after_port_released(void) {
     config.port = ntohs(address.sin_port);
     config.web_root = "/nonexistent-thread-start-fixture";
     config.max_connections = 8;
+    config.request_handler = probe_handler;
     fixture_server = libuv_server_init(&config);
     TEST_ASSERT_NOT_NULL(fixture_server);
     TEST_ASSERT_EQUAL_INT(-1, http_server_start(fixture_server));
     close(fixture_occupied_fd);
     fixture_occupied_fd = -1;
     TEST_ASSERT_EQUAL_INT(0, http_server_start(fixture_server));
+    assert_http_probe_ok("127.0.0.1", ntohs(address.sin_port));
 }
 
 static void test_duplicate_start_is_rejected_without_disrupting_server(void) {
