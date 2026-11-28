@@ -559,10 +559,10 @@ void test_shutdown_waits_for_a_worker_beyond_the_old_ten_second_timeout(void) {
     strcpy(connection.request.path, "/go2rtc/api/frame.jpeg");
     hold_upstream = true;
     TEST_ASSERT_EQUAL_INT(0, go2rtc_proxy_thread_submit(&connection, WRITE_ACTION_CLOSE));
-    pthread_mutex_lock(&upstream_mutex);
     struct timespec deadline;
     TEST_ASSERT_EQUAL_INT(0, clock_gettime(CLOCK_REALTIME, &deadline));
     deadline.tv_sec += 5;
+    pthread_mutex_lock(&upstream_mutex);
     int wait_rc = 0;
     while (!worker_in_curl && wait_rc == 0) {
         wait_rc = pthread_cond_timedwait(&upstream_ready, &upstream_mutex, &deadline);
