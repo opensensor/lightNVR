@@ -142,9 +142,13 @@ test('gzip quality values follow the HTTP grammar', async () => {
       const response = await server.request('/api/openapi.json', {
         headers: {'Accept-Encoding': header},
       });
-      expect(response.status).toBe(200);
-      expect(response.headers.get('content-encoding'), header)
-        .toBe(acceptsGzip ? 'gzip' : null);
+      try {
+        expect(response.status).toBe(200);
+        expect(response.headers.get('content-encoding'), header)
+          .toBe(acceptsGzip ? 'gzip' : null);
+      } finally {
+        await response.arrayBuffer();
+      }
     }
   } finally {
     await server.stop();
@@ -231,7 +235,9 @@ test('closing a client during file delivery leaves file callbacks safe', async (
           done(new Error('File finished before the client could interrupt delivery'));
           return;
         }
-        if (bodyBytes > 0) {
+        // Require a meaningful partial body to reduce false positives caused by buffering.
+        // A single byte is not enough evidence that server-side file callbacks were still pending.
+        if (bodyBytes >= 64 * 1024 && bodyBytes < 4 * 1024 * 1024) {
           interruptionObserved = true;
           done();
         }
@@ -264,6 +270,7 @@ test('HEAD ignores Range while GET serves the requested byte range', async () =>
     const get = await rawExchange(server.port, request('GET'));
     expect(head).toMatch(/^HTTP\/1\.1 200 /);
     expect(head).toContain('Content-Length: 1500');
+    expect(head).not.toContain('Content-Range:');
     expect(head.slice(head.indexOf('\r\n\r\n') + 4)).toBe('');
     expect(get).toMatch(/^HTTP\/1\.1 206 /);
     expect(get).toContain('Content-Length: 100');
