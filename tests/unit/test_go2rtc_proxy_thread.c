@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include <arpa/inet.h>
+#include <stdint.h>
 #include <pthread.h>
 #include <poll.h>
 #include <stdio.h>
@@ -95,14 +96,14 @@ CURLcode __wrap_curl_easy_perform(CURL *curl) {
     return CURLE_COULDNT_CONNECT;
 }
 
-static long monotonic_ms(void) {
+static int64_t monotonic_ms(void) {
     struct timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
-    return now.tv_sec * 1000L + now.tv_nsec / 1000000L;
+    return (int64_t)now.tv_sec * 1000 + (int64_t)now.tv_nsec / 1000000;
 }
 
-static void pump_responses(int expected, long timeout_ms) {
-    long started = monotonic_ms();
+static void pump_responses(int expected, int64_t timeout_ms) {
+    int64_t started = monotonic_ms();
     while (completed_responses < expected && monotonic_ms() - started < timeout_ms) {
         uv_run(&loop, UV_RUN_NOWAIT);
         struct timespec pause = { .tv_nsec = 10000000L };
@@ -639,14 +640,15 @@ void test_shutdown_waits_for_a_worker_beyond_the_old_ten_second_timeout(void) {
     TEST_ASSERT_TRUE_MESSAGE(worker_in_curl_snapshot, "Timed out waiting for worker to enter curl");
     pthread_t releaser;
     TEST_ASSERT_EQUAL_INT(0, pthread_create(&releaser, NULL, release_delayed_worker, NULL));
-    long started = monotonic_ms();
+    int64_t started = monotonic_ms();
     go2rtc_proxy_thread_shutdown();
-    long elapsed = monotonic_ms() - started;
+    int64_t elapsed = monotonic_ms() - started;
     pthread_join(releaser, NULL);
     TEST_ASSERT_GREATER_OR_EQUAL_INT64(10500, elapsed);
     TEST_ASSERT_EQUAL_INT(0, completed_responses);
     TEST_ASSERT_EQUAL_INT(-1, go2rtc_proxy_thread_submit(&fixture_connection, WRITE_ACTION_CLOSE));
     uv_run(&loop, UV_RUN_DEFAULT);
+    TEST_ASSERT_EQUAL_INT(0, completed_responses);
     TEST_ASSERT_EQUAL_INT(0, go2rtc_proxy_thread_init(&loop));
     http_response_free(&fixture_connection.response);
     fixture_connection_initialized = false;
