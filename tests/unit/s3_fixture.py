@@ -41,6 +41,8 @@ class S3Handler(BaseHTTPRequestHandler):
                              self.headers.get('Authorization', ''))
         if not match or match[1] != 'fixture-access':
             return False
+        if self.headers.get('x-amz-security-token') != 'fixture-session-token':
+            return False
         scope = match[2]
         date, region, service, terminator = scope.split('/')
         if service != 's3' or terminator != 'aws4_request':
