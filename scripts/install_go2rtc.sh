@@ -13,6 +13,7 @@ GO2RTC_SOURCE_DIR="$SCRIPT_DIR/../go2rtc"
 
 # Display usage information
 usage() {
+    local exit_code="${1:-1}"
     echo "Usage: $0 [options]"
     echo "Options:"
     echo "  -d, --install-dir DIR   Installation directory for go2rtc binary (default: $INSTALL_DIR)"
@@ -20,7 +21,7 @@ usage() {
     echo "  -a, --arch ARCH         Architecture (default: auto-detected, current: $ARCH)"
     echo "  Requires Go and an initialized go2rtc submodule."
     echo "  -h, --help              Display this help message"
-    exit 1
+    exit "$exit_code"
 }
 
 # Parse command line arguments
@@ -51,7 +52,7 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         -h|--help)
-            usage
+            usage 0
             ;;
         *)
             echo "Unknown option: $1"
