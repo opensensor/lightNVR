@@ -440,7 +440,7 @@ void test_failed_upstream_handshake_returns_502(void) {
     tracked_clients[0] = -1;
     pthread_join(tracked_threads[0], NULL);
     tracked_thread_started[0] = false;
-    TEST_ASSERT_FALSE(tracked_peers[0].received_mse);
+    TEST_ASSERT_FALSE(tracked_peers[0].observed_client_ws_data_after_reject);
 }
 void test_upgrade_without_media_policy_ack_is_rejected(void) {
     tracked_peers[0] = (peer_t){.status = 101, .omit_media_ack = true};
