@@ -470,7 +470,7 @@ void test_four_websockets_relay_media_on_the_web_port_and_close_cleanly(void) {
 }
 
 void test_websocket_auth_origin_and_query_failures_never_reach_upstream(void) {
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 5; i++) {
         int client = client_open();
         tracked_clients[i] = client;
         char origin[64];
