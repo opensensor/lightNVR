@@ -211,8 +211,9 @@ class S3Handler(BaseHTTPRequestHandler):
             if not match:
                 return self.respond(416)
             start, end = map(int, match.groups())
-            if start > end or end >= len(value):
+            if start > end or start >= len(value):
                 return self.respond(416)
+            end = min(end, len(value) - 1)
             return self.respond(206, value[start:end+1], {'Content-Range': f'bytes {start}-{end}/{len(value)}'})
         return self.respond(200, value)
 
