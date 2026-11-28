@@ -563,11 +563,13 @@ static void test_api_responsive_during_lifecycle_scan(void) {
 static int batch_writes, largest_batch, write_commits;
 static int trace_lifecycle_writes(unsigned event, void *context, void *statement,
                                   void *sql_text) {
+    static const char insert_prefix[] = "INSERT INTO storage_policy_violations";
+    static const char update_prefix[] = "UPDATE storage_policy_violations";
     (void)event; (void)context; (void)statement;
     const char *text = sql_text;
     if (!strncmp(text, "BEGIN", 5)) batch_writes = 0;
-    if (!strncmp(text, "INSERT INTO storage_policy_violations", 37) ||
-        !strncmp(text, "UPDATE storage_policy_violations", 32)) batch_writes++;
+    if (!strncmp(text, insert_prefix, sizeof(insert_prefix) - 1) ||
+        !strncmp(text, update_prefix, sizeof(update_prefix) - 1)) batch_writes++;
     if (!strncmp(text, "COMMIT", 6)) {
         write_commits++;
         if (batch_writes > largest_batch) largest_batch = batch_writes;
