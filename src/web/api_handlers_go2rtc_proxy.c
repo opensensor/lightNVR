@@ -866,10 +866,10 @@ void handle_go2rtc_proxy(const http_request_t *req, http_response_t *res) {
         if (ctx.buffer) free(ctx.buffer);
         if (media_lease[0])
             go2rtc_media_policy_release_lease(media_lease);
-        if (cres != CURLE_OK)
-            http_response_set_json_error(res, 502, "Proxy error: go2rtc is not responding");
-        else
+        if (ctx.error_occurred)
             http_response_set_json_error(res, 502, "Proxy error: unable to complete upstream response");
+        else
+            http_response_set_json_error(res, 502, "Proxy error: go2rtc is not responding");
         return;
     }
     if (media_lease[0] && ctx.http_code >= 200 &&
