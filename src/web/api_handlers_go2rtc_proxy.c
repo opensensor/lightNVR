@@ -638,6 +638,15 @@ bool go2rtc_proxy_authorize_request(const http_request_t *req,
     }
     const char *allowed_method =
         endpoint == GO2RTC_PROXY_RELOAD || endpoint == GO2RTC_PROXY_WEBRTC ? "POST" : "GET";
+    if (strcmp(req->method_str, "OPTIONS") == 0) {
+        char allow_value[32];
+        snprintf(allow_value, sizeof(allow_value), "%s, OPTIONS", allowed_method);
+        http_response_set_status(res, 204);
+        http_response_add_header(res, "Allow", allow_value);
+        http_response_add_header(res, "Access-Control-Allow-Methods", allow_value);
+        http_response_add_header(res, "Access-Control-Allow-Headers", "Authorization, Content-Type");
+        return false;
+    }
     if (strcmp(req->method_str, allowed_method) != 0) {
         http_response_set_json_error(res, 405, "Method not allowed");
         http_response_add_header(res, "Allow", allowed_method);
