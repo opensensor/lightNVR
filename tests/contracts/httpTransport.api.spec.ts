@@ -216,7 +216,7 @@ test('HEAD serves static file headers without file bytes', async () => {
   }
 });
 
-test('closing a client during file delivery leaves file callbacks safe', async () => {
+test('closing clients during partial file delivery keeps the server responsive', async () => {
   const webRoot = mkdtempSync(path.join(tmpdir(), 'lightnvr-file-close-'));
   writeFileSync(path.join(webRoot, 'large.bin'), Buffer.alloc(4 * 1024 * 1024, 0x61));
   let server: Awaited<ReturnType<typeof startFixture>> | undefined;
@@ -256,8 +256,9 @@ test('closing a client during file delivery leaves file callbacks safe', async (
           done(new Error('File finished before the client could interrupt delivery'));
           return;
         }
-        // Require a meaningful partial body to reduce false positives caused by buffering.
-        // A single byte is not enough evidence that server-side file callbacks were still pending.
+        // The client has received a substantial, incomplete response. This is
+        // a disconnect smoke test; TCP buffering cannot prove a file callback
+        // is still pending on the server when the socket closes.
         if (bodyBytes >= 64 * 1024 && bodyBytes < 4 * 1024 * 1024) {
           interruptionObserved = true;
           done();
@@ -301,13 +302,15 @@ test('HEAD ignores Range while GET serves the requested byte range', async () =>
       `${method} /range.txt HTTP/1.1\r\nHost: localhost\r\nRange: bytes=100-199\r\nConnection: close\r\n\r\n`;
     const head = await rawExchange(server.port, request('HEAD'));
     const get = await rawExchange(server.port, request('GET'));
+    const headHeaders = parseRawResponseHeaders(head);
+    const getHeaders = parseRawResponseHeaders(get);
     expect(head).toMatch(/^HTTP\/1\.1 200 /);
-    expect(head).toContain('Content-Length: 1500');
-    expect(head).not.toContain('Content-Range:');
+    expect(headHeaders.get('content-length')).toBe('1500');
+    expect(headHeaders.has('content-range')).toBe(false);
     expect(head.slice(head.indexOf('\r\n\r\n') + 4)).toBe('');
     expect(get).toMatch(/^HTTP\/1\.1 206 /);
-    expect(get).toContain('Content-Length: 100');
-    expect(get).toContain('Content-Range: bytes 100-199/1500');
+    expect(getHeaders.get('content-length')).toBe('100');
+    expect(getHeaders.get('content-range')).toBe('bytes 100-199/1500');
     const getSeparator = get.indexOf('\r\n\r\n');
     expect(getSeparator).toBeGreaterThan(0);
     expect(get.slice(getSeparator + 4)).toBe(content.slice(100, 200));
