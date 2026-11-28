@@ -1587,13 +1587,12 @@ static void test_batch_export_waits_for_verified_archive_source(void) {
     int submit_status = 0;
     bool submit_failed = false;
     bool have_status_path = false;
-    bool accepted_submission = false;
     cJSON *json = api_noassert(handle_batch_download_recordings, HTTP_METHOD_POST,
                               "/api/recordings/batch-download", NULL, body, NULL, &submit_status);
+    bool accepted_submission = submit_status == 202;
     if (submit_status != 202 || !json) {
         submit_failed = true;
     } else {
-        accepted_submission = true;
         cJSON *tok = cJSON_GetObjectItemCaseSensitive(json, "token");
         if (!cJSON_IsString(tok) || !tok->valuestring ||
             safe_strcpy(token, tok->valuestring, sizeof(token), 0) != 0) {
