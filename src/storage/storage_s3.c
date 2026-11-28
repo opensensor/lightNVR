@@ -874,8 +874,11 @@ int storage_s3_probe(storage_target_t *target, bool write_test) {
             if (result == 0) result = storage_s3_verify(target, key, 1, checksum, NULL, error);
             if (result == 0) {
                 s3_io_t anonymous = {.limit = S3_REPLY_LIMIT, .anonymous = true};
-                request(target, key, NULL, "GET", NULL, 0, NULL, &anonymous, NULL, error);
-                if (anonymous.status != 401 && anonymous.status != 403 && anonymous.status != 404) {
+                int anonymous_result = request(target, key, NULL, "GET", NULL, 0, NULL, &anonymous, NULL, error);
+                if (anonymous_result != 0) {
+                    error_set(error, "Anonymous access verification request failed");
+                    result = STORAGE_S3_CONFLICT;
+                } else if (anonymous.status != 401 && anonymous.status != 403 && anonymous.status != 404) {
                     error_set(error, "Archive probe is publicly readable or private access could not be verified");
                     result = STORAGE_S3_CONFLICT;
                 }
