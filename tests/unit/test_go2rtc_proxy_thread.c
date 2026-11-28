@@ -118,6 +118,8 @@ static void init_connection(libuv_connection_t *connection) {
 }
 
 void setUp(void) {
+    test_db_initialized = false;
+    test_db_path[0] = '\0';
     redirect_server = -1;
     redirect_peer_started = false;
     fixture_connection_initialized = false;
@@ -171,6 +173,14 @@ void tearDown(void) {
     if (fixture_connection_initialized) {
         http_response_free(&fixture_connection.response);
         fixture_connection_initialized = false;
+    }
+    if (test_db_initialized) {
+        shutdown_database();
+        test_db_initialized = false;
+    }
+    if (test_db_path[0]) {
+        unlink(test_db_path);
+        test_db_path[0] = '\0';
     }
     http_response_free(&threaded_connection.response);
     if (slow_snapshot_thread_started) {
