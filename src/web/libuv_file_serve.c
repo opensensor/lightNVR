@@ -547,9 +547,9 @@ static void on_file_close(uv_fs_t *req) {
     }
     libuv_connection_t *conn = ctx->conn;
 
-    // Check if this is a successful file serve or an error case
-    // If async_response_pending is false, the error handler already managed the connection
-    bool should_manage_connection = conn->async_response_pending;
+    // Determine ownership from request-local context, not connection-global state.
+    // This callback may run after the connection has started a subsequent request.
+    bool should_manage_connection = ctx->head_response_managed;
 
     // Read write_error before file_serve_cleanup frees ctx
     bool write_error = ctx->write_error;
@@ -558,8 +558,9 @@ static void on_file_close(uv_fs_t *req) {
     file_serve_cleanup(ctx);
     conn->file_serve_refs--;
 
-    // Clear async response flag
-    conn->async_response_pending = false;
+    // Only clear async_response_pending when this context owns response management.
+    if (should_manage_connection)
+        conn->async_response_pending = false;
 
     if (conn->close_completed) {
         if (conn->file_serve_refs == 0 && !conn->handler_on_worker)
