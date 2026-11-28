@@ -62,6 +62,7 @@ unsafe extern "C" {
         cb: uv_write_cb,
     ) -> ::core::ffi::c_int;
     unsafe fn libuv_connection_reset(conn: *mut libuv_connection_t);
+    unsafe fn libuv_connection_destroy(conn: *mut libuv_connection_t);
     unsafe fn libuv_parse_range_header(
         range_header: *const ::core::ffi::c_char,
         file_size: size_t,
@@ -916,6 +917,12 @@ unsafe extern "C" fn archive_finish(mut stream: *mut archive_stream_t, mut faile
     (*conn).async_response_pending = r#false != 0;
     let mut headers_sent: bool = (*stream).headers_sent;
     archive_free(stream);
+    if (*conn).close_completed {
+        if !(*conn).handler_on_worker && (*conn).file_serve_refs == 0 as ::core::ffi::c_uint {
+            libuv_connection_destroy(conn);
+        }
+        return;
+    }
     if failed as ::core::ffi::c_int != 0 && !headers_sent {
         http_response_set_json_error(
             &raw mut (*conn).response,
