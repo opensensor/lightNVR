@@ -430,6 +430,8 @@ static void send_file_chunk(file_serve_ctx_t *ctx) {
                        &buf, 1, (int64_t)ctx->offset, on_file_read);
     if (r != 0) {
         log_error("send_file_chunk: Failed to start read: %s", uv_strerror(r));
+        // Force connection close: response body is incomplete after headers sent
+        ctx->write_error = true;
         uv_fs_close(ctx->conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
     }
 }
