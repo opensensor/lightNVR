@@ -801,18 +801,17 @@ static void test_archive_range_proxy_and_disconnect(void) {
             bool timed_out = false;
             struct timespec start_ts, now_ts;
             const long timeout_ms = 5000;
-            int getfl_rc = fcntl(client, F_GETFL, 0);
-            int setfl_rc = -1;
-            int start_clock_rc = -1;
-            int now_clock_rc = 0;
-            if (getfl_rc >= 0) {
-                setfl_rc = fcntl(client, F_SETFL, getfl_rc | O_NONBLOCK);
+            int flags = fcntl(client, F_GETFL, 0);
+            if (flags < 0 || fcntl(client, F_SETFL, flags | O_NONBLOCK) != 0) {
+                perror("FATAL: setting archive test client nonblocking");
+                abort();
             }
-            if (setfl_rc == 0) {
-                start_clock_rc = clock_gettime(CLOCK_MONOTONIC, &start_ts);
+            if (clock_gettime(CLOCK_MONOTONIC, &start_ts) != 0) {
+                perror("FATAL: starting archive response timer");
+                abort();
             }
 
-            while (setfl_rc == 0 && start_clock_rc == 0) {
+            while (1) {
                 (void)uv_run(&loop, UV_RUN_NOWAIT);
                 while ((count = recv(client, response + total, sizeof(response) - 1 - total, 0)) > 0) {
                     total += (size_t)count;
@@ -823,9 +822,9 @@ static void test_archive_range_proxy_and_disconnect(void) {
                     timed_out = true;
                     break;
                 }
-                now_clock_rc = clock_gettime(CLOCK_MONOTONIC, &now_ts);
-                if (now_clock_rc != 0) {
-                    break;
+                if (clock_gettime(CLOCK_MONOTONIC, &now_ts) != 0) {
+                    perror("FATAL: reading archive response timer");
+                    abort();
                 }
                 long elapsed_ms = (now_ts.tv_sec - start_ts.tv_sec) * 1000L +
                                   (now_ts.tv_nsec - start_ts.tv_nsec) / 1000000L;
@@ -846,10 +845,6 @@ static void test_archive_range_proxy_and_disconnect(void) {
             close(client);
             uv_run(&loop, UV_RUN_DEFAULT);
             TEST_ASSERT_EQUAL_INT(0, uv_loop_close(&loop));
-            TEST_ASSERT_TRUE_MESSAGE(getfl_rc >= 0, "fcntl(F_GETFL) failed");
-            TEST_ASSERT_EQUAL_INT_MESSAGE(0, setfl_rc, "fcntl(F_SETFL) failed");
-            TEST_ASSERT_EQUAL_INT_MESSAGE(0, start_clock_rc, "clock_gettime(start_ts) failed");
-            TEST_ASSERT_EQUAL_INT_MESSAGE(0, now_clock_rc, "clock_gettime(now_ts) failed");
             char *body = strstr(response, "\r\n\r\n");
             TEST_ASSERT_NOT_NULL(body);
             if (unavailable) {
