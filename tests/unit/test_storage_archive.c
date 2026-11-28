@@ -46,6 +46,7 @@ static const char *payload = "a finalized recording preserved across storage tie
 static char *saved_archive_cache_mb;
 static char *saved_archive_credentials_dir;
 static char *saved_storage_read_only;
+static char isolated_attestation_dir[512];
 
 /* Instrument private background readers, including instruction budgets and
  * a deterministic pause while a SELECT is in progress. */
@@ -200,6 +201,7 @@ static uint64_t recording(bool protect) {
 }
 
 void setUp(void) {
+    isolated_attestation_dir[0] = '\0';
     const char *archive_cache_mb = getenv("LIGHTNVR_ARCHIVE_CACHE_MB");
     saved_archive_cache_mb = archive_cache_mb ? strdup(archive_cache_mb) : NULL;
     if (archive_cache_mb) TEST_ASSERT_NOT_NULL(saved_archive_cache_mb);
@@ -246,6 +248,15 @@ void tearDown(void) {
         saved_storage_read_only = NULL;
     } else {
         TEST_ASSERT_EQUAL_INT(0, unsetenv("LIGHTNVR_STORAGE_READ_ONLY"));
+    }
+    if (isolated_attestation_dir[0]) {
+        char path[1024];
+        snprintf(path, sizeof(path), "%s/fixture.lifecycle.json", isolated_attestation_dir);
+        unlink(path);
+        snprintf(path, sizeof(path), "%s/fixture", isolated_attestation_dir);
+        unlink(path);
+        TEST_ASSERT_EQUAL_INT(0, rmdir(isolated_attestation_dir));
+        isolated_attestation_dir[0] = '\0';
     }
     reader_progress = NULL;
     reader_progress_context = NULL;
@@ -1222,6 +1233,7 @@ static void test_scoped_credentials_use_fresh_operator_lifecycle_inspection(void
     snprintf(isolated_template, sizeof(isolated_template), "%s/credentials-attestation-XXXXXX", root);
     char *isolated_dir = mkdtemp(isolated_template);
     TEST_ASSERT_NOT_NULL(isolated_dir);
+    safe_strcpy(isolated_attestation_dir, isolated_dir, sizeof(isolated_attestation_dir), 0);
     original_dir = getenv("LIGHTNVR_ARCHIVE_CREDENTIALS_DIR");
     TEST_ASSERT_NOT_NULL(original_dir);
     /* Copy required fixture credential into isolated dir for this test. */
@@ -1239,6 +1251,7 @@ static void test_scoped_credentials_use_fresh_operator_lifecycle_inspection(void
         while ((n = fread(buf, 1, sizeof(buf), in)) > 0) {
             TEST_ASSERT_EQUAL_UINT64(n, fwrite(buf, 1, n, out));
         }
+        TEST_ASSERT_EQUAL_INT(0, ferror(in));
         fclose(in);
         fclose(out);
         TEST_ASSERT_EQUAL_INT(0, chmod(dst, 0600));
