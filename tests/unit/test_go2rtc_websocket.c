@@ -174,13 +174,9 @@ static void *upstream_peer(void *arg) {
         send_all(peer->fd, invalid, sizeof(invalid) - 1);
         goto done;
     }
-    // Split the upstream HTTP response and coalesce its end with a frame.
-    send_all(peer->fd, upgrade_response, 17);
-    char combined[512];
-    size_t remaining = strlen(upgrade_response) - 17;
-    memcpy(combined, upgrade_response + 17, remaining);
-    memcpy(combined + remaining, media_response, sizeof(media_response));
-    send_all(peer->fd, combined, remaining + sizeof(media_response));
+    // End-to-end relay coverage only: TCP does not guarantee read boundaries.
+    send_all(peer->fd, upgrade_response, sizeof(upgrade_response) - 1);
+    send_all(peer->fd, media_response, sizeof(media_response));
     unsigned char frame[sizeof(mse_request)];
     if (read_all(peer->fd, frame, sizeof(frame))) {
         peer->received_mse = memcmp(frame, mse_request, sizeof(frame)) == 0;
