@@ -98,6 +98,7 @@ typedef struct {
     char request[4096];
     bool received_mse;
     bool omit_media_ack;
+    bool bad_accept;
 } peer_t;
 
 static void socket_timeout(int fd) {
@@ -164,6 +165,13 @@ static void *upstream_peer(void *arg) {
             "Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n";
         send_all(peer->fd, unsupported, sizeof(unsupported) - 1);
         send_all(peer->fd, media_response, sizeof(media_response));
+        goto done;
+    }
+    if (peer->bad_accept) {
+        const char invalid[] = "HTTP/1.1 101 Switching Protocols\r\n"
+            "Upgrade: websocket\r\nConnection: Upgrade\r\n"
+            "Sec-WebSocket-Accept: invalid\r\nX-LightNVR-Media-Policy: 1\r\n\r\n";
+        send_all(peer->fd, invalid, sizeof(invalid) - 1);
         goto done;
     }
     // Split the upstream HTTP response and coalesce its end with a frame.
@@ -353,6 +361,19 @@ void test_upgrade_without_media_policy_ack_is_rejected(void) {
     pthread_join(thread, NULL);
     TEST_ASSERT_FALSE(peer.received_mse);
 }
+void test_upgrade_with_wrong_accept_is_rejected(void) {
+    peer_t peer = {.status = 101, .bad_accept = true};
+    pthread_t thread;
+    TEST_ASSERT_EQUAL_INT(0, pthread_create(&thread, NULL, upstream_peer, &peer));
+    int client = client_open();
+    char origin[64], response[2048];
+    snprintf(origin, sizeof(origin), "http://localhost:%d", web_port);
+    send_upgrade(client, 0, origin, false);
+    TEST_ASSERT_TRUE(read_headers(client, response, sizeof(response)));
+    TEST_ASSERT_NOT_NULL(strstr(response, "502"));
+    close(client);
+    pthread_join(thread, NULL);
+}
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_websocket_origin_authority_validation);
@@ -360,5 +381,6 @@ int main(void) {
     RUN_TEST(test_websocket_auth_origin_and_query_failures_never_reach_upstream);
     RUN_TEST(test_failed_upstream_handshake_returns_502);
     RUN_TEST(test_upgrade_without_media_policy_ack_is_rejected);
+    RUN_TEST(test_upgrade_with_wrong_accept_is_rejected);
     return UNITY_END();
 }

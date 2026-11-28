@@ -17,6 +17,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <strings.h>
+#include <mbedtls/sha1.h>
+#include <mbedtls/base64.h>
 
 #include "web/go2rtc_websocket.h"
 #include "web/go2rtc_media_policy.h"
@@ -78,6 +80,57 @@ static bool header_token(const char *value, const char *token) {
         value = *end ? end + 1 : end;
     }
     return false;
+}
+
+static bool upstream_header_value(const char *headers, const char *name,
+                                  const char *value, bool token_list) {
+    const char *line = strstr(headers, "\r\n");
+    if (!line) return false;
+    line += 2;
+    size_t name_len = strlen(name);
+    while (*line && strncmp(line, "\r\n", 2) != 0) {
+        const char *end = strstr(line, "\r\n");
+        if (!end) return false;
+        if ((size_t)(end - line) > name_len && line[name_len] == ':' &&
+            strncasecmp(line, name, name_len) == 0) {
+            const char *field = line + name_len + 1;
+            while (field < end && (*field == ' ' || *field == '\t')) field++;
+            if (token_list) {
+                while (field < end) {
+                    const char *next = memchr(field, ',', (size_t)(end - field));
+                    if (!next) next = end;
+                    const char *trimmed = next;
+                    while (trimmed > field && (trimmed[-1] == ' ' || trimmed[-1] == '\t')) trimmed--;
+                    if ((size_t)(trimmed - field) == strlen(value) &&
+                        strncasecmp(field, value, strlen(value)) == 0) return true;
+                    field = next < end ? next + 1 : end;
+                    while (field < end && (*field == ' ' || *field == '\t')) field++;
+                }
+            } else {
+                const char *value_end = end;
+                while (value_end > field && (value_end[-1] == ' ' || value_end[-1] == '\t')) value_end--;
+                if ((size_t)(value_end - field) == strlen(value) &&
+                    memcmp(field, value, strlen(value)) == 0) return true;
+            }
+        }
+        line = end + 2;
+    }
+    return false;
+}
+
+static bool upstream_accept_matches(const websocket_proxy_t *proxy) {
+    const char *key = single_header(&proxy->conn->request, "Sec-WebSocket-Key");
+    if (!key) return false;
+    char source[64];
+    int length = snprintf(source, sizeof(source), "%s258EAFA5-E914-47DA-95CA-C5AB0DC85B11", key);
+    if (length < 0 || (size_t)length >= sizeof(source)) return false;
+    unsigned char digest[20];
+    if (mbedtls_sha1((const unsigned char *)source, (size_t)length, digest) != 0) return false;
+    unsigned char encoded[32];
+    size_t encoded_len = 0;
+    if (mbedtls_base64_encode(encoded, sizeof(encoded), &encoded_len, digest, sizeof(digest)) != 0) return false;
+    encoded[encoded_len] = '\0';
+    return upstream_header_value(proxy->headers, "Sec-WebSocket-Accept", (const char *)encoded, false);
 }
 
 /* Origin and Host carry authorities, not paths or user credentials. Keep the
@@ -343,7 +396,14 @@ static void upstream_read(uv_stream_t *stream, ssize_t count, const uv_buf_t *bu
             free(buf->base);
             return;
         }
-        if (strncmp(proxy->headers, "HTTP/1.1 101 ", 13) != 0) {
+        if (strncmp(proxy->headers, "HTTP/1.1 101 ", 13) != 0 ||
+            !upstream_header_value(proxy->headers, "Upgrade", "websocket", true) ||
+            !upstream_header_value(proxy->headers, "Connection", "Upgrade", true)) {
+            fail_proxy(proxy);
+            free(buf->base);
+            return;
+        }
+        if (!upstream_accept_matches(proxy)) {
             fail_proxy(proxy);
             free(buf->base);
             return;
