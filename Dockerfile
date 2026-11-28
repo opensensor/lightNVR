@@ -440,7 +440,8 @@ COPY --from=builder /usr/lib/libuv.so* /usr/lib/
 COPY --from=builder /usr/lib/libllhttp.so* /usr/lib/
 
 # Copy latest upstream SQLite shared library built in the builder stage
-COPY --from=builder /usr/lib/libsqlite3.so* /usr/lib/
+COPY --from=builder /usr/lib/libsqlite3.so* /usr/lib/x86_64-linux-gnu/
+RUN ldconfig
 
 # Copy SOD libraries (use /usr/lib/ consistently; on usrmerge systems /lib → /usr/lib)
 COPY --from=builder /usr/lib/libsod.so* /usr/lib/
