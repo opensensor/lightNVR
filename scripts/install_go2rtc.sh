@@ -119,6 +119,9 @@ api:
   listen: 127.0.0.1:1984
   base_path: /go2rtc
 
+rtsp:
+  listen: 127.0.0.1:8554
+
 webrtc:
   ice_servers:
     - urls: [stun:stun.l.google.com:19302]
